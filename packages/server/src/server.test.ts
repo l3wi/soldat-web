@@ -11,7 +11,7 @@ import type { MatchConfiguration } from "./worker-messages.ts";
 
 const hash = "ab".repeat(32);
 const match: MatchConfiguration = { wasmPath: "missing-sim.wasm", contentRoot: "missing-server-test-content", contentSetHash: hash, map: "Arena", rules: {}, matchSeed: "1" };
-const hello: Extract<Message, { type: "hello" }> = { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(Buffer.from(hash, "hex")), simAbiVersion: SIM_ABI_VERSION, nickname: "Player" };
+const hello: Extract<Message, { type: "hello" }> = { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(Buffer.from(hash, "hex")), simAbiVersion: SIM_ABI_VERSION, nickname: "Player", weapon: 4, secondaryWeapon: 0 };
 
 test("admission validates a codec-decoded hello against protocol, content and ABI", () => {
   assert.doesNotThrow(() => validateHello(decodeMessage(encodeMessage(hello)), hash));

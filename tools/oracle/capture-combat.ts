@@ -11,7 +11,7 @@ import type { SimManifest } from '../../packages/sim-host/src/sim.ts';
 
 interface CaptureEvidence { fixture: string; status: string; [key: string]: unknown }
 
-const root = process.cwd(), directory = 'tests/fixtures/combat', output = 'build-out/combat-oracle';
+const root = process.cwd(), directory = 'tests/fixtures/combat', output = 'build-out/sim/g3/combat-oracle';
 const imageName = process.env.ORACLE_IMAGE ?? 'soldat-web/fpc:bcd7288';
 const platform = process.env.ORACLE_PLATFORM ?? 'linux/arm64';
 async function execute(command: string, args: string[]) {

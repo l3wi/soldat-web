@@ -21,7 +21,7 @@ try {
     map: config.map as string, matchSeed: config.matchSeed as string, rules: config.rules as Record<string, unknown>,
   };
   const [key, cert] = await Promise.all([readFile(config.tlsKeyPath as string), readFile(config.tlsCertPath as string)]);
-  const server = await createGameServer({ match, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443, onMetrics: metrics => console.log(JSON.stringify({ type: "match-metrics", ...metrics })) });
+  const server = await createGameServer({ match, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443, onMetrics: metrics => console.log(JSON.stringify({ ...metrics, type: "match-metrics" })) });
   console.log(JSON.stringify({ type: "listening", address: server.httpsServer.address(), contentSetHash: manifest.sha256 }));
   let shuttingDown = false;
   const shutdown = () => {

@@ -14,10 +14,10 @@ function event(id: number, bytes: number): ReliableEvent {
   return { id, tick: 0xffffffff, header, payload: new Uint8Array(bytes).fill(0xab) };
 }
 const minimum: Message[] = [
-  { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(32), simAbiVersion: 0x00010001, nickname: "a" },
+  { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(32), simAbiVersion: 0x00010003, nickname: "a", weapon: 4, secondaryWeapon: 0 },
   { type: "welcome", slot: 1, serverTick: 0, tickRate: 60, matchSeed: 0n, map: "a", rules: new Uint8Array() },
-  { type: "input", frames: [{ seq: 1, tick: 0, input: input() }] },
-  { type: "snapshot", serverTick: 0, lastConsumedInputSeq: 0, snapshotId: 1, baselineId: 0, state: new Uint8Array(5) },
+  { type: "input", frames: [{ seq: 1, tick: 0, viewTick: 0, input: input() }] },
+  { type: "snapshot", serverTick: 0, lastConsumedInputSeq: 0, snapshotId: 1, baselineId: 0, stateHash: 0n, inputs: [], state: new Uint8Array(5) },
   { type: "snapshotAck", snapshotId: 1 }, { type: "events", events: [event(1, 0)] }, { type: "eventAck", eventId: 1 },
   { type: "chat", text: "a" }, { type: "ping", timestamp: 0n }, { type: "pong", timestamp: 0n },
   { type: "resync", baselineId: 0 }, { type: "disconnect", code: 0, reason: "" },
@@ -25,10 +25,10 @@ const minimum: Message[] = [
 const largestDelta = new Uint8Array(LIMITS.delta);
 new DataView(largestDelta.buffer).setUint32(1, MAX_STATE_BYTES, true);
 const maximum: Message[] = [
-  { type: "hello", protocolVersion: 65535, contentSetHash: new Uint8Array(32).fill(255), simAbiVersion: 0xffffffff, nickname: "é".repeat(24) },
+  { type: "hello", protocolVersion: 65535, contentSetHash: new Uint8Array(32).fill(255), simAbiVersion: 0xffffffff, nickname: "é".repeat(24), weapon: 255, secondaryWeapon: 255 },
   { type: "welcome", slot: 32, serverTick: 0xffffffff, tickRate: 60, matchSeed: 0xffffffffffffffffn, map: "m".repeat(LIMITS.map), rules: new Uint8Array(LIMITS.rules).fill(255) },
-  { type: "input", frames: Array.from({ length: 3 }, (_, i) => ({ seq: 0xffffffff - i, tick: 0xffffffff - i, input: input(true) })) },
-  { type: "snapshot", serverTick: 0xffffffff, lastConsumedInputSeq: 0xffffffff, snapshotId: 0xffffffff, baselineId: 0xfffffffe, state: largestDelta },
+  { type: "input", frames: Array.from({ length: 3 }, (_, i) => ({ seq: 0xffffffff - i, tick: 0xffffffff - i, viewTick: 0xffffffff - i, input: input(true) })) },
+  { type: "snapshot", serverTick: 0xffffffff, lastConsumedInputSeq: 0xffffffff, snapshotId: 0xffffffff, baselineId: 0xfffffffe, stateHash: 0xffffffffffffffffn, inputs: Array.from({ length: 32 }, (_, i) => ({ slot: i + 1, input: input(true) })), state: largestDelta },
   { type: "snapshotAck", snapshotId: 0xffffffff }, { type: "events", events: Array.from({ length: LIMITS.events }, (_, i) => event(i + 1, 0)) },
   { type: "events", events: [event(0xffffffff, LIMITS.eventPayload)] },
   { type: "eventAck", eventId: 0xffffffff }, { type: "chat", text: "🙂".repeat(LIMITS.chat / 4) },
@@ -46,7 +46,7 @@ describe("versioned little-endian codec", () => {
       const encoded = encodeMessage(message);
       expect(decodeMessage(encoded)).toEqual(message);
       expect(readChannel(encoded)).toBe(message.type === "snapshot" ? "latestState" : "reliableControl");
-      expect(encoded[0]).toBe(1); expect(encoded[1]).toBe(0);
+      expect(encoded[0]).toBe(PROTOCOL_VERSION); expect(encoded[1]).toBe(0);
     });
   }
   test("offset views and exact endian timestamp bytes", () => {
@@ -66,7 +66,7 @@ describe("versioned little-endian codec", () => {
     }
   });
   test("reject channel/version/type, invalid UTF8, and reserved controls", () => {
-    for (const [index, value] of [[0, 2], [2, 0], [3, 1]] as const) {
+    for (const [index, value] of [[0, 1], [2, 0], [3, 1]] as const) {
       const bytes = encodeMessage(minimum[0]!); bytes[index] = value;
       expect(() => decodeMessage(bytes)).toThrow(ProtocolError);
     }
@@ -75,7 +75,7 @@ describe("versioned little-endian codec", () => {
     for (const [offset, value] of [[0, 0x1000], [8, 3], [8, 12], [8, 16], [10, 1]]) {
       const invalid = input(); new DataView(invalid.buffer).setUint16(offset!, value!, true);
       expect(() => validateInput(invalid)).toThrow(ProtocolError);
-      const packet = encodeMessage(minimum[2]!); packet.set(invalid, 17);
+      const packet = encodeMessage(minimum[2]!); packet.set(invalid, 21);
       expect(() => decodeMessage(packet)).toThrow(ProtocolError);
     }
   });
@@ -83,7 +83,9 @@ describe("versioned little-endian codec", () => {
     const invalid: Message[] = [
       { ...minimum[0] as Extract<Message, { type: "hello" }>, nickname: "x".repeat(LIMITS.nickname + 1) },
       { ...minimum[0] as Extract<Message, { type: "hello" }>, nickname: "\ud800" },
-      { type: "input", frames: [] }, { type: "input", frames: Array.from({ length: 4 }, () => ({ seq: 1, tick: 0, input: input() })) },
+      { ...minimum[0] as Extract<Message, { type: "hello" }>, nickname: "\udc00" },
+      { ...minimum[0] as Extract<Message, { type: "hello" }>, nickname: "\ud800x" },
+      { type: "input", frames: [] }, { type: "input", frames: Array.from({ length: 4 }, () => ({ seq: 1, tick: 0, viewTick: 0, input: input() })) },
       { ...minimum[1] as Extract<Message, { type: "welcome" }>, rules: new Uint8Array(LIMITS.rules + 1) },
       { ...minimum[1] as Extract<Message, { type: "welcome" }>, map: "m".repeat(LIMITS.map + 1) },
       { ...minimum[1] as Extract<Message, { type: "welcome" }>, slot: 0 },

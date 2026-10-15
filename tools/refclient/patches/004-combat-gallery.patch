@@ -1,0 +1,71 @@
+--- a/client/Client.pas
++++ b/client/Client.pas
+@@ -337,7 +337,9 @@
+   ControlGame,
+   Input,
+   InterfaceGraphics,
+-  MapGraphics;
++  MapGraphics,
++  Bullets,
++  Things;
+ 
+ 
+ procedure RestartGraph;
+@@ -605,6 +607,7 @@
+ {$ENDIF}
+ 
+ {$I ReferenceGostek.inc}
++{$I ReferenceCombat.inc}
+ 
+ procedure StartGame();
+ var
+@@ -735,6 +738,11 @@
+     r_msaa.SetValue(0);
+     cl_actionsnap.SetValue(False);
+     launcher_ipc_enable.SetValue(False);
++    if GetEnvironmentVariable('REFCLIENT_COMBAT') <> '' then
++    begin
++      r_scaleinterface.SetValue(True);
++      ui_style.SetValue('');
++    end;
+   end;
+ 
+   // NOTE: Code depending on CVars should be run after this line if possible.
+@@ -930,6 +935,11 @@
+     ActualZoom := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_Z'), 0);
+     if GetEnvironmentVariable('REFCLIENT_GOSTEK') = '1' then
+       PrepareReferenceGosteks;
++    if GetEnvironmentVariable('REFCLIENT_COMBAT') <> '' then
++      PrepareReferenceCombat;
+     RenderFrame(0, 1, True);
++    if GetEnvironmentVariable('REFCLIENT_COMBAT') <> '' then
++      WriteReferenceCombat;
++    MySprite := 0; // Render-only focus must not enter network disconnect during finalization.
+     SDL_Quit;
+     Halt(0);
+--- a/client/InterfaceGraphics.pas
++++ b/client/InterfaceGraphics.pas
+@@ -2015,6 +2015,11 @@
+ begin
+   SpriteMe := NIL;
+   T := @Textures;
++  { Gallery scope is the original health/ammo/jet/grenade raster pass only.
++    Fire counters are outside this deliberately scoped comparison. }
++  if (GetEnvironmentVariable('REFCLIENT_COMBAT') <> '') and
++    (GetEnvironmentVariable('REFCLIENT_COMBAT') <> 'hud-full') then
++    Int.Fire := False;
+ 
+   PixelSize.x := Width / RenderWidth;
+   PixelSize.y := Height / RenderHeight;
+@@ -2278,6 +2283,11 @@
+         end;
+       end;
+     end;
++    { Do not substitute a font rasterizer or claim unmatched HUD/network text.
++      The full gameplay HUD is qualified separately in the browser harness. }
++    if (GetEnvironmentVariable('REFCLIENT_COMBAT') <> '') and
++      (GetEnvironmentVariable('REFCLIENT_COMBAT') <> 'hud-full') then
++      Exit;
+ 
+     // Aim cursor
+     if not (LimboMenu.Active or TeamMenu.Active or EscMenu.Active) and not SpriteMe.DeadMeat

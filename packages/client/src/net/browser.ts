@@ -3,7 +3,7 @@ import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message, type Reli
 import { connectWss, type MessageTransport } from "@soldat-web/protocol/transport";
 import { OnlineSession, type OnlineMetrics } from "./session.ts";
 
-const FROZEN_WASM = "7282e3044b086aad5e5091ecf1661579e31b2499add12665ac76d47c4a16f857";
+const FROZEN_WASM = "b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00";
 export interface OnlineHook {
   readonly metrics: OnlineMetrics;
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */
@@ -109,7 +109,7 @@ export async function connectOnline(options: {
     return { session: admitted, prediction, hook, dispose,
       updateOverlay() {
         const m = admitted.metrics;
-        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.serverTick}\nRTT ${m.rttMs.toFixed(1)}ms · snapshot gaps ${(m.loss * 100).toFixed(1)}% · age ${m.snapshotAgeMs.toFixed(1)}ms\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash @${m.snapshotTick}: ${m.loadedHash} ${m.loadedHash === m.snapshotHash ? "=" : "≠"} ${m.snapshotHash}`;
+        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.serverTick}\nRTT ${m.rttMs.toFixed(1)}ms · snapshot gaps ${(m.loss * 100).toFixed(1)}% · snapshot age ≈${(m.snapshotAgeMs + m.rttMs / 2).toFixed(1)}ms (receipt ${m.snapshotAgeMs.toFixed(1)}ms)\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash @${m.snapshotTick}: ${m.loadedHash} ${m.loadedHash === m.snapshotHash ? "=" : "≠"} ${m.snapshotHash}`;
       } };
   } catch (error) { dispose(); throw error; }
 }

@@ -1,4 +1,4 @@
-# Binary protocol reference — version 1
+# Binary protocol reference — version 2
 
 Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/protocol` is dependency-free at runtime. It does not interpret simulation save-state schemas or deliver assets. The simulation ABI is independently versioned; see [`sim-abi.md`](../../docs/formats/sim-abi.md).
 
@@ -8,7 +8,7 @@ Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/pr
 
 All integers are unsigned, little-endian, except the signed i16 aim fields inside simulation input. There is no implicit padding. Strings are UTF-8 with byte lengths, not character counts, and must be well-formed Unicode. Invalid UTF-8, unknown versions/types/channels, nonzero reserved controls, truncation, trailing fields, and oversized declarations are rejected. Encoding rejects invalid numeric ranges rather than truncating them. No JSON is used by the packet codec. `welcome.rules` is a bounded opaque byte string; the admission configuration may encode the sim's rules JSON in these bytes, outside the input/snapshot hot path.
 
-Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained. Encoders make a new packet; transport `send` copies it before returning so queued data cannot be changed by the caller. Delta decoding creates an owned state array. Protocol IDs/sequences are u32 without wraparound in this version; restart/reconnect before exhaustion. Slot numbers are original one-based 1–32; zero input acknowledgement means no input has yet been consumed.
+Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained. Encoders make a new packet; transport `send` copies it before returning so queued data cannot be changed by the caller. Delta decoding creates an owned state array. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slot numbers are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 2 is a clean cutover: version-1 peers are rejected, not heuristically decoded.
 
 ## Packet header
 
@@ -16,20 +16,20 @@ One WebSocket binary message contains exactly one packet. There is no stream con
 
 | Offset | Type | Field |
 | ---: | --- | --- |
-| 0 | u16 | Wire version, exactly `1` |
+| 0 | u16 | Wire version, exactly `2` |
 | 2 | u8 | Message type from the table below |
 | 3 | u8 | Channel: `0` reliableControl, `1` latestState |
 | 4 | u32 | Payload byte length, excluding this 8-byte header |
 | 8 | bytes | Message-specific payload |
 
-Only snapshots use channel 1. Every other type uses channel 0; a mismatch is invalid. Global packet limit is `32 MiB + 64` bytes. The tighter per-type payload limits below also apply.
+Only snapshots use channel 1. Every other type uses channel 0; a mismatch is invalid. Global packet limit is `32 MiB + 512` bytes. The tighter per-type payload limits below also apply.
 
 | ID | Type | Direction | Maximum payload bytes |
 | ---: | --- | --- | ---: |
-| 1 | hello | client → server | 88 |
+| 1 | hello | client → server | 90 |
 | 2 | welcome | server → client | 4,245 |
-| 3 | input | client → server | 61 |
-| 4 | snapshot | server → client | 32 MiB + 25 |
+| 3 | input | client → server | 73 |
+| 4 | snapshot | server → client | 32 MiB + 450 |
 | 5 | snapshotAck | client → server | 4 |
 | 6 | events | server → client | 1,048,576 |
 | 7 | eventAck | client → server | 4 |
@@ -51,9 +51,11 @@ Offsets below and in the remaining message tables are relative to payload start.
 | ---: | --- | --- |
 | 0 | u16 | Admission protocol version (must match server policy) |
 | 2 | 32 bytes | Raw SHA-256 content-set hash, not hexadecimal text |
-| 34 | u32 | Simulation ABI version, currently `0x00010001` |
+| 34 | u32 | Simulation ABI version, currently `0x00010003` |
 | 38 | u16 | Nickname UTF-8 byte length N, 1–48 |
 | 40 | N bytes | Nickname |
+| 40+N | u8 | Primary weapon original number, server admission accepts 1–10 |
+| 41+N | u8 | Secondary weapon original number: 0 (USSOCOM), 11 (knife), 12 (chainsaw), 13 (LAW) |
 
 The outer wire version is checked before admission fields. Content identity must match the verified simulation content manifest, not a map filename alone.
 
@@ -75,9 +77,10 @@ The outer wire version is checked before admission fields. Content identity must
 | Offset | Type | Field |
 | ---: | --- | --- |
 | 0 | u8 | Frame count N, 1–3 |
-| 1+20i | u32 | Input sequence, 1–2³²−1 |
-| 5+20i | u32 | Target simulation tick |
-| 9+20i | 12 bytes | Simulation input, for frame i |
+| 1+24i | u32 | Input sequence, 1–2³²−1 |
+| 5+24i | u32 | Target simulation tick |
+| 9+24i | u32 | Client-declared remote render/view tick |
+| 13+24i | 12 bytes | Simulation input, for frame i |
 
 Send current frame first, followed by previous two when available. Admission has no fabricated historical frames. The server's input buffer processes redundancy oldest first. Target tick T is the current sim tick before the step that advances T → T+1, consistent with `SimHost.setInput`.
 
@@ -100,12 +103,16 @@ Bits 12–15 of control and bits 4–15 of press order are zero. Conflicting ord
 | 4 | u32 | Last consumed input sequence **for this recipient**, zero before first input |
 | 8 | u32 | This snapshot's nonzero ID |
 | 12 | u32 | Acknowledged baseline snapshot ID, or zero for empty baseline |
-| 16 | u32 | Encoded state byte length D, 5–(32 MiB + 5) |
-| 20 | D bytes | Delta-encoded opaque sim save-state |
+| 16 | u64 | `sim_hash_state` of this exact authoritative snapshot tick |
+| 24 | u8 | Active input record count A, 0–32 |
+| 25+13i | u8 | Original player slot, strictly ascending |
+| 26+13i | 12 bytes | Last authoritative consumed input for that slot |
+| 25+13A | u32 | Encoded state byte length D, 5–(32 MiB + 5) |
+| 29+13A | D bytes | Delta-encoded opaque sim save-state |
 
 Snapshot IDs and baseline IDs are per recipient. `snapshotAck` consists of a nonzero u32 snapshot ID at offset 0. A sender may choose a baseline only after receiving an acknowledgement for a state it actually sent. A receiver must acknowledge only after successful delta decoding and successful sim state loading. Never acknowledge an unreceived or rejected state. Do not assume that an unsent/coalesced snapshot became a baseline.
 
-`resync` consists of the unavailable/rejected u32 baseline ID at offset 0. Baseline zero requests a full state. The server resets this recipient's baseline and sends a delta against empty bytes. An unknown baseline must cause resync, not decoding against an unrelated state.
+`resync` consists of the unavailable/rejected u32 baseline ID at offset 0. Baseline zero requests a full state. The server resets this recipient's baseline and sends a delta against empty bytes. An unknown baseline must cause resync, not decoding against an unrelated state. Explicit resync also discards unsimulated queued/held intent and allows one next current/future input to rebase its forward sequence jump; IDs must still exceed the previously accepted floor. Clients keep sequences monotonic. This lets a >128-frame outage recover without granting extra simulation time; stale historical actions are not admitted during rebase.
 
 ### Delta byte format
 
@@ -172,7 +179,7 @@ Reliable packets are FIFO and prioritized; they are never silently dropped. The 
 
 Browsers permit application close codes rather than arbitrary protocol close codes. Fatal browser adapter codes are 4002 (protocol), 4009 (size), 4013 (backpressure), 4011 (socket failure); Node uses 1002/1009/1013/1011 respectively. Closing a failed session is explicit failure, not delivery of its queued reliable messages.
 
-## Node 24 server foundation
+## Node 24 authoritative match server
 
 Start the configured WSS listener from the repository root:
 
@@ -184,13 +191,25 @@ The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u
 
 The programmatic `createGameServer` API accepts either `{ match, tls: { key, cert } }` or `{ match, httpsServer }`, never HTTP or an insecure fallback. A caller-supplied HTTPS listener remains caller-owned; closing the game service stops only its WSS connections and match worker. Internally managed HTTPS listeners are closed too. One `worker_thread` owns one real `SimHost`/WASM instance.
 
-Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects match startup explicitly. The Phase 1 sim supports original RNG, AI disabled (`flags=0`), and a zero seed-high word; default `rules: {}` uses those supported mechanics. This server does not claim keyed RNG, combat, modes or bots that the current sim has not implemented.
+Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects startup explicitly. Rules are passed unchanged to the versioned sim; the server never substitutes an unsupported mechanic. Each join explicitly uses `control:"authoritative"` and the admitted loadout, and records both next-respawn choices with `weapon-choice`.
 
-The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; additional whole overdue steps are discarded and overload/discard counters increment, preserving only the fractional remainder. Simulation never receives wall-clock dt. Snapshots are produced every second sim tick (30 Hz), against each recipient's last retained acknowledged baseline, with eight recent candidate states retained. Resync resets the baseline to zero. Event IDs and bounded acknowledgement retention are wired for the reliable session; client application deduplication remains required.
+The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; overdue whole steps are discarded and counted, retaining the fractional remainder. Simulation never receives variable dt. `onMetrics` reports per-tick total sim+save+delta/IPC-post plus all listener wire encodings attributed to that tick (`simEncodeMs`), the original worker-only samples (`workerSimEncodeMs`), scheduled tick lateness (`tickLatenessMs`), per-packet listener wire encoding (`wireEncodeMs`), and historical rollback durations/ticks/rejections. The total is summed work across the worker/listener, not a fabricated single-thread elapsed span. These are samples, not a performance guarantee. The optional `onReliableEvent(slot,event)` observation runs after successful reliable enqueue, including retransmissions, so qualification can compare server-enqueued IDs against client-applied IDs without claiming enqueue is TCP delivery.
+`onDisconnect(slot,code,reason)` observes the listener's actual policy close before socket teardown. Qualification records it separately from the client's WebSocket close code: TCP failure can prevent the close frame from reaching the client, which then sees 1006 rather than the originating policy reason.
 
-Input sequence IDs start at 1, with maximum forward jump 128. The buffer accepts target ticks `[current, current+2]`, rejects stale/replayed/duplicate frames and validates newest-first redundancy. Each packet is limited by a 90/s token bucket with burst 30, both before worker IPC and inside the worker. Gaps retain movement, Fire, Jetpack, aim and press-order state but clear action bits 6–11 so stale grenade/weapon/reload/prone/flag actions are not repeated. A disconnected slot cannot be reused until the worker confirms the leave command. Chat packets have a codec, but the foundation server explicitly rejects chat delivery instead of inventing a fake chat system.
+Ordinary snapshots are produced every second simulation tick (30 Hz), against each recipient's last retained acknowledged baseline. Up to 128 candidates are retained; overflow resets that recipient to an empty baseline. Resync also resets to zero. **Only one full snapshot is outstanding while baseline zero awaits acknowledgement**: WSS already reliably carries it, so queuing additional fullstates at 30 Hz would multiply TCP head-of-line blocking. After the worker accepts that exact fullstate ACK, normal deltas resume. Initial/full-resync acknowledgement has a bounded 60-second deadline. The 10-second RTT-probe deadline runs only on a synchronized session, pauses through fullstate recovery, and resumes with a fresh deadline without falsifying the probe's original RTT timestamp. A future datagram transport must preserve reliable bootstrap delivery or explicitly add retransmission; it cannot assume this WSS rule makes a datagram reliable. The hash is taken after saving the same state and before another mutation. Clients compare it **after loading and before prediction replay**, acknowledge only successfully loaded states, and hold remote controls from the input records with action bits 6–11 cleared.
+Repeated resync requests while a fullstate is already outstanding coalesce onto that reliable fullstate instead of generating more bulk data. Queued/held input is still cleared. This does not grant time or acknowledge a state on the client's behalf.
 
-This is ready for Phase 4 transport/admission/input/snapshot integration, not an online-play gate. Real snapshots and matches require the extracted sim and verified imported content; state size/compression and authority performance require measurement on that actual module. No lag compensation, client prediction/interpolation, load qualification, production metrics suite, matchmaking/server list, or impairment/soak evidence is claimed.
+Input IDs start at 1, with maximum forward jump 128. Target ticks at **server arrival** are bounded to `[current,current+2]`, per SPEC §4.4. Clients generate intent at predicted server-now plus RTT/2 and two ticks: network transit consumes the RTT/2 lead, and redundancy resubmits early-jitter frames within the admissible window. This is not client-owned time. Input packets are capped at 90/s with a shared bounded burst of 128 before IPC and again in the worker. The burst matches the prediction-history window so real TCP backlog flushes after an outage are not mistaken for sustained flooding; frames still face the same tick/sequence validation and cannot buy simulation time. Redundancy is processed oldest first. Gaps repeat movement/Fire/Jetpack/aim but clear one-shot bits 6–11; after 15 silent ticks all held controls become neutral. No packet advances the server clock. Stale ordinary inputs, duplicate IDs, malformed controls, fabricated future view ticks and excessive sequence jumps are rejected.
+
+Reliable gameplay events use only the canonical `SIM_GAMEPLAY_EVENTS` kinds `0x1001..0x1007` (death, flag info, Thing pickup/state, respawn, team scores and match end), with exact payloads documented in [sim-abi](../../docs/formats/sim-abi.md). Presentation kinds and legacy raw network-packet events are excluded. IDs are assigned only once their timeline is committed (12 ticks after simulation), retained until cumulative acknowledgement, retransmitted every 30 ticks, and must be deduplicated by the client. Event overflow explicitly closes the session and requires reconnect/full resync; it never silently discards a kill/pickup/capture. Future/unknown acknowledgements are rejected. The server also issues ping probes and accepts only the matching pong; historical-shot allowance uses this measured RTT, never a client-declared latency.
+
+### Historical projectile policy and trade-offs
+
+The single server instance retains 31 tick-boundary full states (500 ms span), consumed inputs and historical active weapons. A newly sequenced delayed Fire/grenade intent can rewind at most `min(12,ceil(RTT_ms*0.03)+2)` ticks (200 ms hard cap). The declared view tick must be no later than shot/current+2, no earlier than shot−18, and is further bounded by measured RTT plus an interpolation allowance. Accepted history inserts **only** Fire/ThrowNade and quantized aim; movement stays recorded. Every player's recorded input is replayed to now using `REPLAY`. This derives muzzle, spread/RNG, ammo, cooldown, collision, damage and explosions from original mechanics. One rewind globally per current tick and one per player per six ticks bound abuse/cost. Membership changes invalidate history, preventing replay across joins/leaves.
+
+Bullets, shotgun pellets, arrows, flame, M79 and LAW rockets use the same coherent historical timeline, not instant hitscan against displaced targets. Grenades rewind their original launch/fuse/bounces/explosion as a whole. Delayed knife/chainsaw/unarmed Fire is rejected: melee is present-time only; ordinary timely melee remains simulated normally. Weapon/drop/reload/prone/flag actions are not admitted retrospectively. Previously committed events cannot be undone; deferring gameplay events through the 12-tick rewind window prevents duplicate or phantom kill/pickup/capture notifications after historical replay. The user sees predicted movement/muzzle/audio effects immediately; kill-feed/score confirmations arrive approximately **200 ms plus server-to-client delivery time** after the simulated event. Speculative effects are not confirmation.
+
+Compared with target-only rewind, full-state resimulation preserves projectile travel and explosion interaction. Compared with a second authoritative simulation, it avoids another live instance and state handoff. Its costs are state copies/validation each tick and up to 12 replay steps, plus delayed confirmed events. The measured cost, exercised weapons and acceptance status belong in [G4](../../docs/gates/G4.md), not an assumed capacity claim.
 
 ## Development commands and measurement
 
@@ -210,4 +229,4 @@ Measured before the real module was available: 60 synthetic consecutive-state pa
 
 Measured on the rebuilt real `sim.wasm` (ABI `0x00010001`): 60 consecutive arena state pairs, ticks 0→60, **307,276,440 raw bytes → 65,067 delta bytes**, ratio **0.000211754 (0.0211754%)**. Each raw state was 5,121,274 bytes; encoded deltas averaged 1,084.45 bytes. All 60 reconstructed states matched byte-for-byte. Content-set hash: `855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109`. This is the fixture's initial idle segment, not a combat/multiplayer bandwidth estimate. The earlier first-step tick-contract failure was fixed in the simulator before collecting these results; no synthetic fallback was used.
 
-No G4 gate is claimed by these foundations. Prediction/reconciliation, remote interpolation, projectile lag compensation, real network impairment tests, full gameplay/rules support, and production load qualification remain Phase 4 integration work.
+The ABI-1 idle delta measurement above is historical, not current combat/multiplayer evidence. Current online qualification, exact frozen binary identity, security results and all pending real-impairment/human/soak checks are recorded in [G4](../../docs/gates/G4.md).

@@ -1,6 +1,7 @@
 import { requireStatus, type RenderView, type SimHost } from "@soldat-web/sim-host";
 import { decodeDelta, type InputFrame, type Message, type ReliableEvent } from "@soldat-web/protocol";
 import { SimWorldView, type WorldSprite, type WorldView } from "../world.ts";
+import { SnapshotBaselines } from "./baselines.ts";
 
 type Snapshot = Extract<Message, { type: "snapshot" }>;
 export const INPUT_HISTORY = 128;
@@ -40,7 +41,7 @@ export class OnlineSession {
   private readonly now: () => number;
   private readonly ring: (InputFrame | undefined)[] = new Array(INPUT_HISTORY);
   private readonly recent: InputFrame[] = [];
-  private readonly baselines = new Map<number, Uint8Array>();
+  private readonly baselines = new SnapshotBaselines();
   private readonly poses: Pose[] = [];
   private remote: { slot: number; input: Uint8Array }[] = [];
   private seq = 0;
@@ -50,6 +51,7 @@ export class OnlineSession {
   private lastPingAt = -Infinity;
   private ping: bigint | undefined;
   private waiting = true;
+  private resyncRequested = false;
   private correctionX = 0;
   private correctionY = 0;
   private jitter = 0;
@@ -100,17 +102,22 @@ export class OnlineSession {
     if (message.type === "snapshot") this.snapshot(message);
   }
   private resync(baselineId = 0): void {
-    if (!this.waiting) { this.metrics.resyncs++; this.options.send({ type: "resync", baselineId }); }
+    if (!this.resyncRequested) {
+      this.resyncRequested = true; this.metrics.resyncs++;
+      this.options.send({ type: "resync", baselineId });
+    }
     this.waiting = true; this.metrics.status = "resynchronizing";
     this.ring.fill(undefined); this.recent.length = 0; this.metrics.pendingInputs = 0;
   }
   private snapshot(message: Snapshot): void {
     const m = this.metrics;
     if (message.snapshotId <= m.snapshotId) return;
+    // All deltas already queued before the recovery request belong to the old
+    // baseline epoch. Only the requested fullstate can reopen prediction.
+    if (this.resyncRequested && message.baselineId !== 0) return;
     const baseline = this.baselines.get(message.baselineId);
     if (message.baselineId && !baseline) {
-      // Initial admission can also need a full snapshot, before any successful load.
-      this.waiting = false; this.resync(message.baselineId); return;
+      this.resync(message.baselineId); return;
     }
     const started = this.now();
     const state = decodeDelta(message.state, baseline);
@@ -122,7 +129,7 @@ export class OnlineSession {
     const hash = this.options.prediction.hash(), expected = message.stateHash.toString(16).padStart(16, "0");
     m.snapshotHash = expected; m.loadedHash = hash; m.snapshotTick = message.serverTick;
     if (hash !== expected || extractedHash !== expected) {
-      m.hashMismatches++; this.waiting = false; this.resync();
+      m.hashMismatches++; this.resync();
       throw new Error(`Authoritative snapshot hash mismatch at tick ${message.serverTick}: ${hash}/${extractedHash} != ${expected}`);
     }
     m.hashMatches++;
@@ -131,11 +138,9 @@ export class OnlineSession {
     this.poses.push({ tick: message.serverTick, sprites: this.extractionWorld.sprites.map(copySprite) });
     if (this.poses.length > 16) this.poses.shift();
     m.extractionMs = this.now() - started;
-    this.baselines.set(message.snapshotId, state); m.baselineBytes += state.byteLength;
-    while (this.baselines.size > 8 || (m.baselineBytes > 64 * 1024 * 1024 && this.baselines.size > 1)) {
-      const id = this.baselines.keys().next().value!;
-      m.baselineBytes -= this.baselines.get(id)!.byteLength; this.baselines.delete(id);
-    }
+    if (this.resyncRequested) this.baselines.clear();
+    const acknowledge = this.baselines.retain(message.snapshotId, message.baselineId, state);
+    m.baselineBytes = this.baselines.bytes;
     this.remote = message.inputs.map(entry => ({ slot: entry.slot, input: heldInput(entry.input) }));
     for (let i = 0; i < this.ring.length; i++) {
       const frame = this.ring[i];
@@ -143,7 +148,7 @@ export class OnlineSession {
     }
     this.predictionWorld.sync();
     const target = this.waiting ? message.serverTick : Math.max(message.serverTick, oldTick);
-    if (target - message.serverTick > INPUT_HISTORY) { this.waiting = false; this.resync(); return; }
+    if (target - message.serverTick > INPUT_HISTORY) { this.resync(); return; }
     for (let tick = message.serverTick; tick < target; tick++) {
       const frame = this.ring[tick % INPUT_HISTORY];
       this.controls(tick, frame?.tick === tick ? frame.input : undefined);
@@ -166,12 +171,12 @@ export class OnlineSession {
     }
     m.snapshotId = message.snapshotId; m.serverTick = message.serverTick; m.snapshots++;
     m.loss = this.gapSnapshots / Math.max(1, this.gapSnapshots + m.snapshots);
-    this.lastSnapshotAt = at; this.waiting = false; m.status = "online";
+    this.lastSnapshotAt = at; this.waiting = false; this.resyncRequested = false; m.status = "online";
     m.predictedTick = this.predictionWorld.tick; m.pendingInputs = this.ring.filter(Boolean).length;
     if (m.snapshots === 1) m.viewTick = message.serverTick;
     m.lastConsumedInputSeq = message.lastConsumedInputSeq; m.replayLength = target - message.serverTick;
     m.reconcileMs = this.now() - started;
-    this.options.send({ type: "snapshotAck", snapshotId: message.snapshotId });
+    if (acknowledge) this.options.send({ type: "snapshotAck", snapshotId: message.snapshotId });
     this.options.onSnapshot?.(m);
   }
   private controls(tick: number, local?: Uint8Array): void {

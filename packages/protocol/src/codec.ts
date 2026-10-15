@@ -5,13 +5,23 @@ import type { TransportChannel } from "./transport/types.ts";
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect"] as const;
-const MAX_PAYLOAD = [0, 88, 4245, 61, LIMITS.delta + 20, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4];
+const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4];
 const HEADER_BYTES = 8;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
 }
 function integer(n: number, max: number, min = 0): void { check(Number.isInteger(n) && n >= min && n <= max, `Integer outside ${min}..${max}`); }
 function bigint(n: bigint): void { check(typeof n === "bigint" && n >= 0n && n <= 0xffffffffffffffffn, "Expected u64 bigint"); }
+function wellFormed(text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    const unit = text.charCodeAt(i);
+    if (unit >= 0xd800 && unit <= 0xdbff) {
+      const low = text.charCodeAt(++i);
+      if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
+    } else if (unit >= 0xdc00 && unit <= 0xdfff) return false;
+  }
+  return true;
+}
 
 class Writer {
   offset = 0;
@@ -27,7 +37,7 @@ class Writer {
   u64(n: bigint) { bigint(n); this.view?.setBigUint64(this.offset, n, true); this.offset += 8; }
   bytes(bytes: Uint8Array) { this.target?.set(bytes, this.offset); this.offset += bytes.length; }
   text(text: string, max: number, nonempty = false) {
-    check(typeof text === "string" && text.isWellFormed(), "Expected well-formed Unicode text");
+    check(typeof text === "string" && wellFormed(text), "Expected well-formed Unicode text");
     const bytes = encoder.encode(text);
     check(bytes.length <= max && (!nonempty || bytes.length > 0), `Text exceeds 1..${max} UTF-8 bytes`);
     this.u16(bytes.length); this.bytes(bytes);
@@ -80,17 +90,21 @@ function writePayload(w: Writer, m: Message): void {
   switch (m.type) {
     case "hello":
       w.u16(m.protocolVersion); check(m.contentSetHash.length === 32, "Content hash must be 32 bytes"); w.bytes(m.contentSetHash);
-      w.u32(m.simAbiVersion); w.text(m.nickname, LIMITS.nickname, true); break;
+      w.u32(m.simAbiVersion); w.text(m.nickname, LIMITS.nickname, true); w.u8(m.weapon); w.u8(m.secondaryWeapon); break;
     case "welcome":
       integer(m.slot, 32, 1); check(m.tickRate === 60, "Tick rate must be 60");
       w.u8(m.slot); w.u32(m.serverTick); w.u16(m.tickRate); w.u64(m.matchSeed); w.text(m.map, LIMITS.map, true); w.blob(m.rules, LIMITS.rules); break;
     case "input":
       integer(m.frames.length, LIMITS.frames, 1); w.u8(m.frames.length);
-      for (const frame of m.frames) { integer(frame.seq, 0xffffffff, 1); validateInput(frame.input); w.u32(frame.seq); w.u32(frame.tick); w.bytes(frame.input); }
+      for (const frame of m.frames) { integer(frame.seq, 0xffffffff, 1); validateInput(frame.input); w.u32(frame.seq); w.u32(frame.tick); w.u32(frame.viewTick); w.bytes(frame.input); }
       break;
     case "snapshot":
       integer(m.snapshotId, 0xffffffff, 1); validateDelta(m.state);
-      w.u32(m.serverTick); w.u32(m.lastConsumedInputSeq); w.u32(m.snapshotId); w.u32(m.baselineId); w.blob(m.state, LIMITS.delta); break;
+      w.u32(m.serverTick); w.u32(m.lastConsumedInputSeq); w.u32(m.snapshotId); w.u32(m.baselineId); w.u64(m.stateHash);
+      integer(m.inputs.length, 32); w.u8(m.inputs.length);
+      let previousSlot = 0;
+      for (const entry of m.inputs) { integer(entry.slot, 32, previousSlot + 1); validateInput(entry.input); w.u8(entry.slot); w.bytes(entry.input); previousSlot = entry.slot; }
+      w.blob(m.state, LIMITS.delta); break;
     case "snapshotAck": integer(m.snapshotId, 0xffffffff, 1); w.u32(m.snapshotId); break;
     case "events":
       integer(m.events.length, LIMITS.events, 1); w.u16(m.events.length);
@@ -141,7 +155,7 @@ export function decodeMessage(bytes: Uint8Array): Message {
     const { type } = header(bytes), r = new Reader(bytes);
     let message: Message;
     switch (type) {
-      case "hello": message = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true) }; break;
+      case "hello": message = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true), weapon: r.u8(), secondaryWeapon: r.u8() }; break;
       case "welcome": {
         const slot = r.u8(), serverTick = r.u32(), tickRate = r.u16(), matchSeed = r.u64(), map = r.text(LIMITS.map, true), rules = r.blob(LIMITS.rules);
         integer(slot, 32, 1); check(tickRate === 60, "Tick rate must be 60");
@@ -150,13 +164,18 @@ export function decodeMessage(bytes: Uint8Array): Message {
       case "input": {
         const count = r.u8(); integer(count, LIMITS.frames, 1);
         const frames = [];
-        for (let i = 0; i < count; i++) { const seq = r.u32(), tick = r.u32(), input = r.take(INPUT_BYTES); integer(seq, 0xffffffff, 1); validateInput(input); frames.push({ seq, tick, input }); }
+        for (let i = 0; i < count; i++) { const seq = r.u32(), tick = r.u32(), viewTick = r.u32(), input = r.take(INPUT_BYTES); integer(seq, 0xffffffff, 1); validateInput(input); frames.push({ seq, tick, viewTick, input }); }
         message = { type, frames }; break;
       }
       case "snapshot": {
-        const serverTick = r.u32(), lastConsumedInputSeq = r.u32(), snapshotId = r.u32(), baselineId = r.u32(), state = r.blob(LIMITS.delta);
+        const serverTick = r.u32(), lastConsumedInputSeq = r.u32(), snapshotId = r.u32(), baselineId = r.u32(), stateHash = r.u64();
+        const count = r.u8(); integer(count, 32);
+        const inputs = [];
+        let previousSlot = 0;
+        for (let i = 0; i < count; i++) { const slot = r.u8(); integer(slot, 32, previousSlot + 1); const input = r.take(INPUT_BYTES); validateInput(input); inputs.push({ slot, input }); previousSlot = slot; }
+        const state = r.blob(LIMITS.delta);
         integer(snapshotId, 0xffffffff, 1); validateDelta(state);
-        message = { type, serverTick, lastConsumedInputSeq, snapshotId, baselineId, state }; break;
+        message = { type, serverTick, lastConsumedInputSeq, snapshotId, baselineId, stateHash, inputs, state }; break;
       }
       case "snapshotAck": { const snapshotId = r.u32(); integer(snapshotId, 0xffffffff, 1); message = { type, snapshotId }; break; }
       case "events": {

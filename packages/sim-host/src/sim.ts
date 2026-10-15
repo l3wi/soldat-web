@@ -2,8 +2,9 @@ import { deterministicWasi, requireDeterministicImports } from "./wasi.ts";
 import { readRenderView } from "./render.ts";
 import { readFxView } from "./fx.ts";
 export { FX_LAYOUT, readFxView, type FxView, type FxSpark } from "./fx.ts";
+export { SIM_GAMEPLAY_EVENTS, SIM_GAMEPLAY_PAYLOAD } from "./gameplay-events.ts";
 
-export const SIM_ABI_VERSION = 0x00010002;
+export const SIM_ABI_VERSION = 0x00010003;
 export const SimStatus = { OK: 0, INVALID: -1, NOT_INITIALIZED: -2, NOT_FOUND: -3, UNSUPPORTED: -4, CAPACITY: -5, MALFORMED: -6 } as const;
 export const INPUT_BYTES = 12;
 export const CONTROL_NAMES = ["Left", "Right", "Up", "Down", "Fire", "Jetpack", "ThrowNade", "ChangeWeapon", "ThrowWeapon", "Reload", "Prone", "FlagThrow"] as const;

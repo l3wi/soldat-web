@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { encodeInput } from "@soldat-web/sim-host";
 import type { InputFrame } from "@soldat-web/protocol";
-import { PlayerInputBuffer } from "./input-buffer.ts";
+import { INPUT_PACKET_BURST, PlayerInputBuffer } from "./input-buffer.ts";
 
 function frame(seq: number, tick: number, input = encodeInput({ Right: true })): InputFrame {
-  return { seq, tick, input };
+  return { seq, tick, viewTick: Math.max(0, tick - 3), input };
 }
 
 test("input lead is bounded to two future ticks and storage to three frames", () => {
@@ -70,7 +70,7 @@ test("newest-first redundancy admits new frames without replaying consumed actio
 
 test("duplicate floods consume the bounded packet burst and recover with monotonic time", () => {
   const buffer = new PlayerInputBuffer(0n);
-  for (let i = 0; i < 30; i++) assert.ok(!buffer.offer([frame(1, 0)], 0, 0n).includes("rate"));
+  for (let i = 0; i < INPUT_PACKET_BURST; i++) assert.ok(!buffer.offer([frame(1, 0)], 0, 0n).includes("rate"));
   assert.deepEqual(buffer.offer([frame(2, 1)], 0, 0n), ["rate"]);
   assert.deepEqual(buffer.offer([frame(2, 1)], 1, 1_000_000_000n), []);
   assert.equal(buffer.size, 1);

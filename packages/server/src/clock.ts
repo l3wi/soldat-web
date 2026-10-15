@@ -11,13 +11,13 @@ export class FixedStepAccumulator {
 
   constructor(start: bigint) { this.previous = start; }
 
-  advance(now: bigint, step: () => void): number {
+  advance(now: bigint, step: (latenessMs: number) => void): number {
     if (now < this.previous) throw new RangeError("Monotonic clock moved backwards");
     this.pending += (now - this.previous) * BigInt(TICK_RATE);
     this.previous = now;
     let count = 0;
     while (this.pending >= SECOND && count < MAX_CATCH_UP) {
-      step();
+      step(Number(this.pending - SECOND) / TICK_RATE / 1_000_000);
       this.pending -= SECOND;
       count++;
     }

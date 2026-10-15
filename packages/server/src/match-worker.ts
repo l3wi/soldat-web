@@ -23,11 +23,18 @@ try {
   match = await AuthoritativeMatch.start(workerData as MatchConfiguration, response => port.postMessage(response));
   const clock = new FixedStepAccumulator(process.hrtime.bigint());
   let nextMetrics = 60;
+  let simEncodeMs: number[] = [], tickLatenessMs: number[] = [];
   const wake = () => {
     try {
-      clock.advance(process.hrtime.bigint(), () => match!.step());
+      clock.advance(process.hrtime.bigint(), lateness => {
+        const start = performance.now();
+        tickLatenessMs.push(lateness);
+        match!.step();
+        simEncodeMs.push(performance.now() - start);
+      });
       if (match!.tick >= nextMetrics) {
-        port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString() } satisfies WorkerResponse);
+        port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, tickLatenessMs, ...match!.takeLagMetrics() } satisfies WorkerResponse);
+        simEncodeMs = []; tickLatenessMs = [];
         nextMetrics = match!.tick + 60;
       }
       timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds));

@@ -1,7 +1,7 @@
 # G3 — client combat presentation
 
 Date: 2026-10-15.
-**Client presentation acceptance PASS for the exercised scope.** Final run `combat-1792100004735`: **33/33 rows passed** (4 native comparisons and 29 real local-simulation scenarios), no reported runtime exceptions, and the final WASM remained unchanged.
+**Client presentation acceptance PASS on the corrected frozen artifact.** Run `combat-1792101421387` passed **33/33 rows** (4 native comparisons and 29 real local-simulation scenarios), with no reported runtime exceptions, on WASM `b66f…fb00`; the binary remained unchanged. Earlier run `combat-1792100004735` on withdrawn `7282…f857` is historical only. The replacement contains the simulation owner's demonstrated periodic CTF lifecycle correction; this client result does not substitute for its independent T1/T2/T3 gate.
 
 
 ## Scope and implementation
@@ -18,7 +18,7 @@ Source contracts:
 
 The coordinator explicitly authorized presentation-only ABI `0x00010003`, superseding the earlier frozen `181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393` module. The new render fields publish native data rather than inventing loadouts/damage/history. Dropped-weapon creation-facing is serialized so snapshot-loaded clients retain native texture selection. Parachute tint follows the original network-client owner-shirt assignment. Genuine gameplay events `0x1001…0x1007` are separate from presentation events; local kills use live native death events, while online kills use confirmed deduplicated reliable events. No old-binary qualification is relabeled as ABI3 evidence.
 
-Final rebuilt module supplied by the simulation qualification owner: **`7282e3044b086aad5e5091ecf1661579e31b2499add12665ac76d47c4a16f857`**, ABI/state version 3. This is the identity required by the combat browser harness and online admission; it is not the superseded ABI2 artifact.
+Current tested module: **`b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00`**, ABI/state version 3. The integrated session was rerun on this exact identity after the simulation owner withdrew `7282…f857`. Pre-requalification working captures, states and logs are archived in `build-out/client-g3-pre-b66f.tar.gz`; they are not current-artifact receipts.
 
 ## Verification exercised
 
@@ -39,8 +39,7 @@ bun test packages/client/src/render/combat.test.ts \
 sh tools/refclient/build-combat.sh
 sh tools/refclient/capture-combat.sh
 bun packages/client/scripts/combat-capture.mjs \
-  --wasm-sha256 7282e3044b086aad5e5091ecf1661579e31b2499add12665ac76d47c4a16f857 \
-  --space 92
+  --wasm-sha256 b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00
 ```
 
 The original native reference client compiled successfully with the new isolated render-only helper. Compiler/linker platform/deprecation warnings remain; they were not suppressed.

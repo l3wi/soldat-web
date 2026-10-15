@@ -93,3 +93,35 @@ test("unknown baselines and exhausted prediction history request resync without 
     assert.deepEqual(sent.pop(), { type: "resync", baselineId: 0 }); assert.equal(session.metrics.pendingInputs, 0);
   } finally { session.dispose(); authoritative.dispose(); }
 });
+
+test("real snapshots retain an acknowledged baseline beyond eight arrivals and coalesce recovery until fullstate", async () => {
+  const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
+  const sent: Message[] = [];
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => 0, send: message => sent.push(message) });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, team: 1, control: "authoritative" }), "join");
+    const state = save(authoritative), first = snapshot(authoritative, state, 1, 0);
+    session.receive(first);
+    const delta = encodeDelta(state, state);
+    // These packets were produced while ACKs were still in flight to the server.
+    for (let id = 2; id <= 12; id++) session.receive({ ...first, snapshotId: id, baselineId: 1, state: delta });
+    assert.equal(session.metrics.hashMatches, 12);
+    assert.equal(session.metrics.resyncs, 0);
+    assert.equal(sent.filter(message => message.type === "snapshotAck").length, 12);
+    assert.equal(session.metrics.baselineBytes, state.byteLength * 12);
+    session.receive({ ...first, snapshotId: 13, baselineId: 999, state: delta });
+    // Queued unknown AND otherwise-decodable old-epoch deltas cannot restart
+    // prediction or create a fullstate-request storm before the reply arrives.
+    for (let id = 14; id <= 20; id++) session.receive({ ...first, snapshotId: id, baselineId: id % 2 ? 999 : 1, state: delta });
+    assert.equal(session.metrics.hashMatches, 12);
+    assert.equal(session.metrics.resyncs, 1);
+    assert.equal(sent.filter(message => message.type === "resync").length, 1);
+    assert.equal(sent.filter(message => message.type === "snapshotAck").length, 12);
+    session.receive({ ...first, snapshotId: 21 });
+    session.receive({ ...first, snapshotId: 22, baselineId: 21, state: delta });
+    assert.equal(session.metrics.status, "online");
+    assert.equal(session.metrics.hashMatches, 14);
+    assert.equal(session.metrics.baselineBytes, state.byteLength * 2);
+    assert.equal(sent.filter(message => message.type === "snapshotAck").length, 14);
+  } finally { session.dispose(); authoritative.dispose(); }
+});

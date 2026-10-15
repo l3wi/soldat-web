@@ -16,7 +16,7 @@ export function readFxView(memory: WebAssembly.Memory, ptr: number): FxView | nu
   const header = new DataView(memory.buffer,ptr,FX_LAYOUT.headerBytes);
   const h = FX_LAYOUT.header;
   const count = header.getUint32(h.count,true);
-  if (header.getUint32(h.version,true)!==0x00010002 || count>FX_LAYOUT.capacity ||
+  if (header.getUint32(h.version,true)!==0x00010003 || count>FX_LAYOUT.capacity ||
     header.getUint32(h.capacity,true)!==FX_LAYOUT.capacity || header.getUint32(h.stride,true)!==FX_LAYOUT.sparkBytes ||
     header.getUint32(h.bytes,true)!==FX_LAYOUT.totalBytes) throw new Error("Unsupported FX layout");
   return { tick: header.getUint32(h.tick,true), count, weather: header.getUint32(h.weather,true),
