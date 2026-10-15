@@ -1,0 +1,26 @@
+{
+  "browser": "155.0.8059.79",
+  "runtime": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
+  "width": 1280,
+  "height": 720,
+  "parity": {
+    "reference": "tests/fixtures/render/phaser-Airpirates.png",
+    "actual": "tests/fixtures/render/client-Airpirates.png",
+    "width": 1280,
+    "height": 720,
+    "threshold": 8,
+    "differing": 0,
+    "pixels": 921600,
+    "percent": 0,
+    "maxDelta": 0,
+    "meanChannelDelta": 0,
+    "pass": true
+  },
+  "maps": 99,
+  "servedNotices": 4,
+  "settingsPersisted": true,
+  "audioGesture": true,
+  "remountCycles": 3,
+  "browserErrors": [],
+  "movementHashes": "pending G1 sim.wasm and Node receipts"
+}
