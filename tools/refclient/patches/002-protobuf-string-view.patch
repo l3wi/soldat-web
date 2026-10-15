@@ -1,0 +1,5 @@
+--- a/src/steamnetworkingsockets/steamnetworkingsockets_internal.h
++++ b/src/steamnetworkingsockets/steamnetworkingsockets_internal.h
+@@ -677 +677 @@
+-			AssertMsg2( false, "Failed to serialize identity to %s message.  %s", msg.GetTypeName().c_str(), identityToProtobufErrMsg ); \
++			AssertMsg2( false, "Failed to serialize identity to %s message.  %s", std::string(msg.GetTypeName()).c_str(), identityToProtobufErrMsg ); \

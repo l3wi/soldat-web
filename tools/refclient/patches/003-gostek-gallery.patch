@@ -1,0 +1,24 @@
+--- a/client/Client.pas
++++ b/client/Client.pas
+@@ -339 +339,2 @@
+-  InterfaceGraphics;
++  InterfaceGraphics,
++  MapGraphics;
+@@ -603,6 +604,8 @@
+ end;
+ {$ENDIF}
+ 
++{$I ReferenceGostek.inc}
++
+ procedure StartGame();
+ var
+   ini: TMemINIFile;
+@@ -926,6 +929,8 @@
+     CameraY := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_Y'), 0);
+     CameraPrev := Vector2(CameraX, CameraY);
+     ActualZoom := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_Z'), 0);
++    if GetEnvironmentVariable('REFCLIENT_GOSTEK') = '1' then
++      PrepareReferenceGosteks;
+     RenderFrame(0, 1, True);
+     SDL_Quit;
+     Halt(0);

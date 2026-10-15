@@ -1,0 +1,16 @@
+[
+  {
+    "backend": "phaser",
+    "frames": 602,
+    "drawCalls": 4816,
+    "drawCallsPerFrame": 8,
+    "soldatCallsPerFrame": 8
+  },
+  {
+    "backend": "pixi",
+    "frames": 601,
+    "drawCalls": 4808,
+    "drawCallsPerFrame": 8,
+    "soldatCallsPerFrame": 8
+  }
+]

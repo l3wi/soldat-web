@@ -1,0 +1,24 @@
+{
+  "name": "@soldat/render-spike",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "check": "tsc --noEmit",
+    "capture": "bun scripts/capture.ts",
+    "compare": "bun scripts/compare.ts"
+  },
+  "dependencies": {
+    "phaser": "4.2.1",
+    "pixi.js": "8.21.0"
+  },
+  "devDependencies": {
+    "vite": "7.1.7",
+    "typescript": "5.9.3",
+    "pngjs": "7.0.0",
+    "@types/pngjs": "6.0.5",
+    "@types/node": "24.7.2",
+    "playwright": "1.56.1"
+  }
+}

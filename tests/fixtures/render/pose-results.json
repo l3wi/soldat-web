@@ -1,0 +1,106 @@
+{
+  "time": 1,
+  "tick": 60,
+  "points": 384,
+  "maxWorldDistance": 0.00004096468801273987,
+  "tolerance": 0.0001,
+  "pass": true,
+  "slots": [
+    {
+      "slot": 0,
+      "state": "runRight",
+      "team": 1,
+      "maxWorldDistance": 0.00003048630636199148
+    },
+    {
+      "slot": 1,
+      "state": "runLeft",
+      "team": 1,
+      "maxWorldDistance": 0.00004096468801273987
+    },
+    {
+      "slot": 2,
+      "state": "aim",
+      "team": 1,
+      "maxWorldDistance": 0.00003353503160973903
+    },
+    {
+      "slot": 3,
+      "state": "crouch",
+      "team": 1,
+      "maxWorldDistance": 0.000010073620309604346
+    },
+    {
+      "slot": 4,
+      "state": "prone",
+      "team": 1,
+      "maxWorldDistance": 0.000010444297563775248
+    },
+    {
+      "slot": 5,
+      "state": "jet",
+      "team": 1,
+      "maxWorldDistance": 0.00003989963261938213
+    },
+    {
+      "slot": 6,
+      "state": "reload",
+      "team": 1,
+      "maxWorldDistance": 0.00001892948016152489
+    },
+    {
+      "slot": 7,
+      "state": "dead",
+      "team": 1,
+      "maxWorldDistance": 0.000008021467509186081
+    },
+    {
+      "slot": 8,
+      "state": "runRight",
+      "team": 2,
+      "maxWorldDistance": 0.00003048630636199148
+    },
+    {
+      "slot": 9,
+      "state": "runLeft",
+      "team": 2,
+      "maxWorldDistance": 0.00003970177191267391
+    },
+    {
+      "slot": 10,
+      "state": "aim",
+      "team": 2,
+      "maxWorldDistance": 0.00003353503160973903
+    },
+    {
+      "slot": 11,
+      "state": "crouch",
+      "team": 2,
+      "maxWorldDistance": 0.000010073620309604346
+    },
+    {
+      "slot": 12,
+      "state": "prone",
+      "team": 2,
+      "maxWorldDistance": 0.000010444297563775248
+    },
+    {
+      "slot": 13,
+      "state": "jet",
+      "team": 2,
+      "maxWorldDistance": 0.00003989963261938213
+    },
+    {
+      "slot": 14,
+      "state": "reload",
+      "team": 2,
+      "maxWorldDistance": 0.000018929480160932866
+    },
+    {
+      "slot": 15,
+      "state": "dead",
+      "team": 2,
+      "maxWorldDistance": 0.000008021467509186081
+    }
+  ]
+}

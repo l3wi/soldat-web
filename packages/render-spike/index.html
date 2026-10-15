@@ -1,0 +1,45 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="data:," />
+    <title>Soldat G0.4 render spike</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+      }
+      #controls {
+        position: fixed;
+        top: 8px;
+        left: 8px;
+        color: #fff;
+        background: #151a20dd;
+        padding: 8px;
+        font: 12px monospace;
+      }
+      a {
+        color: #acf;
+      }
+      select,
+      button {
+        margin: 2px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <div id="controls">
+      G0.4 · drag to pan · wheel to zoom
+      <select id="map"></select
+      ><button id="pause">Pause</button
+      ><button id="recreate">Destroy / recreate</button><span id="stats"></span>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

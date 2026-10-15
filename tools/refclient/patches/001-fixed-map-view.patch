@@ -1,0 +1,72 @@
+--- a/client/Client.pas
++++ b/client/Client.pas
+@@ -615,6 +615,7 @@
+   UserPathSDL: PChar;
+   i: Integer;
+   s: String;
++  ReferenceMap: TMapInfo;
+ begin
+   Randomize;
+ 
+@@ -712,6 +713,25 @@
+ 
+   LoadConfig('client.cfg');
+ 
++  // Isolated render-reference mode: never connects or advances simulation.
++  if GetEnvironmentVariable('REFCLIENT_MAP') <> '' then
++  begin
++    r_screenwidth.SetValue(1280);
++    r_screenheight.SetValue(720);
++    r_renderwidth.SetValue(1280);
++    r_renderheight.SetValue(720);
++    r_fullscreen.SetValue(0);
++    r_dithering.SetValue(False);
++    r_renderui.SetValue(False);
++    r_animations.SetValue(False);
++    r_texturefilter.SetValue(2);
++    r_mipmapping.SetValue(False);
++    r_smoothedges.SetValue(GetEnvironmentVariable('REFCLIENT_MAP') <> 'Synthetic');
++    r_msaa.SetValue(0);
++    cl_actionsnap.SetValue(False);
++    launcher_ipc_enable.SetValue(False);
++  end;
++
+   // NOTE: Code depending on CVars should be run after this line if possible.
+   CvarsInitialized := True;
+ 
+@@ -895,6 +915,22 @@
+ 
+   WindowReady := True;
+ 
++  if GetEnvironmentVariable('REFCLIENT_MAP') <> '' then
++  begin
++    DoTextureLoading(True);
++    if not GetMapInfo(GetEnvironmentVariable('REFCLIENT_MAP'), UserDirectory, ReferenceMap) then
++      raise Exception.Create('Reference map not found');
++    if not Map.LoadMap(ReferenceMap, False, 0, 0) then
++      raise Exception.Create('Reference map load failed');
++    CameraX := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_X'), 0);
++    CameraY := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_Y'), 0);
++    CameraPrev := Vector2(CameraX, CameraY);
++    ActualZoom := StrToFloatDef(GetEnvironmentVariable('REFCLIENT_Z'), 0);
++    RenderFrame(0, 1, True);
++    SDL_Quit;
++    Halt(0);
++  end;
++
+   if cl_lang.Value <> '' then
+   begin
+     SystemLang := cl_lang.Value;
+--- a/client/GameRendering.pas
++++ b/client/GameRendering.pas
+@@ -1143,6 +1143,10 @@
+     GfxEnd();
+   end;
+ 
++  if GetEnvironmentVariable('REFCLIENT_SCREENSHOT') <> '' then
++    GfxSaveScreen(GetEnvironmentVariable('REFCLIENT_SCREENSHOT'),
++      0, 0, RenderWidth, RenderHeight, False);
++
+   GfxPresent(r_glfinish.Value);
+ end;
+ 
