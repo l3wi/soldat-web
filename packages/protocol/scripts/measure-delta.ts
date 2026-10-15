@@ -50,7 +50,8 @@ if (!available || process.argv.includes("--synthetic")) {
         for (const input of fixture.inputs) if (input.player === slot && tick + 1 >= input.start && tick + 1 < input.start + input.ticks) control = { ...input.control, pressOrder: input.pressOrder ?? input.control.pressOrder ?? 0 };
         requireStatus(host.setInput(slot, tick, control), "sim_set_input");
       }
-      if (requireStatus(host.step(), "sim_step") !== tick + 1) throw new Error("Unexpected simulation tick");
+      const advanced = requireStatus(host.step(), "sim_step");
+      if (advanced !== tick + 1) throw new Error(`Unexpected simulation tick ${advanced}; expected ${tick + 1}`);
       const state = host.saveState();
       if (typeof state === "number") throw new Error(`sim_save_state returned ${state}`);
       measure(state, baseline); baseline = state;
