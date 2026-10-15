@@ -16,7 +16,7 @@ function SimHashState: QWord;
 implementation
 uses SysUtils, Math, Game, Parts, Anims, Sprites, Bullets, Things,
   Weapons, Vector, MapFile, PolyMap, Server, SimRender, SimEvents, PhysFS, NetworkServerSprite, Constants, SimAnimationContent, SimRandom;
-const STATE_MAGIC = $31545353; MAX_STATE_BYTES = 32 * 1024 * 1024;
+const STATE_MAGIC = $31545353; STATE_VERSION = $00010003; MAX_STATE_BYTES = 32 * 1024 * 1024;
 procedure SimResetOriginalRNG(Seed: LongWord);
 begin
   SimInvalidateState;
@@ -633,12 +633,13 @@ begin
   Particle(X.Skeleton); Background(X.BGState,Live);
   for J := 1 to 4 do C(X.CollideCount[J]);
   for J := 1 to 2 do Polygon(X.Polys[J]);
+  U(X.CreationFacing,1);
 end;
 procedure TCodec.State;
 var J,K: Integer; N, Identity, Seed, RandomWord, RandomUnion: LongWord; Name: AnsiString; Content: QWord;
 begin
   if Number(STATE_MAGIC,4) <> STATE_MAGIC then Fail;
-  if Number(SIM_ABI_VERSION,4) <> SIM_ABI_VERSION then Fail;
+  if Number(STATE_VERSION,4) <> STATE_VERSION then Fail;
   { Encode zero until the final length is known. Gameplay hashing has always
     represented this transport-only header word as zero. }
   N := Number(0,4); if Reading and (N <> Capacity) then Fail;

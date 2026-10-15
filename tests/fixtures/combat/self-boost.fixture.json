@@ -21,7 +21,7 @@
       "y": -32,
       "weapon": 2,
       "secondaryWeapon": 0,
-      "health": 10000,
+      "health": 150,
       "grenades": 3,
       "control": "authoritative"
     }
@@ -29,15 +29,18 @@
   "inputs": [],
   "commands": [
     {
-      "tick": 60,
+      "tick": 120,
       "kind": "bullet",
-      "weapon": 50,
+      "weapon": 7,
       "owner": 1,
-      "x": -10,
-      "y": -20,
-      "vx": 0,
+      "x": -12,
+      "y": 0,
+      "vx": 10,
       "vy": 0,
-      "timeout": 2
+      "timeout": 400,
+      "target": 1,
+      "hitCircle": 6,
+      "hitMultiply": 1
     }
   ],
   "metadata": {

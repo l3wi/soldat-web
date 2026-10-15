@@ -11,7 +11,7 @@ procedure ServerThingMustSnapshotOnConnectTo(ThingNum, ToNum: Byte);
 procedure ServerThingTaken(ThingNum, Who: Byte);
 
 implementation
-uses Classes, SysUtils, Math, Vector, Calc, Game, Sprites, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils;
+uses Classes, SysUtils, Math, Vector, Calc, Game, Sprites, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils, SimEvents;
 procedure ServerThingSnapshot(ToNum: Byte);
 var
   ThingMsg: TMsg_ServerThingSnapshot;
@@ -101,6 +101,11 @@ begin
   ThingMsg.Owner         := Thing[ThingNum].Owner;
   ThingMsg.Style         := Thing[ThingNum].Style;
   ThingMsg.HoldingSprite := Thing[ThingNum].HoldingSprite;
+  { Original CreateThing/Respawn/drop sends; publish source Thing values,
+    not the legacy packet's unrelated loop-index position bug. }
+  SimEventInts(SIM_EVENT_THING_STATE,Thing[ThingNum].HoldingSprite,ThingNum,
+    [Thing[ThingNum].Style,Thing[ThingNum].Owner,Thing[ThingNum].HoldingSprite,
+     Ord(Thing[ThingNum].InBase),Thing[ThingNum].TimeOut]);
 
   for i := Low(Sprite) to High(Sprite) do
     if (Sprite[i].Active) and (Sprite[i].Player.ControlMethod = HUMAN) then
@@ -205,6 +210,8 @@ begin
 
   ThingMsg.Style     := Thing[ThingNum].Style;
   ThingMsg.AmmoCount := Thing[ThingNum].AmmoCount;
+  { Original TThing.CheckSpriteCollision send, before item removal. }
+  SimEventInts(SIM_EVENT_THING_TAKEN,Who,ThingNum,[ThingMsg.Style,ThingMsg.AmmoCount]);
 
   for i := Low(Sprite) to High(Sprite) do
     if (Sprite[i].Active) and (Sprite[i].Player.ControlMethod = HUMAN) then

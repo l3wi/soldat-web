@@ -20,7 +20,7 @@ var
   Time_SpriteSnapshot_Mov: array[1..MAX_SPRITES] of Integer;
 
 implementation
-uses Classes, SysUtils, Math, Vector, Calc, Game, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils;
+uses Classes, SysUtils, Math, Vector, Calc, Game, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils, SimEvents;
 procedure ServerSpriteSnapshot(r: Byte);
 var
   ServerMsg: TMsg_ServerSpriteSnapshot;
@@ -162,6 +162,10 @@ begin
 
   ServerMsg.MouseAimY := Sprite[who].Control.MouseAimY;
   ServerMsg.MouseAimX := Sprite[who].Control.MouseAimX;
+  { Original TSprite.Update respawn notification; not a periodic snapshot. }
+  if r = NETW then
+    SimEventInts(SIM_EVENT_RESPAWN, Who, Who,
+      [Sprite[Who].Player.Team,Sprite[Who].Weapon.Num,Sprite[Who].SecondaryWeapon.Num]);
 
   // send to all
   if r = NETW then
@@ -211,6 +215,7 @@ procedure ServerSpriteDeath(Who, Killer, BulletNum, Where: Integer);
 var
   SpriteDeathMsg: TMsg_SpriteDeath;
   j: Integer;
+  Weapon, BulletStyle, KillerKills, KillerTeam: Integer;
 begin
   SpriteDeathMsg := Default(TMsg_SpriteDeath);
   SpriteDeathMsg.Header.ID := MsgID_SpriteDeath;
@@ -255,6 +260,16 @@ begin
     if Bullet[BulletNum].Style = 14 then
       SpriteDeathMsg.KillBullet := 225;
   end;
+  { Original TSprite.Die -> ServerSpriteDeath carries the actual attribution.
+    Gameplay kinds are intentionally retained during REPLAY. }
+  Weapon:=250; BulletStyle:=0; KillerKills:=0; KillerTeam:=0;
+  if BulletNum<>-1 then begin Weapon:=Bullet[BulletNum].OwnerWeapon; BulletStyle:=Bullet[BulletNum].Style; end;
+  if (Killer>=1) and (Killer<=MAX_PLAYERS) then
+  begin KillerKills:=Sprite[Killer].Player.Kills; KillerTeam:=Sprite[Killer].Player.Team; end;
+  SimEventInts(SIM_EVENT_DEATH,Killer,Who,
+    [Weapon,SpriteDeathMsg.KillBullet,BulletStyle,Where,KillerKills,KillerTeam,Sprite[Who].Player.Team]);
+  SimEventInts(SIM_EVENT_TEAM_SCORES,0,0,
+    [TeamScore[0],TeamScore[1],TeamScore[2],TeamScore[3],TeamScore[4],TeamScore[5]]);
 
   for j := 1 to 16 do
   begin

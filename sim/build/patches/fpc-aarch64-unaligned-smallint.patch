@@ -1,0 +1,16 @@
+diff --git a/compiler/aarch64/cgcpu.pas b/compiler/aarch64/cgcpu.pas
+--- a/compiler/aarch64/cgcpu.pas
++++ b/compiler/aarch64/cgcpu.pas
+@@ -933,6 +933,12 @@
+         hreg1, hreg2, tmpreg,tmpreg2: tregister;
+         i : Integer;
+       begin
++        { The byte/halfword reconstruction below produces an unsigned value.
++          Even when the requested sizes match, a signed SmallInt result must
++          therefore pass through the unsigned-to-signed register conversion. }
++        if (fromsize=OS_S16) and (tosize=OS_S16) then
++          fromsize:=OS_16;
++
+         case fromsize of
+           OS_64,OS_S64:
+             begin

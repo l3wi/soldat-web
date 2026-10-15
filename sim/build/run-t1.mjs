@@ -21,7 +21,7 @@ function run(command, args) {
     process.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
     process.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
     process.on('error', reject);
-    process.on('close', code => resolveRun({ code, stdout, stderr }));
+    process.on('close', code => resolveRun({ command: [command, ...args], code, stdout, stderr }));
   });
 }
 const fixtures = (await readdir(corpus)).filter(name => name.endsWith('.fixture.json')).sort();
@@ -33,15 +33,25 @@ async function sha256(path) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest('hex');
 }
+const artifacts = {
+  wasmSha256: await sha256(join(root, 'build-out/sim/sim.wasm')),
+  nativeSha256: await sha256(join(root, 'build-out/sim/linux/sim-native')),
+  oracleBinarySha256: await sha256(join(root, 'build-out/oracle/cmake/bin/opensoldatserver')),
+  runnerSha256: await sha256(join(root, 'sim/build/run-t1.mjs')),
+  comparatorSha256: await sha256(join(root, 'sim/build/compare-traces.mjs')),
+  captureManifestSha256: await sha256(join(corpus, 'capture-results.json')),
+  corpusSha256: await sha256(join(corpus, 'corpus.json')),
+};
+const invocation = [process.execPath, ...process.argv.slice(1)];
 async function golden(fixture, name) {
   const capture = captures.get(fixture);
   if (!capture || capture.exitCode !== 0) throw new Error(`Missing successful oracle capture: ${fixture}`);
   if (capture.golden) {
     const path = join(corpus, capture.golden);
     if (await sha256(path) !== capture.compressedSha256) throw new Error(`Golden digest mismatch: ${fixture}`);
-    return { path, regeneration: null };
+    return { path, sha256: capture.sha256, compressedSha256: capture.compressedSha256, regeneration: null };
   }
-  const directory = join(root, 'build-out/movement-oracle');
+  const directory = join(output, 'oracle');
   await mkdir(directory, { recursive: true });
   await mkdir(join(directory, 'tmp'), { recursive: true });
   await mkdir(join(directory, 'home'), { recursive: true });
@@ -56,11 +66,18 @@ async function golden(fixture, name) {
   if (regeneration.code !== 0) throw new Error(`Oracle regeneration failed: ${fixture}: ${regeneration.stderr}`);
   const path = join(directory, `${name}.jsonl`);
   if (await sha256(path) !== capture.sha256) throw new Error(`Regenerated oracle digest mismatch: ${fixture}`);
-  return { path, regeneration };
+  return { path, sha256: capture.sha256, compressedSha256: null, regeneration };
 }
 const results = [];
 for (const fixture of fixtures) {
   const name = fixture.slice(0, -'.fixture.json'.length);
+  const fixturePath = join(corpus, fixture);
+  const fixtureSha256 = await sha256(fixturePath);
+  const oracleCapture = captures.get(fixture);
+  if (fixtureSha256 !== oracleCapture?.fixtureSha256) throw new Error(`Oracle fixture digest mismatch: ${fixture}`);
+  const definition = JSON.parse(await readFile(fixturePath, 'utf8'));
+  const mapSha256 = await sha256(join(root, definition.mapPath));
+  if (mapSha256 !== definition.mapSha256 || mapSha256 !== oracleCapture.mapSha256) throw new Error(`Oracle map digest mismatch: ${fixture}`);
   const trace = join(output, `${name}.jsonl`);
   const expected = await golden(fixture, name);
   const args = ['run', '--rm', '--network', 'none', '-v', `${root}:/work`,
@@ -77,12 +94,19 @@ for (const fixture of fixtures) {
     comparison = await run(process.execPath, ['sim/build/compare-traces.mjs',
       expected.path, trace]);
   }
-  const result = { fixture: basename(fixture), oracleRegeneration: expected.regeneration, native: capture, comparison,
-    status: capture.code === 0 && comparison?.code === 0 ? 'pass' : 'fail' };
+  const report = comparison?.code === 0 ? JSON.parse(comparison.stdout) : null;
+  const result = { fixture: basename(fixture), fixtureSha256, mapSha256, contentSetHash: definition.contentSetHash,
+    artifacts, oracle: { path: expected.path, sha256: expected.sha256, compressedSha256: expected.compressedSha256,
+      captureBinarySha256: oracleCapture.oracleBinarySha256, harnessSha256: oracleCapture.harnessSha256,
+      sharedTraceSha256: oracleCapture.sharedTraceSha256 },
+    traceSha256: capture.code === 0 ? await sha256(trace) : null,
+    hashesSha256: capture.code === 0 ? await sha256(join(output, `${name}.hashes.jsonl`)) : null,
+    oracleRegeneration: expected.regeneration, native: capture, comparison,
+    status: capture.code === 0 && comparison?.code === 0 && report.bitExact === true && report.floatDifferences === 0 ? 'pass' : 'fail' };
   results.push(result);
   console.log(JSON.stringify(result));
 }
-const summary = { tier: 'T1', control: authoritative ? 'authoritative' : 'human', passed: results.filter(result => result.status === 'pass').length,
+const summary = { tier: 'T1', invocation, artifacts, control: authoritative ? 'authoritative' : 'human', passed: results.filter(result => result.status === 'pass').length,
   total: results.length, results };
 await writeFile(join(output, 'results.json'), `${JSON.stringify(summary, null, 2)}\n`);
 if (summary.passed !== summary.total) process.exitCode = 1;

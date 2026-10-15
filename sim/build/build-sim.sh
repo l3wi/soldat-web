@@ -9,10 +9,14 @@ if [[ "$TARGET" == linux ]]; then
     exit 2
   fi
   mkdir -p "$OUT/linux/tmp" "$OUT/linux/home"
+  LINUX_FPC="${FPC:-fpc}"
+  if [[ "$LINUX_FPC" == "$ROOT/"* ]]; then
+    LINUX_FPC="/work/${LINUX_FPC#"$ROOT/"}"
+  fi
   # The Docker VM can be full. All compiler outputs, temporary files and HOME
   # remain on the host bind mount; never remove user Docker data.
   exec docker run --rm --network none -v "$ROOT:/work" \
-    -e FPC=fpc -e SIM_OUT="/work/${OUT#"$ROOT/"}/linux" \
+    -e FPC="$LINUX_FPC" -e SIM_OUT="/work/${OUT#"$ROOT/"}/linux" \
     -e TMPDIR="/work/${OUT#"$ROOT/"}/linux/tmp" \
     -e HOME="/work/${OUT#"$ROOT/"}/linux/home" \
     -w /work soldat-web/fpc:bcd7288 bash sim/build/build-sim.sh native
@@ -40,6 +44,11 @@ fi
 if [[ "$TARGET" == all || "$TARGET" == native ]]; then
   NATIVE_TARGET="$("$FPC" -iTP)-$("$FPC" -iTO)"
   mkdir -p "$OUT/$NATIVE_TARGET-units"
+  # Fail before compiling mechanics if this backend mishandles signed packed
+  # loads. See patches/fpc-aarch64-unaligned-smallint.patch for the pinned fix.
+  "$FPC" "${COMMON[@]}" -FU"$OUT/$NATIVE_TARGET-units" \
+    -FE"$OUT" -o"$OUT/check-signed-loads" "$ROOT/sim/build/check-signed-loads.pas"
+  "$OUT/check-signed-loads"
   "$FPC" "${COMMON[@]}" -FU"$OUT/$NATIVE_TARGET-units" \
     -FE"$OUT" -o"$OUT/sim-native" "$SRC/sim/SimNative.lpr"
 fi

@@ -47,6 +47,9 @@ type
     CollideCount: array[1..4] of Byte;
     Polys: array[1..2] of TMapPolygon;
     BGState: TBackgroundState;
+    {$IFDEF SIM}
+    CreationFacing: Byte; // Original CreateThing texture variant k, presentation only.
+    {$ENDIF}
     {$IFNDEF SERVER}
     Tex1, Tex2: Integer;
     Texture: LongInt;
@@ -110,6 +113,13 @@ uses
   Bullets,
   Game{$IFDEF SIM}, SimRandom, Sound, Sparks, SimPresentation, SimFXRandom{$ENDIF};
 
+
+{$IFDEF SIM}
+procedure CaptureThingCreationFacing(Slot, Facing: Integer);
+begin
+  Thing[Slot].CreationFacing := Facing;
+end;
+{$ENDIF}
 
 function CreateThing(sPos: TVector2; owner, sStyle, N: Byte):
   Integer;
@@ -185,6 +195,7 @@ begin
       k := 1;
   end else
     k := 0;
+  {$IFDEF SIM}CaptureThingCreationFacing(i, k);{$ENDIF}
 
   case sStyle of  // specific style creation
     OBJECT_ALPHA_FLAG, OBJECT_BRAVO_FLAG, OBJECT_POINTMATCH_FLAG:  // Flag

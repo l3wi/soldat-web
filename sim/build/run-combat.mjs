@@ -33,7 +33,17 @@ async function run(command, args) {
 async function hashFile(path) {
   const hash = createHash('sha256'); for await (const chunk of createReadStream(path)) hash.update(chunk); return hash.digest('hex');
 }
+function bitExactComparison(result) {
+  if (result.code !== 0) return false;
+  try {
+    const report = JSON.parse(result.stdout);
+    return report.status === 'pass' && report.bitExact === true && report.floatDifferences === 0;
+  } catch {
+    return false;
+  }
+}
 const index = JSON.parse(await readFile(resolve(root, corpus), 'utf8'));
+const wasmSha256 = await hashFile(resolve(root, options.wasm));
 if (!Array.isArray(index.fixtures) || !index.fixtures.length) throw new Error('Empty combat corpus');
 const fixtures = index.fixtures.map(name => ({ name, path: `tests/fixtures/combat/${name}` }));
 const policies = options.rng === 'both' ? ['original', 'keyed'] : [options.rng];
@@ -69,22 +79,21 @@ for (const policy of policies) {
       const golden = resolve(root, 'tests/fixtures/combat', expected.golden);
       if (expected.compressedSha256 !== await hashFile(golden)) throw new Error(`Corrupt oracle golden: ${file.name}`);
       const comparison = await run(process.execPath, ['sim/build/compare-traces.mjs', golden, trace]);
-      results.push({ tier: 'T1', policy, fixture: file.name, ...comparison, status: comparison.code === 0 ? 'pass' : 'fail' });
+      results.push({ tier: 'T1', policy, fixture: file.name, ...comparison, status: bitExactComparison(comparison) ? 'pass' : 'fail' });
       results.push({ tier: 'observed-corpus-predicates', policy, fixture: file.name, observations: expected.summary?.observations, limitations: expected.summary?.limitations, status: expected.summary?.allRequiredObserved ? 'pass' : 'fail' });
     }
     if (options.tier === 'all' || options.tier === 't2') {
       const comparison = await run(process.execPath, ['sim/build/compare-traces.mjs', '--target', '--ticks-only', trace, join(nodeOut, `${name}.trace.jsonl`)]);
-      results.push({ tier: 'T2', policy, fixture: file.name, ...comparison, status: comparison.code === 0 ? 'pass' : 'fail' });
-      const expected = (await readFile(hashes, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-      const receipt = JSON.parse(await readFile(join(nodeOut, `${name}.receipt.json`), 'utf8'));
-      const mismatch = expected.find((row, i) => row.tick !== receipt.baseline[i]?.tick || row.events !== receipt.baseline[i]?.events);
-      results.push({ tier: 'T2-discrete-events', policy, fixture: file.name, mismatch: mismatch ?? null, status: !mismatch && expected.length === receipt.baseline.length ? 'pass' : 'fail' });
+      results.push({ tier: 'T2', policy, fixture: file.name, ...comparison, status: bitExactComparison(comparison) ? 'pass' : 'fail' });
+      const sidecar = await run('cmp', [hashes, join(nodeOut, `${name}.hashes.jsonl`)]);
+      results.push({ tier: 'T2-hash-events', policy, fixture: file.name, ...sidecar, status: sidecar.code === 0 ? 'pass' : 'fail' });
     }
   }
   if (options.tier === 'all' || options.tier === 't3') {
     // Use the existing browser receipt harness; never substitute WebKit for Safari.
     const browserRoot = join(lane, 'browser'); let files = [];
-    try { files = (await readdir(browserRoot)).filter(name => name.endsWith('.receipt.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try { files = (await readdir(browserRoot, { recursive: true })).filter(name => name.endsWith('.receipt.json')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    const receipts = await Promise.all(files.map(file => readFile(join(browserRoot, file), 'utf8').then(JSON.parse)));
     const accepted = new Map();
     for (const file of fixtures) {
       const name = file.name.replace(/[.]fixture[.]json$/, ''), baselinePath = join(nodeOut, `${name}.receipt.json`);
@@ -92,19 +101,19 @@ for (const policy of policies) {
       try { baseline = JSON.parse(await readFile(baselinePath, 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       for (const engine of ['Chrome', 'Firefox', 'Safari']) {
         const candidates = [];
-        for (const receiptFile of files) {
-          const receipt = JSON.parse(await readFile(join(browserRoot, receiptFile), 'utf8'));
+        for (const receipt of receipts) {
           const actualEngine = /Firefox\//.test(receipt.runtime) ? 'Firefox' : /Chrome\//.test(receipt.runtime) ? 'Chrome' : /Version\/.*Safari\//.test(receipt.runtime) ? 'Safari' : 'unknown';
           if (receipt.fixture.endsWith(file.path) && actualEngine === engine) candidates.push(receipt);
         }
-        const matched = baseline && /^Node v24[.]/.test(baseline.runtime) && candidates.some(receipt => receipt.rngPolicy === policy && receipt.identical && baseline.identical && ['fixtureSha256', 'wasmSha256', 'mapSha256', 'contentSetHash', 'abiVersion', 'rngPolicy'].every(key => receipt[key] === baseline[key]) && JSON.stringify(receipt.baseline) === JSON.stringify(baseline.baseline) && JSON.stringify(receipt.restored) === JSON.stringify(baseline.restored) && JSON.stringify(receipt.checkpoints) === JSON.stringify(baseline.checkpoints));
+        const matched = baseline && baseline.wasmSha256 === wasmSha256 && baseline.fixtureSha256 === await hashFile(resolve(root, file.path)) && /^Node v24[.]/.test(baseline.runtime) && candidates.some(receipt => receipt.rngPolicy === policy && receipt.identical && baseline.identical && ['fixtureSha256', 'wasmSha256', 'mapSha256', 'contentSetHash', 'abiVersion', 'rngPolicy'].every(key => receipt[key] === baseline[key]) && JSON.stringify(receipt.baseline) === JSON.stringify(baseline.baseline) && JSON.stringify(receipt.restored) === JSON.stringify(baseline.restored) && JSON.stringify(receipt.checkpoints) === JSON.stringify(baseline.checkpoints));
         accepted.set(`${file.name}:${engine}`, !!matched);
       }
     }
     results.push({ tier: 'T3-cross-runtime', policy, status: [...accepted.values()].every(Boolean) ? 'pass' : 'fail', missing: [...accepted].filter(([, passed]) => !passed).map(([key]) => key), browserCommand: `bun packages/sim-host/src/fixture-serve.ts --corpus ${corpus} --rng ${policy} --baseline ${relative(root, nodeOut)} --out ${relative(root, browserRoot)} --wasm ${options.wasm}`, note: 'Open returned URL in actual Chrome, Firefox and Safari, then rerun --tier t3. Missing browser evidence fails closed.' });
   }
 }
-const summary = { version: 1, corpus, policies, tier: options.tier, status: results.length > 0 && results.every(result => result.status === 'pass') ? 'pass' : 'fail', results };
-await writeFile(join(output, 'results.json'), `${JSON.stringify(summary, null, 2)}\n`);
+const identities = { wasmSha256, nativeSha256: await hashFile(resolve(root, options.native)), fixtures: Object.fromEntries(await Promise.all(fixtures.map(async file => [file.name, await hashFile(resolve(root, file.path))]))) };
+const summary = { version: 1, corpus, policies, tier: options.tier, identities, status: results.length > 0 && results.every(result => result.status === 'pass') ? 'pass' : 'fail', results };
+await writeFile(join(output, `results-${options.tier}.json`), `${JSON.stringify(summary, null, 2)}\n`);
 for (const result of results) console.log(JSON.stringify(result));
 if (summary.status !== 'pass') process.exitCode = 1;

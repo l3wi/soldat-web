@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PREFIX="${FPC_PREFIX:-$ROOT/sim/build/.toolchain}"
 SRC="${FPC_SRC:-/tmp/soldat-fpc-bcd7288-macos-src}"
 COMMIT=bcd728860dcd953cb6f3bbda788eab07b0d16c85
+PATCH="$ROOT/sim/build/patches/fpc-aarch64-unaligned-smallint.patch"
+PATCH_SHA="$(shasum -a 256 "$PATCH")"
+PATCH_SHA="${PATCH_SHA%% *}"
 JOBS="${JOBS:-4}"
 if [[ "$(uname -s)" != Darwin || "$(uname -m)" != arm64 ]]; then
   echo 'This local setup targets macOS arm64; use build-image.sh for Linux.' >&2
@@ -17,7 +20,9 @@ if [[ -z "$PP" ]]; then
   exit 1
 fi
 if [[ -f "$PREFIX/COMMIT" && "$(cat "$PREFIX/COMMIT")" = "$COMMIT" \
-      && -x "$PREFIX/bin/compile" && -x "$PREFIX/lib/fpc/3.3.1/ppcrosswasm32" ]]; then
+      && -f "$PREFIX/PATCH_SHA256" && "$(cat "$PREFIX/PATCH_SHA256")" = "$PATCH_SHA" \
+      && -x "$PREFIX/bin/compile" && -x "$PREFIX/lib/fpc/3.3.1/ppca64" \
+      && -x "$PREFIX/lib/fpc/3.3.1/ppcrosswasm32" ]]; then
   echo "Pinned toolchain already installed: $PREFIX/bin/compile"
   exit 0
 fi
@@ -29,6 +34,10 @@ fi
 git -C "$SRC" fetch --depth 1 origin "$COMMIT"
 git -C "$SRC" checkout --detach FETCH_HEAD
 test "$(git -C "$SRC" rev-parse HEAD)" = "$COMMIT"
+if ! git -C "$SRC" apply --reverse --check "$PATCH" 2>/dev/null; then
+  git -C "$SRC" apply --check "$PATCH"
+  git -C "$SRC" apply "$PATCH"
+fi
 cd "$SRC"
 make -j"$JOBS" all OPT="-O- -XR$SDK" PP="$PP"
 make install INSTALL_PREFIX="$PREFIX"
@@ -46,4 +55,5 @@ printf '%s\n' '#!/bin/sh' \
   "exec \"$PREFIX/bin/fpc\" -n @\"$PREFIX/fpc.cfg\" \"\$@\"" > "$PREFIX/bin/compile"
 chmod +x "$PREFIX/bin/compile"
 printf '%s\n' "$COMMIT" > "$PREFIX/COMMIT"
+printf '%s\n' "$PATCH_SHA" > "$PREFIX/PATCH_SHA256"
 echo "Installed native aarch64-darwin + wasm32-wasip1: $PREFIX/bin/compile"

@@ -4431,7 +4431,10 @@ begin
 
   Fired := Weapon.FireStyle;
 
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+  if SimFXAllowed then begin
+  {$ENDIF}
   // Spent bullet shell vectors
   c.x := SpriteParts.Velocity[Num].x + Direction * AimDirection.y * (Random * 0.5 + 0.8);
   c.y := SpriteParts.Velocity[Num].y - Direction * AimDirection.x * (Random * 0.5 + 0.8);
@@ -4443,6 +4446,7 @@ begin
   if r_maxsparks.Value < (MAX_SPARKS - 10) then
     if Random(2) = 0 then
       Col := True;
+  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
   {$ENDIF}
 
   {$IFDEF SERVER}

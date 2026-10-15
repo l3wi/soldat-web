@@ -24,41 +24,20 @@
       "health": 150,
       "grenades": 3,
       "control": "authoritative"
-    },
-    {
-      "team": 2,
-      "spawnpoint": 1,
-      "x": -520,
-      "y": -32,
-      "weapon": 2,
-      "secondaryWeapon": 0,
-      "health": 150,
-      "grenades": 3,
-      "control": "authoritative",
-      "heldFlag": 1
     }
   ],
-  "inputs": [
+  "inputs": [],
+  "commands": [
     {
-      "player": 2,
-      "start": 1,
-      "ticks": 1,
-      "control": {
-        "FlagThrow": true,
-        "MouseAimX": -500,
-        "MouseAimY": -30
-      }
-    },
-    {
-      "player": 1,
-      "start": 30,
-      "ticks": 30,
-      "control": {
-        "Left": true
-      }
+      "tick": 0,
+      "kind": "thing",
+      "style": 1,
+      "owner": 0,
+      "x": -500,
+      "y": -25,
+      "ammo": 255
     }
   ],
-  "commands": [],
   "metadata": {
     "purpose": "ctf-touch-return",
     "source": "Test-only PMS v11; pinned weapons/animations/objects from simulation manifest.",

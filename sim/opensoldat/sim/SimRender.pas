@@ -3,13 +3,14 @@ unit SimRender;
 interface
 uses Vector, Net, Sprites;
 const
-  SIM_ABI_VERSION = $00010002;
-  SIM_RENDER_STRIDE = 448;
-  SIM_BULLET_STRIDE = 48;
-  SIM_THING_STRIDE = 304;
+  SIM_ABI_VERSION = $00010003;
+  SIM_RENDER_STRIDE = 636;
+  SIM_BULLET_STRIDE = 96;
+  SIM_THING_STRIDE = 324;
   SIM_BULLETS_OFFSET = 32 + MAX_PLAYERS * SIM_RENDER_STRIDE;
   SIM_THINGS_OFFSET = SIM_BULLETS_OFFSET + 8 + MAX_BULLETS * SIM_BULLET_STRIDE;
-  SIM_RENDER_BYTES = SIM_THINGS_OFFSET + 8 + MAX_THINGS * SIM_THING_STRIDE;
+  SIM_GLOBALS_OFFSET = SIM_THINGS_OFFSET + 8 + MAX_THINGS * SIM_THING_STRIDE;
+  SIM_RENDER_BYTES = SIM_GLOBALS_OFFSET + 44;
 type
   TSimPreviousPose = array[1..MAX_PLAYERS, 1..24] of TVector2;
 var
@@ -18,7 +19,7 @@ procedure SimCapturePreviousPose;
 procedure SimResetRender;
 function SimRenderView: Pointer;
 implementation
-uses Game;
+uses Game, PolyMap, Server, Weapons, Constants;
 var View: array[0..SIM_RENDER_BYTES-1] of Byte;
 procedure U32(Offset: Integer; Value: LongWord);
 begin
@@ -58,7 +59,7 @@ end;
 procedure SimResetRender;
 begin FillChar(View, SizeOf(View), 0); SimCapturePreviousPose; end;
 function SimRenderView: Pointer;
-var I, J, Base, Count, EntityCount: Integer; Flags: LongWord; Offset:TVector2;
+var I, J, Base, Count, EntityCount, NameLength: Integer; Flags: LongWord; Offset:TVector2;
 begin
   FillChar(View, SizeOf(View), 0);
   Count := 0;
@@ -94,6 +95,34 @@ begin
       U32(Base+440,Sprite[I].Player.Team);
       U32(Base+444,Sprite[I].Weapon.AmmoCount or (LongWord(Sprite[I].TertiaryWeapon.AmmoCount) shl 8) or
         (LongWord(Sprite[I].Weapon.ReloadTimeCount) shl 16));
+      U32(Base+448,Sprite[I].Fired);
+      U32(Base+452,Sprite[I].Weapon.ClipTextureNum);
+      U32(Base+456,Sprite[I].Weapon.ClipInTime); U32(Base+460,Sprite[I].Weapon.ClipOutTime);
+      U32(Base+464,Sprite[I].SecondaryWeapon.Num); U32(Base+468,Sprite[I].TertiaryWeapon.Num);
+      F32(Base+472,Sprite[I].Vest); U32(Base+476,Ord(Sprite[I].Control.Jetpack));
+      U32(Base+480,Sprite[I].Alpha); U32(Base+484,Sprite[I].WearHelmet);
+      U32(Base+488,Sprite[I].HasCigar); U32(Base+492,Sprite[I].Player.Chain);
+      U32(Base+496,Sprite[I].Player.HeadCap); U32(Base+500,Sprite[I].Player.HairStyle);
+      U32(Base+504,Sprite[I].Player.ShirtColor); U32(Base+508,Sprite[I].Player.PantsColor);
+      U32(Base+512,Sprite[I].Player.SkinColor); U32(Base+516,Sprite[I].Player.HairColor);
+      I32(Base+520,Sprite[I].CeaseFireCounter); U32(Base+524,Sprite[I].Visible);
+      U32(Base+528,Sprite[I].Style); U32(Base+532,Ord(Sprite[I].Player.DemoPlayer));
+      U32(Base+536,Sprite[I].Weapon.Ammo); U32(Base+540,Sprite[I].Weapon.ReloadTime);
+      U32(Base+544,Sprite[I].Weapon.FireInterval); U32(Base+548,Sprite[I].Weapon.FireIntervalCount);
+      I32(Base+552,Sprite[I].Player.Kills); I32(Base+556,Sprite[I].Player.Deaths);
+      U32(Base+560,Sprite[I].Player.RealPing); U32(Base+564,Sprite[I].Player.Flags);
+      U32(Base+568,Sprite[I].Player.ControlMethod);
+      NameLength:=Length(Sprite[I].Player.Name);
+      if NameLength>48 then begin
+        NameLength:=48;
+        { Never publish a partial UTF-8 codepoint at the fixed name boundary. }
+        while (NameLength>0) and ((Ord(Sprite[I].Player.Name[NameLength+1]) and $C0)=$80) do Dec(NameLength);
+      end;
+      U32(Base+572,NameLength);
+      for J:=1 to NameLength do View[Base+576+J-1]:=Ord(Sprite[I].Player.Name[J]);
+      U32(Base+624,Sprite[I].Player.JetColor);
+      I32(Base+628,WeaponNumToIndex(Sprite[I].Weapon.Num));
+      I32(Base+632,WeaponNumToIndex(Sprite[I].SecondaryWeapon.Num));
     end;
   U32(0, SIM_ABI_VERSION); U32(4, MainTickCounter); U32(8, Count);
   U32(12, MAX_PLAYERS); U32(16, SIM_RENDER_STRIDE);
@@ -108,6 +137,14 @@ begin
     U32(Base+24,Bullet[I].Owner); U32(Base+28,Bullet[I].OwnerWeapon);
     F32(Base+32,BulletParts.Velocity[I].X); F32(Base+36,BulletParts.Velocity[I].Y);
     I32(Base+40,Bullet[I].TimeOut); U32(Base+44,Bullet[I].ImageStyle);
+    F32(Base+48,Bullet[I].VelocityPrev.X); F32(Base+52,Bullet[I].VelocityPrev.Y);
+    F32(Base+56,Bullet[I].HitMultiply); F32(Base+60,Bullet[I].HitMultiplyPrev);
+    I32(Base+64,Bullet[I].TimeOutPrev);
+    F32(Base+68,Bullet[I].Initial.X); F32(Base+72,Bullet[I].Initial.Y);
+    U32(Base+76,Bullet[I].HitBody);
+    { PingAdd is client-network extrapolation, absent from the server simulation.
+      Its unavailable bit distinguishes the zero storage from sampled state. }
+    U32(Base+88,Ord(Bullet[I].Active)); U32(Base+92,1);
     Inc(EntityCount);
   end;
   U32(SIM_BULLETS_OFFSET,EntityCount); U32(SIM_BULLETS_OFFSET+4,SIM_BULLET_STRIDE);
@@ -129,9 +166,22 @@ begin
       F32(Base+56+(J-1)*16,Thing[I].Skeleton.OldPos[J].X);
       F32(Base+60+(J-1)*16,Thing[I].Skeleton.OldPos[J].Y);
     end;
+    I32(Base+304,Thing[I].TimeOut); I32(Base+308,Thing[I].Interest);
+    { Original NetworkClientThing snapshots tint from Owner.Player.ShirtColor.
+      Project that source value without serializing client-only color state. }
+    J:=Thing[I].Owner;
+    if (Thing[I].Style=OBJECT_PARACHUTE) and (J>0) and (J<=MAX_PLAYERS) then
+    begin
+      U32(Base+312,Sprite[J].Player.ShirtColor); U32(Base+316,1);
+    end;
+    U32(Base+320,Thing[I].CreationFacing);
     Inc(EntityCount);
   end;
   U32(SIM_THINGS_OFFSET,EntityCount); U32(SIM_THINGS_OFFSET+4,SIM_THING_STRIDE);
+  for J:=0 to 5 do I32(SIM_GLOBALS_OFFSET+J*4,TeamScore[J]);
+  I32(SIM_GLOBALS_OFFSET+24,StartHealth); I32(SIM_GLOBALS_OFFSET+28,Map.StartJet);
+  I32(SIM_GLOBALS_OFFSET+32,sv_gamemode.Value); I32(SIM_GLOBALS_OFFSET+36,sv_killlimit.Value);
+  I32(SIM_GLOBALS_OFFSET+40,CeaseFireTime);
   Result := @View[0];
 end;
 end.

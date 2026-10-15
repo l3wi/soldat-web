@@ -1,4 +1,4 @@
-# Simulation ABI 0x00010002
+# Simulation ABI 0x00010003
 
 Reference for TypeScript hosts of the original-mechanics simulation and isolated presentation subsystem. This ABI is distinct from the retained G0.2 particle-spike ABI. One WebAssembly instance owns one match; the host must not share an instance between matches.
 
@@ -6,7 +6,7 @@ Reference for TypeScript hosts of the original-mechanics simulation and isolated
 
 Exports use numeric WebAssembly arguments, a standard exported `memory`, and little-endian linear-memory buffers. Pointers and byte lengths are wasm32 numbers. Text is UTF-8 without a terminating NUL. JSON is encoded as ordinary JSON, not a Pascal record. Host-owned buffers come from `sim_alloc` and are released with `sim_free`; input/file/command/state bytes are consumed synchronously. Returned render pointers are borrowed, not freed by the host. Refresh borrowed views after simulation calls or memory growth.
 
-`sim_version()` returns `0x00010002`. Signed i32 status results are:
+`sim_version()` returns `0x00010003`. Signed i32 status results are:
 
 | Value | Meaning |
 | ---: | --- |
@@ -24,7 +24,7 @@ Exports use numeric WebAssembly arguments, a standard exported `memory`, and lit
 
 | Export | Arguments and result |
 | --- | --- |
-| `sim_version()` | u32 ABI/state-layout version |
+| `sim_version()` | u32 module/presentation ABI version (independent of save-state version) |
 | `sim_alloc(n)` | Byte count → allocated pointer |
 | `sim_free(ptr)` | Release host allocation |
 | `sim_vfs_put(path,pathLen,data,dataLen)` | Raw virtual file bytes → status |
@@ -81,16 +81,16 @@ The 32-byte header consists of eight u32 values:
 
 | Offset | Field |
 | ---: | --- |
-| 0 | ABI/layout version, `0x00010002` |
+| 0 | ABI/layout version, `0x00010003` |
 | 4 | Current tick |
 | 8 | Active sprite count |
 | 12 | Fixed slot count, 32 |
-| 16 | Sprite stride, 448 |
+| 16 | Sprite stride, 636 |
 | 20 | Bullets offset, relative to render-view start |
 | 24 | Things offset, relative to render-view start |
 | 28 | Total byte length |
 
-Thirty-two fixed sprite records follow at `32 + index * 448`. Host index 0 corresponds to original slot 1; the record's `slot` is authoritative. Inactive records remain slots, not a compacted active array.
+Thirty-two fixed sprite records follow at `32 + index * 636`. Host index 0 corresponds to original slot 1; the record's `slot` is authoritative for active records. Inactive records are zero-filled slots, not a compacted active array.
 
 | Record offset | Type | Field |
 | ---: | --- | --- |
@@ -107,16 +107,74 @@ Thirty-two fixed sprite records follow at `32 + index * 448`. Host index 0 corre
 | 248 | 48 × f32 | Current skeleton, same order |
 | 440 | u32 | Original player team |
 | 444 | u32 | Inventory: ammo bits 0–7, grenade ammo bits 8–15, reload ticks bits 16–31 |
+| 448, 452 | u32 | Fired counter, primary clip texture ID |
+| 456, 460 | u32 | Primary clip-in / clip-out reload tick thresholds |
+| 464, 468 | u32 | Original secondary / tertiary weapon numbers |
+| 472 | f32 | Vest |
+| 476 | u32 | Control.Jetpack boolean (0/1), not inferred from fuel |
+| 480, 484, 488 | u32 | Alpha, WearHelmet, HasCigar |
+| 492, 496, 500 | u32 | Player Chain, HeadCap (original graphic ID), HairStyle |
+| 504, 508, 512, 516 | u32 | Original shirt, pants, skin, hair colors |
+| 520 | i32 | CeaseFireCounter |
+| 524, 528, 532 | u32 | Visible, Style, player DemoPlayer boolean |
+| 536, 540, 544, 548 | u32 | Primary magazine capacity, ReloadTime, FireInterval, FireIntervalCount |
+| 552, 556 | i32 | Player kills, deaths |
+| 560, 564, 568 | u32 | RealPing (milliseconds), player Flags (captures), ControlMethod |
+| 572 | u32 | Player-name UTF-8 byte length (0–48) |
+| 576 | 48 bytes | UTF-8 name without terminator; unused bytes zero |
+| 624 | u32 | Original player JetColor |
+| 628, 632 | i32 | Primary / secondary WeaponNumToIndex result |
+
+Names longer than the network's 48-byte admission limit are truncated at a UTF-8 codepoint boundary for presentation only. Original player-name/gameplay state is unchanged. `RenderSprite.playerName` decodes exactly the published bytes. Weapon capacity (`weaponAmmo`) is distinct from current magazine contents (`ammo`); the reload/fire interval fields are the original counters and configuration, not host estimates.
 
 Flag bits: active=1, dead=2, grounded=4, permanently grounded=8, crouching=16, prone=32. Borrowed skeleton `Float32Array`s must never be mutated. Render state is presentation data, not a rollback or oracle-state substitute.
 
 The original server leaves a newly created skeleton in local template coordinates until its first pose evaluation. Publication recognizes only an exact match of the full 24-point immutable template and translates that render-only pose to the authoritative sprite position. Both initial current and previous render poses are world-space; gameplay skeletons remain untouched.
 
-Bullet and Thing sections have fixed-capacity storage. Bullet offset is 14,368; Thing offset is 26,568; total render bytes are 53,936. Consumers use the header's actual offsets. Each section starts with u32 active count and u32 stride, then capacity for 254 bullets or 90 Things. Active records are compacted in ascending original slot order; unused capacity is zero. `RenderView.bullet(index)` and `.thing(index)` use compact zero-based indices and expose each record's original `slot`.
+Bullet and Thing sections have fixed-capacity storage. Bullet offset is **20,384**; Thing offset is **44,776**; the globals trailer starts at **73,944**; total render bytes are **73,988**. Consumers use the header's actual section offsets and exported `RENDER_LAYOUT` constants. Each section starts with u32 active count and u32 stride, then capacity for 254 bullets or 90 Things. Active records are compacted in ascending original slot order; unused capacity is zero. `RenderView.bullet(index)` and `.thing(index)` use compact zero-based indices and expose each record's original `slot`. `RENDER_LAYOUT.bullet` and `.thing` export offsets for allocation-free direct reads in hot render loops.
 
-Both records begin with u32 slot/style at 0/4, f32 current X/Y at 8/12, f32 original particle OldPos X/Y at 16/20 and u32 owner at 24. Bullet stride is **48**: owner weapon u32 at 28, velocity f32 X/Y at 32/36, timeout i32 at 40 and image style u32 at 44.
+Both records begin with u32 slot/style at 0/4, f32 current X/Y at 8/12, f32 original particle OldPos X/Y at 16/20 and u32 owner at 24.
 
-Thing stride is **304**: ammo u32 at 28, holding sprite u32 at 32, flags u32 at 36 (static=1, in-base=2), point count u32 at 40, reserved zero at 44, then 16 skeleton records of four f32 `(x,y,oldX,oldY)` starting at 48. Consume only `pointCount` records. Thing position in the common prefix refers to skeleton point 1. OldPos values are source particle history, not invented render-frame history.
+Bullet stride is **96**, preserving the ABI 2 prefix:
+
+| Record offset | Type | Field |
+| ---: | --- | --- |
+| 28 | u32 | Owner weapon |
+| 32, 36 | f32 | Current velocity X/Y |
+| 40, 44 | i32, u32 | Timeout, image style |
+| 48, 52 | f32 | Previous velocity X/Y |
+| 56, 60 | f32 | HitMultiply, HitMultiplyPrev |
+| 64 | i32 | Previous timeout |
+| 68, 72 | f32 | Initial X/Y |
+| 76 | u32 | HitBody |
+| 80, 84 | i32 | PingAdd, PingAddStart storage |
+| 88, 92 | u32 | Active boolean, presentation flags |
+
+`BULLET_PRESENTATION_FLAGS.pingUnavailable=1`: PingAdd/PingAddStart are client-network extrapolation fields absent from the original SERVER simulation. Their zero storage is explicitly unavailable, not sampled client latency. Hosts rendering this authoritative view use the ordinary non-PingAdd branch. No gameplay extrapolation or hit history is invented. Current/previous velocity, timeout and hit multiplier are source state, allowing the original renderer's interpolation without overwriting gameplay.
+
+Thing stride is **324**: ammo u32 at 28, holding sprite u32 at 32, flags u32 at 36 (static=1, in-base=2), point count u32 at 40, reserved zero at 44, then 16 skeleton records of four f32 `(x,y,oldX,oldY)` starting at 48. Consume only `pointCount` records. Thing position in the common prefix refers to skeleton point 1. OldPos values are source particle history, not invented render-frame history. Appended fields: timeout i32 at 304, interest i32 at 308, color u32 at 312, presentation flags u32 at 316 and creationFacing u32 at 320. `THING_PRESENTATION_FLAGS.colorAvailable=1` identifies a parachute tint projected from its valid owner's original shirt color, matching `NetworkClientThing` snapshot handling; otherwise color storage is zero/unavailable. CreationFacing is the exact original CreateThing texture variant `k` (right/default-owner-255=0, left=1), captured once and serialized even for inactive slots; never derive it from the owner's later direction. Hosts map original Tex1/Tex2 graphics from style, this variant, and the original texture table. Flag/kit textures also use native style/game mode.
+
+The **44-byte globals trailer**, exposed as `RenderView.globals`, contains six i32 original `TeamScore[0..5]` values at 0–20, then i32 `startHealth` at 24, `mapStartJet` at 28, `gameMode` at 32, `killLimit` at 36 and `ceaseFireTime` at 40. The team scores are in native team order, not sorted. All presentation fields are projections; calling the render view does not mutate gameplay, state encoding, hashes or event semantics.
+
+`tick`, `spriteCount`, `bulletCount`, `thingCount` and globals scalar properties are live getters into the latest published buffer; team scores are borrowed. A retained view still requires reconstruction after memory growth, and publication itself requires `sim_render_view()`. Reading an existing view does not implicitly invoke the simulation.
+
+## Gameplay notifications
+
+ABI 3 publishes stable semantic events in addition to retained legacy packet events. `SIM_GAMEPLAY_EVENTS` and `SIM_GAMEPLAY_PAYLOAD` in `packages/sim-host/src/gameplay-events.ts` are the shared kind and payload-offset contract. These kinds have bit 31 **clear**: both ordinary and `REPLAY=1` steps emit them, permitting authoritative rollback to recompute confirmations. Consumers deduplicate/replace replayed confirmations using the authoritative event envelope, not health changes or rendered effects. Events never mutate simulation state, consume RNG or enter save-state bytes.
+
+All payload entries below are consecutive little-endian **i32** words, inside the standard 20-byte event envelope. Source/target are original slots, not compact render indices. Stable kinds start at `0x1001` to avoid the original network packet-ID namespace.
+
+| Kind | Source / target | Payload in order | Original source send |
+| --- | --- | --- | --- |
+| `0x1001` DEATH | Killer / victim | weapon number, native KillBullet feed code, bullet style, Where body part, killer kills, killer team, victim team | `TSprite.Die` → `NetworkServerSprite.ServerSpriteDeath`; native KillBullet overrides preserved |
+| `0x1002` FLAG_INFO | Who / 0 | Original flag-info style (RETURNRED/RETURNBLUE/CAPTURERED/CAPTUREBLUE) | `TThing.Update` → `NetworkServerGame.ServerFlagInfo` |
+| `0x1003` THING_TAKEN | Who / Thing slot | Thing style, ammo | `TThing.CheckSpriteCollision` → `NetworkServerThing.ServerThingTaken`, before removal; covers flag grab, kits and weapons |
+| `0x1004` THING_STATE | Holding sprite / Thing slot | Thing style, owner, holding sprite, InBase (0/1), timeout | `CreateThing`, `TThing.Respawn`, `TSprite.FlagThrow` → `ServerThingMustSnapshot`; source-state notification covers dropped/returned flags without inventing a reason |
+| `0x1005` RESPAWN | Sprite / sprite | Team, current weapon number, secondary weapon number | `TSprite.Update` after `Respawn` → `ServerSpriteSnapshotMajorSingle(NETW)`; not periodic snapshots |
+| `0x1006` TEAM_SCORES | 0 / 0 | Six TeamScore values, indices 0–5 | Scoreboard values at the genuine death and flag-info sends; a notification snapshot, not a synthetic score delta |
+| `0x1007` MATCH_END | 0 / 0 | Map-change counter, game mode, six TeamScore values | `Server.PrepareMapChange` → broadcast `NetworkServerGame.ServerMapChange(ALL_PLAYERS)`; targeted reconnect sends do not end a match |
+
+An environmental death has weapon=250 and bulletStyle=0, matching the original no-projectile path; the killer/victim header remains native attribution. Unsupported rules/map transitions do not fabricate an end-of-match event. Thing state messages can repeat (creation/respawn sends do so upstream); their existence does not by itself prove a new pickup or score. Respawn weapon values are those at the original send site, before any ABI input-owner loadout restoration. These facts remain separate from gameplay state and render projections.
 
 ## Presentation events and FX view
 
@@ -125,6 +183,8 @@ Thing stride is **304**: ammo u32 at 28, holding sprite u32 at 32, flags u32 at 
 Call `fx_set_view` before the first cosmetic step to anchor weather to the real camera. Call `fx_step` after each ordinary `sim_step`, never once per rendered frame. Replay suppresses spark requests and cosmetic RNG calls; `fx_step` after a replay step leaves cosmetics untouched. Spark state, queues, channels and the independent xorshift32 FX RNG are excluded from save/load/hash. Loading gameplay does not rewind already-presented effects. Rendering uses interpolation and never writes back.
 
 `packages/sim-host/src/fx.ts` exports `FX_LAYOUT`, `FxView`, `FxSpark` and `readFxView`; `SimHost` exposes `fxStep`, `fxRenderView` and `fxSetView`. FX header is eight u32 words: ABI version, gameplay tick, active count, capacity (558), stride (64), total bytes (35,744), map weather, reserved zero. Records are compacted by original spark slot:
+
+The FX header version follows module/presentation ABI `0x00010003`; its byte layout is otherwise unchanged from ABI 2.
 
 | Offset | Type | Input |
 | ---: | --- | --- |
@@ -144,7 +204,7 @@ Save-state bytes have their own explicit field-wise serialization. They are not 
 | Offset | Type | Meaning |
 | ---: | --- | --- |
 | 0 | u32 | Magic bytes `SST1` |
-| 4 | u32 | Version `0x00010002` |
+| 4 | u32 | Version `0x00010003` |
 | 8 | u32 | Total byte length |
 | 12 | u32 | Map-name byte length N |
 | 16 | N bytes | Original map-name bytes |
@@ -168,7 +228,7 @@ After the prefix, top-level order is:
 3. The 44 shared animation templates in their explicit `State` order, then interleaved `Guns[J]` and `DefaultGuns[J]` for all weapon slots.
 4. Every one of 32 sprite slots, active or inactive: full `Soldier` record, press-history booleans, old-position array, weapon selections, scoreboard/vote/input-silence/flood/ping/combat-warning counters and previous render pose. `Soldier` includes full skeleton, legs/body animations, three guns, original controls, bot/background data, next-push/bullet-check arrays, and an ownership bool followed by player fields only for independently owned players.
 5. All 254 bullet slots, including previous velocity/hit/initial vectors and dynamic collision histories.
-6. All 90 Thing slots, including complete particle systems/background state, four collision counters and two polygons.
+6. All 90 Thing slots, including complete particle systems/background state, four collision counters and two polygons, followed by the ABI 3 one-byte cosmetic CreationFacing value (validated 0–1) for every active or inactive slot.
 7. Outgoing sprite/bullet snapshot and per-sprite-pair movement/aim/weapon/helmet delta histories, including inactive-slot entries.
 
 Each particle system serializes timestep/gravity/damping and bounded part/constraint counts, followed by two lossless sparse lists. Each list begins with u32 entry count (at most 560), and strictly ascending u16 one-based slot indices. Particle entries contain bool active, four f32 vectors (position, old position, velocity, force), and f32 inverse mass. Constraint entries contain bool active, i32 endpoints and f32 rest length. Slots absent from a list are exactly bitwise zero; apply clears each destination array before restoring its list. Inactive but nonzero stale fields and signed zero are retained. No native padding participates. Each animation serializes ID/frame count/speed/count/current frame/loop and a u64 immutable-frame identity (zero for an uninitialized zero-frame animation). Its POA frame coordinates are rebound from the 44 content-bound templates on load, not repeatedly serialized. Loading rehashes those templates and checks their IDs/counts against initialization bindings; mutated or mismatched frame content is rejected. The source write audit found frame-coordinate writes only in `Anims.LoadFromFile`, not runtime mechanics.
@@ -176,6 +236,8 @@ Each particle system serializes timestep/gravity/damping and bounded part/constr
 The maximum accepted state size is 32 MiB. Loading requires the same initialized map name, map ID, loaded weapons checksum and VFS identity. A complete read-only schema traversal checks version/magic, byte length, identity, primitive/range/reference bounds and exact end-of-buffer before a second traversal applies state. Malformed, truncated, trailing-byte or identity-mismatched blobs return `-6` without mutation. Insufficient save/trace capacity returns `-5`; null output with nonzero capacity returns `-1`. Loading clears pending events and restores their current tick; event queues are not rollback gameplay state.
 
 Gameplay hashing is FNV-1a-64 over canonical encoded bytes, excluding previous-render-pose coordinates and representing the snapshot byte-length word as zero. Save encodes and validates once into reusable grow-only storage and hashes that contiguous buffer. Save/hash calls reuse the encoding until the next mutating ABI call; every mutation entry invalidates before any potentially partial change, and load invalidates internally. This cache is not dirty-field tracking and drops no state. No native padding participates. The VFS identity is an insertion-order-independent aggregate, not a replacement for the manifest SHA-256. Hosts keep state blobs opaque and version-bound.
+
+ABI 3 keeps all added render fields presentation-only except the explicitly authorized **CreationFacing** byte per Thing. It preserves creation-time dropped-weapon texture selection through rollback and cross-instance snapshots without consulting the owner's later direction. `SST1` state version is therefore **0x00010003**; the version word and 90 appended field bytes intentionally change state bytes and hashes relative to ABI 2. The SIM-only capture hook copies the existing CreateThing `k` without changing original arithmetic, control flow, RNG or mechanics; see ledger C10. Qualification must use the final ABI 3 artifact, not compare its hashes to a frozen ABI 2 receipt. Render/FX buffers remain distinct from loadable states.
 
 The optional diagnostic export `sim_trace_state(out,capacity)` returns a UTF-8 current-state JSON record in the existing [oracle trace format](fixtures-and-traces.md), with a `(0,0)` length query. It is not required for ordinary production loading. `readTraceState` fails explicitly if a trace-enabled build is unavailable. It captures tick boundaries; it does not fabricate intermediate upstream stage snapshots. Native/oracle traces retain their original stages. Use the existing streaming comparator's `--ticks-only` mode for target equivalence, not render-view comparisons.
 
@@ -195,6 +257,16 @@ bun packages/sim-host/src/fixture-serve.ts \
   --baseline build-out/sim/receipts/node \
   --out build-out/sim/receipts/browser
 ```
+
+The focused ABI 3 decode check uses real combat fixtures and supports a scratch artifact without replacing the production WASM:
+
+```sh
+SIM_OUT="$PWD/build-out/sim-abi3" bash sim/build/build-sim.sh all
+node sim/build/check-render.mjs build-out/sim-abi3/sim.wasm \
+  build-out/sim-abi3/render-check.json
+```
+
+It checks the appended TypeScript decoder fields against published bytes on combat fixtures, render-call hash invariance, both creation-facing variants after cross-instance state load, live header getters, and canonical gameplay-event equivalence between live and replayed steps. Full movement/combat qualification remains separate.
 
 The server listens on `http://127.0.0.1:4174/` (`PORT` overrides). Open that URL in actual Chrome, Firefox and Safari. Keep the page alive until it reports `complete`; mere successful navigation is not a result. Each browser reports its actual user agent and posts each full receipt. `/results` returns Node `baselines` and browser `results`, including accepted comparisons and failures. Hash/event mismatches include machine-readable earliest `tick`, `field`, `expected` and `actual` values. Accepted receipts are stored with a serial prefix, preserving independent browser runs. The server requires Node baseline receipts and rejects any identity, hash, event or checkpoint mismatch; it does not substitute a browser engine or declare success from a static page.
 

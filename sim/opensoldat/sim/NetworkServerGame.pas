@@ -11,7 +11,7 @@ procedure ServerSendVoteOn(VoteStyle: Byte; Voter: Integer;
 procedure ServerSendVoteOff;
 
 implementation
-uses Classes, SysUtils, Math, Vector, Calc, Game, Sprites, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils;
+uses Classes, SysUtils, Math, Vector, Calc, Game, Sprites, Bullets, Things, Weapons, PolyMap, Util, Server, NetworkUtils, SimEvents;
 procedure ServerMapChange(ID: Byte);
 var
   MapChangeMsg: TMsg_MapChange;
@@ -24,6 +24,11 @@ begin
   MapChangeMsg.MapName := MapChange.Name;
   MapCheckSum := GetMapChecksum(MapChange);
   MapChangeMsg.MapChecksum := MapCheckSum;
+  { Original PrepareMapChange broadcast is the committed end-of-match signal;
+    targeted join/reconnect map notifications are not match endings. }
+  if ID=ALL_PLAYERS then
+    SimEventInts(SIM_EVENT_MATCH_END,0,0,[MapChangeCounter,sv_gamemode.Value,
+      TeamScore[0],TeamScore[1],TeamScore[2],TeamScore[3],TeamScore[4],TeamScore[5]]);
 
   for i := 1 to MAX_PLAYERS do
     if Sprite[i].Active then
@@ -54,6 +59,10 @@ begin
   FlagMsg.Header.ID := MsgID_FlagInfo;
   FlagMsg.Style := Style;
   FlagMsg.Who := Who;
+  { Original TThing flag score/return notification, no inferred holder change. }
+  SimEventInts(SIM_EVENT_FLAG_INFO,Who,0,[Style]);
+  SimEventInts(SIM_EVENT_TEAM_SCORES,0,0,
+    [TeamScore[0],TeamScore[1],TeamScore[2],TeamScore[3],TeamScore[4],TeamScore[5]]);
 
   for i := 1 to MAX_PLAYERS do
     if (Sprite[i].Active) and (Sprite[i].Player.ControlMethod = HUMAN) then

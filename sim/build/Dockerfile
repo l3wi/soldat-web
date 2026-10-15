@@ -8,9 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git make gcc libc6-dev fp-compiler fp-units-base fp-units-fcl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
+COPY patches/fpc-aarch64-unaligned-smallint.patch /tmp/fpc-aarch64-unaligned-smallint.patch
 RUN git init -q && git remote add origin https://gitlab.com/freepascal.org/fpc/source.git \
     && git fetch --depth 1 origin "$FPC_COMMIT" && git checkout --detach FETCH_HEAD \
-    && test "$(git rev-parse HEAD)" = "$FPC_COMMIT"
+    && test "$(git rev-parse HEAD)" = "$FPC_COMMIT" \
+    && git apply /tmp/fpc-aarch64-unaligned-smallint.patch
 RUN make -j"$JOBS" all OPT="-O-" \
     && make install INSTALL_PREFIX=/opt/fpc \
     && make -j"$JOBS" all OS_TARGET=wasip1 CPU_TARGET=wasm32 BINUTILSPREFIX= \
@@ -20,6 +22,7 @@ RUN make -j"$JOBS" all OPT="-O-" \
     && printf '%s\n' '#!/bin/sh' 'exec /opt/fpc/bin/fpc -n @/opt/fpc/fpc.cfg "$@"' > /opt/fpc/compile \
     && chmod +x /opt/fpc/compile \
     && printf '%s\n' "$FPC_COMMIT" > /opt/fpc/COMMIT
+RUN sha256sum /tmp/fpc-aarch64-unaligned-smallint.patch | cut -d ' ' -f 1 > /opt/fpc/PATCH_SHA256
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \

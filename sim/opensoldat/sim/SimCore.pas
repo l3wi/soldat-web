@@ -34,7 +34,7 @@ implementation
 uses Classes, SysUtils, Math, fpjson, jsonparser, PhysFS, Anims,
   Constants, Cvar, Demo, Game, Net, Parts, PolyMap, Server, Sprites,
   Things, Bullets, Util, Vector, Weapons, SimState, SimRender, SimEvents,
-  NetworkServerSprite, SimAnimationContent, SimRandom, Sparks, SimFXRandom,
+  NetworkServerSprite, NetworkServerGame, SimAnimationContent, SimRandom, Sparks, SimFXRandom,
   SimPresentation, CombatDiagnostics;
 var
   Initialized, MapLoaded, CvarsReady: Boolean;
@@ -420,8 +420,9 @@ end;
 procedure Stage(const Name: string; Entity: Integer = 0);
 begin if Assigned(SimTraceHook) then SimTraceHook(Name,Entity); end;
 procedure UpdateMovementFrame;
-var I,J: Integer;
+var I,J,_x: Integer; M: TVector2;
 begin
+  M := Default(TVector2);
   { Original human release/burst guard at the injected-input boundary. }
   for J:=1 to MAX_PLAYERS do if Sprite[J].Active and Sprite[J].Dummy and
     (Sprite[J].Player.ControlMethod=BOT) then begin
@@ -459,7 +460,7 @@ begin
     end;
     Stage('things');
   end;
-  { Original ServerLoop.UpdateFrame remainder for supported normal DM rules.
+  { Original ServerLoop.UpdateFrame remainder for supported normal DM/CTF rules.
     Bonus spawning is disabled at init; networking, logs and UI are not gameplay. }
   if BulletTimeTimer > -1 then Dec(BulletTimeTimer);
   if BulletTimeTimer = 0 then begin ToggleBulletTime(False); BulletTimeTimer := -1; end
@@ -467,21 +468,44 @@ begin
   begin
     if (MapChangeCounter > -60) and (MapChangeCounter < 99999999) then Dec(MapChangeCounter);
     if (MapChangeCounter < 0) and (MapChangeCounter > -59) then ChangeMap;
+    // Original ServerLoop.UpdateFrame anti-mass-flag branch.
     if MainTickCounter mod SECOND = 0 then
-    begin
-      for J := 1 to MAX_SPRITES do if Sprite[J].Active then
-      begin
-        if sv_antimassflag.Value then
+      if sv_antimassflag.Value then
+        for j := 1 to MAX_SPRITES do
         begin
-          Sprite[J].Player.GrabsPerSecond := 0; Sprite[J].Player.ScoresPerSecond := 0;
-          Sprite[J].Player.GrabbedInBase := False;
+          if (Sprite[j].Active) and (Sprite[j].Player.GrabsPerSecond > 0) and
+            (Sprite[j].Player.ScoresPerSecond > 0) and
+            (Sprite[j].Player.GrabbedInBase) then
+          begin
+            CheatTag[j] := 1;
+            StartVote(255, VOTE_KICK, IntToStr(j),
+              'Server: Possible cheating');
+            ServerSendVoteOn(VoteType, 255, IntToStr(j),
+              'Server: Possible cheating');
+            MainConsole.Console('** Detected possible Mass-Flag cheating from ' +
+              Sprite[j].Player.Name, WARNING_MESSAGE_COLOR);
+          end;
+
+          if Sprite[j].Active then
+          begin
+            Sprite[j].Player.GrabsPerSecond := 0;
+            Sprite[j].Player.ScoresPerSecond := 0;
+            Sprite[j].Player.GrabbedInBase := False;
+          end;
         end;
-        if Sprite[J].Player.ChatWarnings > 0 then Dec(Sprite[J].Player.ChatWarnings);
-      end;
-    end;
     if sv_healthcooldown.Value > 0 then
       if MainTickCounter mod (sv_healthcooldown.Value*SECOND) = 0 then
         for J := 1 to MAX_SPRITES do if Sprite[J].Active and Sprite[J].HasPack then Sprite[J].HasPack := False;
+    // Original chat-warning cadence; host admission owns ban persistence.
+    if MainTickCounter mod SECOND = 0 then
+      for j := 1 to MAX_SPRITES do
+        if Sprite[j].Active then
+        begin
+          if Sprite[j].Player.ChatWarnings > 5 then
+            KickPlayer(j, True, KICK_FLOODING, FIVE_MINUTES, 'Chat Flood');
+          if Sprite[j].Player.ChatWarnings > 0 then
+            Dec(Sprite[j].Player.ChatWarnings);
+        end;
     if MainTickCounter mod MINUTE = 0 then
       for J := 1 to MAX_SPRITES do if Sprite[J].Active then Inc(Sprite[J].Player.PlayTime);
     if MainTickCounter mod (SECOND*10) = 0 then
@@ -498,6 +522,51 @@ begin
       for J := 1 to MAX_SPRITES do for I := 1 to 10 do WeaponSel[J,I] := 1;
   end;
   if PlayersTeamNum[2] = PlayersTeamNum[1] then HTFTime := sv_htf_pointstime.Value*60;
+  { Original ServerLoop.UpdateFrame: destroy duplicate flags and recreate absent
+    flags every two seconds. Keep the source ordering and RNG consumption. }
+  if (sv_gamemode.Value = GAMESTYLE_CTF) or (sv_gamemode.Value = GAMESTYLE_INF) then
+    if MainTickCounter mod (SECOND * 2) = 0 then
+    begin
+      _x := 0;
+
+      for j := 1 to MAX_THINGS do
+        if Thing[j].Active then
+          if Thing[j].Style = OBJECT_ALPHA_FLAG then
+            Inc(_x);
+
+      if _x > 1 then
+        for j := MAX_THINGS downto 1 do
+          if Thing[j].Active then
+            if Thing[j].Style = OBJECT_ALPHA_FLAG then
+            begin
+              Thing[j].Kill;
+              Break;
+            end;
+
+      if _x = 0 then
+        if RandomizeStart(M, 5) then
+          TeamFlag[1] := CreateThing(M, 255, OBJECT_ALPHA_FLAG, 255);
+
+      _x := 0;
+
+      for j := 1 to MAX_THINGS do
+        if Thing[j].Active then
+          if Thing[j].Style = OBJECT_BRAVO_FLAG then
+            Inc(_x);
+
+      if _x > 1 then
+        for j := MAX_THINGS downto 1 do
+          if Thing[j].Active then
+            if Thing[j].Style = OBJECT_BRAVO_FLAG then
+            begin
+              Thing[j].Kill;
+              Break;
+            end;
+
+      if _x = 0 then
+        if RandomizeStart(M, 6) then
+          TeamFlag[2] := CreateThing(M, 255, OBJECT_BRAVO_FLAG, 255);
+    end;
 end;
 function sim_step(Flags: LongWord): LongInt;
 var J: Integer; WasDead:TSimInputHistory;
@@ -507,6 +576,7 @@ begin
   if Flags and not LongWord(1) <> 0 then Exit(SIM_UNSUPPORTED);
   SimCapturePreviousPose;
   Inc(Ticks); Inc(ServerTickCounter); Inc(MainTickCounter);
+  if MainTickCounter = 2147483640 then MainTickCounter := 0;
   SimEventsSetTick(MainTickCounter); SimEventsSetReplay(Flags and 1 <> 0);
   SimFXAllowed := Flags and 1 = 0;
   SimFXReplay(not SimFXAllowed);

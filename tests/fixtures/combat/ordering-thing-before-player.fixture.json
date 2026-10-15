@@ -28,12 +28,12 @@
     {
       "team": 0,
       "spawnpoint": 1,
-      "x": 60,
+      "x": 0,
       "y": -32,
       "weapon": 2,
       "secondaryWeapon": 0,
       "health": 150,
-      "grenades": 3,
+      "grenades": 0,
       "control": "authoritative"
     }
   ],
@@ -44,18 +44,25 @@
       "kind": "thing",
       "style": 1,
       "owner": 0,
-      "x": 0,
+      "x": -5,
       "y": -22,
       "ammo": 255
+    },
+    {
+      "tick": 60,
+      "kind": "fixture-sprite",
+      "slot": 2,
+      "bodyAnimation": "Throw",
+      "bodyFrame": 1
     },
     {
       "tick": 60,
       "kind": "bullet",
       "weapon": 2,
       "owner": 1,
-      "x": -80,
-      "y": -22,
-      "vx": 160,
+      "x": -12,
+      "y": -10,
+      "vx": 10,
       "vy": 0,
       "timeout": 400
     }

@@ -34,10 +34,10 @@
       "weapon": 51,
       "owner": 1,
       "x": 100,
-      "y": -30,
+      "y": -3,
       "vx": 0,
-      "vy": 1,
-      "timeout": 2
+      "vy": 6,
+      "timeout": 120
     }
   ],
   "metadata": {
