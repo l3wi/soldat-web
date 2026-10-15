@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { encodeInput } from "@soldat-web/sim-host";
+import type { InputFrame } from "@soldat-web/protocol";
+import { PlayerInputBuffer } from "./input-buffer.ts";
+
+function frame(seq: number, tick: number, input = encodeInput({ Right: true })): InputFrame {
+  return { seq, tick, input };
+}
+
+test("input lead is bounded to two future ticks and storage to three frames", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  assert.deepEqual(buffer.offer([frame(3, 12), frame(2, 11), frame(1, 10)], 10, 0n), []);
+  assert.equal(buffer.size, 3);
+  assert.deepEqual(buffer.offer([frame(4, 13)], 10, 0n), ["lead"]);
+  assert.equal(buffer.size, 3);
+  assert.equal(buffer.consume(10).seq, 1);
+  assert.equal(buffer.consume(11).seq, 2);
+  assert.equal(buffer.consume(12).seq, 3);
+  assert.equal(buffer.size, 0);
+});
+
+test("gaps hold movement, aim, Fire and Jetpack, without repeating one-shot actions", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  const control = encodeInput({ Right: true, Fire: true, Jetpack: true, ThrowNade: true, ChangeWeapon: true, ThrowWeapon: true, Reload: true, Prone: true, FlagThrow: true, MouseAimX: 123, MouseAimY: -456, MouseDist: 77, pressOrder: 2 });
+  buffer.offer([frame(1, 0, control)], 0, 0n);
+  const actual = buffer.consume(0);
+  assert.equal(actual.repeated, false);
+  assert.deepEqual(actual.input, control);
+  const repeat = buffer.consume(1);
+  const view = new DataView(repeat.input.buffer, repeat.input.byteOffset, repeat.input.byteLength);
+  assert.equal(repeat.repeated, true);
+  assert.equal(repeat.seq, 1);
+  assert.equal(view.getUint16(0, true), (1 << 1) | (1 << 4) | (1 << 5));
+  assert.equal(view.getInt16(2, true), 123);
+  assert.equal(view.getInt16(4, true), -456);
+  assert.equal(view.getInt16(6, true), 77);
+  assert.equal(view.getUint16(8, true), 2);
+  assert.equal(buffer.consume(2).seq, 1);
+});
+
+test("duplicates, replay, sequence jumps and consumed-tick action timestamps are rejected", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  const shot = frame(1, 0, encodeInput({ ThrowNade: true }));
+  assert.deepEqual(buffer.offer([shot], 0, 0n), []);
+  buffer.consume(0);
+  assert.deepEqual(buffer.offer([shot], 1, 0n), ["sequence"]);
+  assert.deepEqual(buffer.offer([frame(2, 0, shot.input)], 1, 0n), ["stale"]);
+  assert.deepEqual(buffer.offer([frame(130, 1)], 1, 0n), ["jump"]);
+  assert.deepEqual(buffer.offer([frame(2, 1)], 1, 0n), []);
+  assert.equal(buffer.consume(1).seq, 2);
+});
+
+test("sequence acknowledgements cannot regress through tick reordering", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  buffer.offer([frame(1, 2)], 0, 0n);
+  assert.deepEqual(buffer.offer([frame(2, 1)], 0, 0n), ["sequence"]);
+  assert.deepEqual(buffer.offer([frame(2, 2)], 0, 0n), ["occupied"]);
+  assert.equal(buffer.consume(2).seq, 1);
+});
+
+test("newest-first redundancy admits new frames without replaying consumed actions", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  buffer.offer([frame(1, 0)], 0, 0n);
+  buffer.consume(0);
+  assert.deepEqual(buffer.offer([frame(3, 2), frame(2, 1), frame(1, 0)], 1, 0n), ["sequence"]);
+  assert.equal(buffer.consume(1).seq, 2);
+  assert.equal(buffer.consume(2).seq, 3);
+});
+
+test("duplicate floods consume the bounded packet burst and recover with monotonic time", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  for (let i = 0; i < 30; i++) assert.ok(!buffer.offer([frame(1, 0)], 0, 0n).includes("rate"));
+  assert.deepEqual(buffer.offer([frame(2, 1)], 0, 0n), ["rate"]);
+  assert.deepEqual(buffer.offer([frame(2, 1)], 1, 1_000_000_000n), []);
+  assert.equal(buffer.size, 1);
+  assert.throws(() => buffer.offer([frame(3, 2)], 1, 0n), /backwards/);
+});
+
+test("buffer owns admitted bytes and rejects zero/wrapped IDs and malformed batches", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  const input = encodeInput({ Fire: true });
+  buffer.offer([frame(1, 0, input)], 0, 0n);
+  input.fill(0);
+  assert.equal(buffer.consume(0).input[0], 16);
+  assert.deepEqual(buffer.offer([frame(0, 1)], 1, 0n), ["invalid"]);
+  assert.deepEqual(buffer.offer([frame(0x1_0000_0000, 1)], 1, 0n), ["invalid"]);
+  assert.deepEqual(buffer.offer([frame(2, 1, new Uint8Array(11))], 1, 0n), ["invalid"]);
+  assert.deepEqual(buffer.offer([frame(2, 1), frame(3, 2)], 1, 0n), ["invalid"]);
+});

@@ -1,0 +1,22 @@
+{
+  "name": "@soldat-web/server",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "exports": "./src/index.ts",
+  "scripts": {
+    "start": "node src/main.ts",
+    "test": "node --test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@soldat-web/protocol": "workspace:*",
+    "@soldat-web/sim-host": "workspace:*",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}
