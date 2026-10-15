@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { mountGame, unlockGameAudio } from './game';
+import { mountGame, unlockGameAudio, respawnGame } from './game';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, type ControlAction, type Settings } from './settings';
 import {
   HISTORIC_MAP_CREDITS, contentUrl, loadContentManifest, loadContentNotices, sourceUrl,
@@ -231,6 +231,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
       <div className="game-status"><strong>{runningMap}</strong><span role="status">{status || 'Starting map…'}</span></div>
       <nav aria-label="In-game menu">
         <button type="button" onClick={unlockAudio}>Enable audio</button>
+        <button type="button" onClick={() => { try { respawnGame(); } catch (error) { setStatus(errorMessage(error)); } }}>Respawn</button>
         <button type="button" onClick={() => setModal('settings')}>Settings</button>
         <button type="button" onClick={() => setModal('credits')}>About / Credits</button>
         <button type="button" onClick={() => { setRunningMap(null); setAudioStatus(''); }}>Main menu</button>
@@ -289,9 +290,10 @@ export default function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [route] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return { capture: params.has('capture'), map: params.get('map') || 'Airpirates' };
+    return { capture: params.has('capture'), qualification: params.has('g2'), map: params.get('map') || 'Airpirates' };
   });
   // Capture bypasses all menus, dialogs, status overlays and catalog requests.
   if (route.capture) return <GameSurface capture map={route.map} settings={settings} />;
+  if (route.qualification) return <GameSurface capture map={route.map} settings={settings} />;
   return <ClientShell settings={settings} setSettings={setSettings} />;
 }

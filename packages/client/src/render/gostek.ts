@@ -167,8 +167,8 @@ export class GostekRenderer {
         headSin = Math.sin(headRotation);
       let count = 0;
       for (const { part, variants } of this.resources) {
-        // Phase-1 exposes movement skeletons, not combat/cosmetic loadout.
-        // Use the native base table, never the spike's invented AK74 loadout.
+        // Cosmetics retain native base visibility, never the spike's invented
+        // chain/hair/cigar loadout; poses and teams come from simulation.
         let visible = part.visible || (part.alpha === 1 && blood > 0);
         if (dead && (part.symbol === "GOSTEK_HEAD" || part.symbol === "GOSTEK_HEAD_DMG")) visible = false;
         if (part.symbol === "GOSTEK_HEAD_DEAD" || part.symbol === "GOSTEK_HEAD_DEAD_DMG") visible = dead;

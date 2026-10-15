@@ -1,6 +1,8 @@
 # G2 client integration — partial evidence, not a gate pass
 
 Date: 2026-10-15.
+**Historical shell-only evidence.** The later [G2 integration record](G2.md) supersedes the pending-G1 statements below and records the actual rendered-loop qualification and manual-session status.
+
 
 **G2 remains PENDING G1.** This records the exercised production-client shell, static rendering and timing boundaries only. No original-simulation movement hash, native side-by-side gameplay, or sim-driven soldier visual qualification is claimed.
 

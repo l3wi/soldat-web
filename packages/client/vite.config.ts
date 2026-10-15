@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { stat } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gateAssets } from "./scripts/gate-assets";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 function localAssets(): Plugin {
@@ -31,4 +32,4 @@ function localAssets(): Plugin {
     },
   };
 }
-export default defineConfig({ plugins: [localAssets()], build: { target: "es2022", outDir: "../../dist/client", emptyOutDir: true } });
+export default defineConfig({ plugins: [localAssets(), gateAssets(root)], build: { target: "es2022", outDir: "../../dist/client", emptyOutDir: true } });

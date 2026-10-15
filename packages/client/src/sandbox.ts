@@ -27,7 +27,7 @@ export async function loadSandbox(map: string, signal: AbortSignal): Promise<Sim
     }
     requireStatus(host.init({}, 0, 0, 0), "sim_init");
     requireStatus(host.loadMap(map), "sim_load_map");
-    requireStatus(host.command(0, { kind: "join", slot: 1, team: 1 }), "sim_command(join)");
+    requireStatus(host.command(0, { kind: "join", slot: 1, team: 1, control: "authoritative" }), "sim_command(join)");
     return host;
   } catch (error) { host.dispose(); throw error; }
 }

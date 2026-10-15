@@ -4,6 +4,8 @@ import { createCamera, worldAt, screenAt, setZoom, updateCamera } from "../src/c
 import { attenuation, soundPosition, Audio } from "../src/audio";
 import { DEFAULT_SETTINGS, loadSettings } from "../src/settings";
 import { quadVertices } from "../src/render/geometry";
+import { SOUND_SAMPLES } from "../src/sound-samples";
+import { EffectsRenderer } from "../src/render/effects";
 
 for (const hz of [60, 120, 144]) {
   const clock = new ClientClock(); let ticks = 0;
@@ -36,6 +38,13 @@ data.setUint32(20, 1, true); data.setUint32(24, 8, true);
 const audio = new Audio({} as never); audio.drain(events);
 assert.equal(audio.unmappedPresentationEvents, 1); assert.equal(audio.gameplayEvents, 1); assert.equal(audio.lastTick, 8);
 assert.throws(() => audio.drain(events, 39), /Truncated/);
+const soundEvent = new Uint8Array(52), soundData = new DataView(soundEvent.buffer);
+soundData.setUint32(0, 0x80000004, true); soundData.setUint32(16, 32, true);
+soundData.setInt32(20, 2, true); soundData.setInt32(24, -1, true);
+soundData.setFloat32(44, 1, true); soundData.setFloat32(48, 750, true);
+audio.drain(soundEvent);
+assert.equal(audio.soundEvents, 1); assert.equal(audio.playedSounds, 0, "No playback before gesture");
+assert.equal(SOUND_SAMPLES.length, 164); assert.equal(SOUND_SAMPLES[4], ""); assert.equal(SOUND_SAMPLES[163], "sfx_wind.wav");
 audio.destroy();
 assert.equal(DEFAULT_SETTINGS.bindings.flagThrow, "Space");
 assert.deepEqual(loadSettings(), DEFAULT_SETTINGS);
@@ -43,4 +52,17 @@ const asset = { width: 90, height: 4, scale: 4.5, frames: [{ object: "fixture", 
 const q = { asset, x: 10, y: 20, width: 90, height: 4, scaleX: 2, scaleY: 1, pivotX: 0, pivotY: 1, rotation: Math.PI / 2, color: [255, 0, 128, 64], mapPivot: true };
 const v = quadVertices(q, { key: "fixture", u0: 0, v0: 0, u1: 1, v1: 1 })[0]!;
 assert.ok(Math.abs(v.x - 11) < 1e-12 && Math.abs(v.y - 21) < 1e-12);
+const effects = new EffectsRenderer([
+  { index: 1, symbol: "GFX_SPARKS_RAIN", asset },
+  ...Array.from({ length: 16 }, (_, index) => ({ index: 100 + index, symbol: `GFX_SPARKS_EXPLOSION_EXPLODE${index + 1}`, asset })),
+]);
+const spark = { style: 38, owner: 1, life: 40, lifePrev: 41, x: 10, y: 20, previousX: 0, previousY: 10, tint: 0xffffff };
+const view = { count: 1, spark: () => spark };
+let quads = effects.quads(.5, view);
+assert.equal(quads.length, 1); assert.equal(quads[0]!.color[3], 105);
+assert.equal(quads[0]!.x, 5); assert.equal(quads[0]!.y, 15);
+spark.style = 12; quads = effects.quads(.5, view);
+assert.equal(quads.length, 2, "Native explosion underlayer before main layer");
+assert.deepEqual(quads[0]!.color, [173,173,173,100]);
+assert.equal(quads[1]!.x, -14); assert.equal(quads[1]!.y, -23);
 console.log("Client invariants pass: 60/120/144 Hz fixed steps, catch-up cap, pause/reset, camera round trips/zoom, native sound formula/event drain, bindings and absolute map pivots.");

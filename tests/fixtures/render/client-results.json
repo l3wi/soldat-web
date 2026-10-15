@@ -1,4 +1,5 @@
 {
+  "wasmSha256": "181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393",
   "browser": "155.0.8059.79",
   "runtime": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
   "width": 1280,
@@ -12,15 +13,137 @@
     "differing": 0,
     "pixels": 921600,
     "percent": 0,
-    "maxDelta": 0,
-    "meanChannelDelta": 0,
+    "maxDelta": 1,
+    "meanChannelDelta": 0.00005560980902777778,
     "pass": true
   },
+  "nativeParity": {
+    "Airpirates": {
+      "reference": "tests/fixtures/render/native-Airpirates.png",
+      "actual": "tests/fixtures/render/client-Airpirates.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 138,
+      "pixels": 921600,
+      "percent": 0.014973958333333332,
+      "maxDelta": 57,
+      "meanChannelDelta": 0.004554036458333333,
+      "pass": true
+    },
+    "Aero": {
+      "reference": "tests/fixtures/render/native-Aero.png",
+      "actual": "tests/fixtures/render/client-Aero.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 22,
+      "pixels": 921600,
+      "percent": 0.002387152777777778,
+      "maxDelta": 38,
+      "meanChannelDelta": 0.00057861328125,
+      "pass": true
+    },
+    "DesertWind": {
+      "reference": "tests/fixtures/render/native-DesertWind.png",
+      "actual": "tests/fixtures/render/client-DesertWind.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 40,
+      "pixels": 921600,
+      "percent": 0.004340277777777778,
+      "maxDelta": 63,
+      "meanChannelDelta": 0.0008097330729166667,
+      "pass": true
+    },
+    "Jungle": {
+      "reference": "tests/fixtures/render/native-Jungle.png",
+      "actual": "tests/fixtures/render/client-Jungle.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 103,
+      "pixels": 921600,
+      "percent": 0.011176215277777778,
+      "maxDelta": 41,
+      "meanChannelDelta": 0.00176025390625,
+      "pass": true
+    },
+    "inf_Biologic": {
+      "reference": "tests/fixtures/render/native-inf_Biologic.png",
+      "actual": "tests/fixtures/render/client-inf_Biologic.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 29,
+      "pixels": 921600,
+      "percent": 0.003146701388888889,
+      "maxDelta": 17,
+      "meanChannelDelta": 0.0008742947048611111,
+      "pass": true
+    },
+    "ctf_Death": {
+      "reference": "tests/fixtures/render/native-ctf_Death.png",
+      "actual": "tests/fixtures/render/client-ctf_Death.png",
+      "width": 1280,
+      "height": 720,
+      "threshold": 8,
+      "differing": 40,
+      "pixels": 921600,
+      "percent": 0.004340277777777778,
+      "maxDelta": 16,
+      "meanChannelDelta": 0.0017743598090277778,
+      "pass": true
+    }
+  },
   "maps": 99,
+  "mapsLoaded": 99,
   "servedNotices": 4,
   "settingsPersisted": true,
   "audioGesture": true,
+  "soundRuns": [
+    {
+      "ready": true,
+      "map": "Airpirates",
+      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
+      "tick": 13,
+      "fraction": 0.002000000000002018,
+      "droppedTicks": 0,
+      "renders": 20,
+      "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
+      "soundEvents": 26,
+      "playedSounds": 1,
+      "sparks": 0
+    },
+    {
+      "ready": true,
+      "map": "Airpirates",
+      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
+      "tick": 7,
+      "fraction": 0.002000000000002018,
+      "droppedTicks": 0,
+      "renders": 13,
+      "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
+      "soundEvents": 14,
+      "playedSounds": 1,
+      "sparks": 0
+    },
+    {
+      "ready": true,
+      "map": "Airpirates",
+      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
+      "tick": 7,
+      "fraction": 0.9980000000000103,
+      "droppedTicks": 0,
+      "renders": 11,
+      "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
+      "soundEvents": 14,
+      "playedSounds": 1,
+      "sparks": 0
+    }
+  ],
   "remountCycles": 3,
   "browserErrors": [],
-  "movementHashes": "pending G1 sim.wasm and Node receipts"
+  "movementHashes": "separate rendered-loop receipts in build-out/client-g2"
 }

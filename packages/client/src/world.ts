@@ -61,6 +61,7 @@ export class SimWorldView implements WorldView {
       sprite.weapon = d.getInt32(base + s.weapon, true);
       sprite.x = d.getFloat32(base + s.posX, true); sprite.y = d.getFloat32(base + s.posY, true);
       sprite.health = d.getFloat32(base + s.health, true); sprite.fuel = d.getInt32(base + s.fuel, true);
+      sprite.team = d.getUint32(base + s.team, true);
       for (let p = 0; p < RENDER_LAYOUT.skeletonPoints * 2; p++) {
         sprite.previous[p] = d.getFloat32(base + s.previousSkeleton + p * 4, true);
         sprite.current[p] = d.getFloat32(base + s.currentSkeleton + p * 4, true);

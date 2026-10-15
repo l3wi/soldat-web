@@ -60,6 +60,7 @@ export interface MapData {
   backgroundTop: number[];
   backgroundBottom: number[];
   spawnpoints: { active: boolean; x: number; y: number; team: number }[];
+  missing?: { kind: string; requested: string; active: boolean; fallback: string | null }[];
 }
 export interface Camera {
   x: number;
