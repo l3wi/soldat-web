@@ -214,7 +214,7 @@ Original `AI.pas` runs inside the server's sim instance (`AI_ENABLED`), using PM
 - Each fixture: map hash, content-set hash, seed, scripted per-tick inputs, ≥ 300 ticks; long runs 10,000 ticks.
 
 ### 6.3 Rendering
-- Screenshot comparisons vs native OpenSoldat client at the same camera/zoom/resolution/filtering, dither off: Airpirates (vertex alpha), Aero + DesertWind (NPOT repeat, UV ±26), Jungle (case-only names), one heavy-scenery map, synthetic RGBA/UV triangle. Gostek: run L/R, aim sweep, crouch, prone, jet, reload, both teams, dead pose. Initial pass threshold: ≤ 1% of pixels differ by > 8/255 in any channel; tighten after first measurements.
+- Screenshot comparisons vs native OpenSoldat client at the same camera/zoom/resolution/filtering, dither off: Airpirates (vertex alpha), Aero + DesertWind (NPOT 1536×512 repeat), Jungle (case-only names), one heavy-scenery map, synthetic RGBA triangle with UVs beyond ±27 (corpus max is ±26.3). Gostek: run L/R, aim sweep, crouch, prone, jet, reload, both teams, dead pose. Pass threshold: ≤ 1% of pixels differ by > 8/255 in any channel (G0.4 measured worst 0.015%; regressions above 0.1% must be explained). Prop and edge pivots are absolute rotation centres (`GfxSpriteVertices`), gostek pivots are normalized (see `docs/gates/G0.4.md`).
 - Performance: 903-triangle map + 500 props + 32 soldiers + 512 sparks at targets in R-CLI-1; context loss/restore and React remount recover without leaks.
 
 ### 6.4 Network (tc/netem on real packets)
