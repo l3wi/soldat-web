@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "map": "Lagrange",
+  "mapPath": "reference/base/shared/maps/Lagrange.pms",
+  "mapSha256": "21ad091a1f42b35431d1072f2832496e87368c41d289cf2653fef422e443d5b4",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -308.5,
+      "y": -545.5,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 31,
+      "ticks": 150,
+      "control": {
+        "Right": true,
+        "Down": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 181,
+      "ticks": 100,
+      "control": {
+        "Left": true,
+        "Up": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "overlap-seams",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 96,
+      "edge": 1,
+      "polytype": 0,
+      "midpoint": [
+        -308.5,
+        -513.5
+      ],
+      "width": 2683,
+      "slope": -0.003354453969437197,
+      "vertices": [
+        [
+          -1650,
+          -509
+        ],
+        [
+          1033,
+          -518
+        ],
+        [
+          -837,
+          -449
+        ]
+      ],
+      "rawNormals": [
+        [
+          0.0033544350881129503,
+          0.9999943375587463,
+          1
+        ],
+        [
+          -0.03687330335378647,
+          -0.9993199110031128,
+          1
+        ],
+        [
+          0.07360057532787323,
+          -0.9972878098487854,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "overlapMeaning": "Probe 0.5 units below target edge lies inside another original solid triangle; overlapping interiors, not only coincident endpoints.",
+    "overlapPolygons": [
+      55
+    ]
+  }
+}

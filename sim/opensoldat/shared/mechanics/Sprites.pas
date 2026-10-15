@@ -276,7 +276,7 @@ uses
   {$ENDIF}
   Cvar,
   Game,
-  Things;
+  Things{$IFDEF SIM}, SimRandom{$ENDIF};
 
 
 function CreateSprite(sPos, sVelocity: TVector2; sStyle, N: Byte; Player: TPlayer; TransferOwnership: Boolean): Integer;

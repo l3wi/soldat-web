@@ -13,10 +13,14 @@ Reference for developers implementing the Phase 1 native simulation emitter and 
 | `contentSetHash` | Declared combined simulation-content hash from `dist/content/sim/manifest.json`. The first fixture uses `855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109`. The harness echoes this trusted-fixture identity, rather than recomputing the importer hash. The gate additionally records exact upstream/base pins and archive/map hashes. |
 | `seed` | FPC `RandSeed` before initialization, animation/map loading and sprite creation. Sprite creation itself consumes RNG; initial trace state records the resulting seed. |
 | `ticks` | Positive number of fixed simulation steps. |
-| `players` | Ordered array; index + 1 is the sprite slot. Each player has integer `team` and `spawnpoint`. |
+| `players` | Ordered array; index + 1 is the sprite slot. Each player has integer `team` and `spawnpoint`. Optional `x`/`y` override initial coordinates; `health` and `heldFlag` select environmental-damage and flag-filter initial state. |
 | `inputs` | Run-length encoded input segments; omitted ticks are neutral input. |
+| `mapSha256` | SHA-256 of the exact raw PMS bytes, including a synthetic test map when applicable. |
+| `mapPath` | Optional repository-relative raw synthetic PMS path, mounted over `maps/<map>.pms`; synthetic maps are test-only. |
+| `mapDirectory` | Optional native-oracle map-directory override for test assets; fixture-relative mounting details are recorded by the corpus regeneration tool. |
+| `traceStages` | Optional `all` (default) or `tick` diagnostic verbosity. G1 T1 qualification requires `all`, including long runs. |
 
-`spawnpoint` is the **one-based original PMS spawn array index**, not the Nth spawn of the chosen team. The harness uses that active spawn's exact X/Y coordinates without `RandomizeStart` jitter. Player slots are human-controlled, never bots. The first fixture uses Arena spawnpoint 1 at **(-409, -75)**, team 0.
+`spawnpoint` is the **one-based original PMS spawn array index**, not the Nth spawn of the chosen team. By default the harness uses that active spawn's exact X/Y coordinates without `RandomizeStart` jitter; explicit `x`/`y` overrides let stock-map fixtures reach a named polygon without modifying the map. Player slots are human-controlled, never bots. The first fixture uses Arena spawnpoint 1 at **(-409, -75)**, team 0. The optional `heldFlag` setup creates the fixture flag state through the same harness/native setup; it is not a client-authoritative gameplay input.
 
 An input segment has `player` (one-based slot), `start` (one-based inclusive tick), `ticks` (duration), and `control`. Its interval is `[start, start + ticks)`. All controls reset each tick before segments are applied. Later segments win if segments overlap for the same player; they replace the whole control rather than merging fields.
 
@@ -25,7 +29,7 @@ An input segment has `player` (one-based slot), `start` (one-based inclusive tic
 - Booleans (omitted = false): `Left`, `Right`, `Up`, `Down`, `Fire`, `Jetpack`, `ThrowNade`, `ChangeWeapon`, `ThrowWeapon`, `Reload`, `Prone`, `FlagThrow`.
 - Signed 16-bit integer world-space aim fields (omitted = 0): `MouseAimX`, `MouseAimY`, `MouseDist`.
 
-Fixtures are trusted repository inputs. This version does not expose SDL first-key/conflicting-key press-order flags; those are client-input concerns, not additional fields in server `TControl`. Add/version an explicit field if extraction needs to model those branches.
+Fixtures are trusted repository inputs. Movement fixtures extend version 1 with an optional segment-level `pressOrder` (also accepted within `control` by the TypeScript adapter). Zero means raw, already-resolved server `TControl`, preserving the original fixture. Nonzero opts into original client left/right conflict resolution at the injection boundary: left-first=1, right-first=2, up-first=4, down-first=8. Both horizontal-first bits or both vertical-first bits together are invalid. The resolver retains prior direction/jumping state per player; neutral ticks update history too. Last matching segment still replaces the whole input before one resolution per player per tick. These fields do not execute SDL or modify the server movement branches. The ABI's exact binary input layout is in [sim-abi](sim-abi.md).
 
 The first fixture settles for 60 ticks, runs right for 120, holds jump for 20, holds jets for 230 (longer than the 226-unit capacity), then releases all movement for 170. Total: 600 steps.
 
@@ -57,9 +61,11 @@ Every Single is `{ "bits": "xxxxxxxx", "decimal": number }`. `bits` is the lower
 - `id`, `dead`.
 - `particle`: `pos`, `oldpos`, `velocity`, `forces` from the sprite's `SpriteParts` slot.
 - `skeleton`: exactly 24 points in one-based source order, represented as an array at indices 0–23; each point contains `pos` and `oldpos`.
-- `onGround`, `onGroundPermanent`, `onGroundLastFrame`.
+- `onGround`, `onGroundForLaw`, `onGroundPermanent`, `onGroundLastFrame`.
 - `position`: original posture/stance enum (`POS_STAND`, `POS_CROUCH`, etc.); there is no separate `Stance` member upstream.
 - `jetsCount`, `direction`, `health`.
+- `team`, `standingPolyType`, `heldThing`: original player team, last successful standing-point collision type, and held Thing slot. `standingPolyType` is existing gameplay state, not a fabricated contact event; combine it with fixture triangle/coordinates and observed trajectory to assess coverage.
+- `backgroundStatus`, `backgroundPoly`, `backgroundTestResult`: original per-sprite background-transition state.
 - `legs` and `body`: original animation `id`, current `frame`, and `count`.
 - `weapon`, `secondaryWeapon`, `tertiaryWeapon`: weapon `num`, current `ammo`, `fireInterval`, `fireIntervalPrev`, `fireIntervalReal`, `startup`, `reload`, `reloadPrev`, `reloadReal`. Names refer to the original countdown/previous/real timer members, not configured durations.
 

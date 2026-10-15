@@ -1,0 +1,1027 @@
+{
+  "maps": 99,
+  "basePin": "5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4",
+  "upstreamPin": "bf43a43bdd7a069e02c906768807f66e621b2888",
+  "polytypeCounts": [
+    23260,
+    333,
+    696,
+    5683,
+    1900,
+    202,
+    391,
+    77,
+    10,
+    30,
+    0,
+    4,
+    0,
+    3,
+    0,
+    0,
+    0,
+    0,
+    12,
+    0,
+    4,
+    31,
+    0,
+    43,
+    0,
+    127
+  ],
+  "jetCapacities": [
+    {
+      "map": "Aero",
+      "raw": 110,
+      "runtime": 130
+    },
+    {
+      "map": "Airpirates",
+      "raw": 164,
+      "runtime": 195
+    },
+    {
+      "map": "Arena",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Arena2",
+      "raw": 128,
+      "runtime": 152
+    },
+    {
+      "map": "Arena3",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Bigfalls",
+      "raw": 210,
+      "runtime": 249
+    },
+    {
+      "map": "Blox",
+      "raw": 400,
+      "runtime": 476
+    },
+    {
+      "map": "Bridge",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Bunker",
+      "raw": 170,
+      "runtime": 202
+    },
+    {
+      "map": "Cambodia",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "CrackedBoot",
+      "raw": 280,
+      "runtime": 333
+    },
+    {
+      "map": "Daybreak",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "DesertWind",
+      "raw": 165,
+      "runtime": 196
+    },
+    {
+      "map": "Factory",
+      "raw": 35,
+      "runtime": 41
+    },
+    {
+      "map": "Flashback",
+      "raw": 269,
+      "runtime": 320
+    },
+    {
+      "map": "HH",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Island2k5",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Jungle",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Krab",
+      "raw": 210,
+      "runtime": 249
+    },
+    {
+      "map": "Lagrange",
+      "raw": 0,
+      "runtime": 0
+    },
+    {
+      "map": "Leaf",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "MrSnowman",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "RR",
+      "raw": 95,
+      "runtime": 113
+    },
+    {
+      "map": "RatCave",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "Rok",
+      "raw": 485,
+      "runtime": 577
+    },
+    {
+      "map": "Shau",
+      "raw": 164,
+      "runtime": 195
+    },
+    {
+      "map": "Tropiccave",
+      "raw": 164,
+      "runtime": 195
+    },
+    {
+      "map": "Unlim",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "Veoto",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Aftermath",
+      "raw": 150,
+      "runtime": 178
+    },
+    {
+      "map": "ctf_Amnesia",
+      "raw": 160,
+      "runtime": 190
+    },
+    {
+      "map": "ctf_Ash",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_B2b",
+      "raw": 72,
+      "runtime": 85
+    },
+    {
+      "map": "ctf_Blade",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Campeche",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "ctf_Cobra",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Crucifix",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "ctf_Death",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Division",
+      "raw": 135,
+      "runtime": 160
+    },
+    {
+      "map": "ctf_Dropdown",
+      "raw": 130,
+      "runtime": 154
+    },
+    {
+      "map": "ctf_Equinox",
+      "raw": 98,
+      "runtime": 116
+    },
+    {
+      "map": "ctf_Guardian",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Hormone",
+      "raw": 80,
+      "runtime": 95
+    },
+    {
+      "map": "ctf_IceBeam",
+      "raw": 240,
+      "runtime": 285
+    },
+    {
+      "map": "ctf_Kampf",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Lanubya",
+      "raw": 180,
+      "runtime": 214
+    },
+    {
+      "map": "ctf_Laos",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_MFM",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Maya",
+      "raw": 166,
+      "runtime": 197
+    },
+    {
+      "map": "ctf_Mayapan",
+      "raw": 170,
+      "runtime": 202
+    },
+    {
+      "map": "ctf_Nuubia",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Raspberry",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Rotten",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Ruins",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Run",
+      "raw": 160,
+      "runtime": 190
+    },
+    {
+      "map": "ctf_Scorpion",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "ctf_Snakebite",
+      "raw": 160,
+      "runtime": 190
+    },
+    {
+      "map": "ctf_Steel",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Triumph",
+      "raw": 95,
+      "runtime": 113
+    },
+    {
+      "map": "ctf_Viet",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Voland",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_Wretch",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "ctf_X",
+      "raw": 110,
+      "runtime": 130
+    },
+    {
+      "map": "htf_Arch",
+      "raw": 210,
+      "runtime": 249
+    },
+    {
+      "map": "htf_Baire",
+      "raw": 255,
+      "runtime": 303
+    },
+    {
+      "map": "htf_Boxed",
+      "raw": 230,
+      "runtime": 273
+    },
+    {
+      "map": "htf_Desert",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Dorothy",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Dusk",
+      "raw": 100,
+      "runtime": 119
+    },
+    {
+      "map": "htf_Erbium",
+      "raw": 160,
+      "runtime": 190
+    },
+    {
+      "map": "htf_Feast",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Mossy",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "htf_Muygen",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Niall",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Nuclear",
+      "raw": 270,
+      "runtime": 321
+    },
+    {
+      "map": "htf_Prison",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Rubik",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Star",
+      "raw": 220,
+      "runtime": 261
+    },
+    {
+      "map": "htf_Tower",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "htf_Void",
+      "raw": 511,
+      "runtime": 608
+    },
+    {
+      "map": "htf_Vortex",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "htf_Zajacz",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "inf_Abel",
+      "raw": 98,
+      "runtime": 116
+    },
+    {
+      "map": "inf_April",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "inf_Argy",
+      "raw": 250,
+      "runtime": 297
+    },
+    {
+      "map": "inf_Belltower",
+      "raw": 130,
+      "runtime": 154
+    },
+    {
+      "map": "inf_Biologic",
+      "raw": 95,
+      "runtime": 113
+    },
+    {
+      "map": "inf_Changeling",
+      "raw": 150,
+      "runtime": 178
+    },
+    {
+      "map": "inf_Flute",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "inf_Fortress",
+      "raw": 320,
+      "runtime": 380
+    },
+    {
+      "map": "inf_Industrial",
+      "raw": 26,
+      "runtime": 30
+    },
+    {
+      "map": "inf_Messner",
+      "raw": 115,
+      "runtime": 136
+    },
+    {
+      "map": "inf_Moonshine",
+      "raw": 95,
+      "runtime": 113
+    },
+    {
+      "map": "inf_Motheaten",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "inf_Outpost",
+      "raw": 203,
+      "runtime": 241
+    },
+    {
+      "map": "inf_Rescue",
+      "raw": 138,
+      "runtime": 164
+    },
+    {
+      "map": "inf_Rise",
+      "raw": 95,
+      "runtime": 113
+    },
+    {
+      "map": "inf_Warehouse",
+      "raw": 190,
+      "runtime": 226
+    },
+    {
+      "map": "inf_Warlock",
+      "raw": 190,
+      "runtime": 226
+    }
+  ],
+  "mapHashes": [
+    {
+      "map": "Aero",
+      "path": "reference/base/shared/maps/Aero.pms",
+      "sha256": "cacf2929c8a34b80b69eb4e6810899bcdbac46a3274a9e70c89910e9cb73fcf2"
+    },
+    {
+      "map": "Airpirates",
+      "path": "reference/base/shared/maps/Airpirates.pms",
+      "sha256": "c7d50107f9be9c02632019d74125917c48e24bf79a1e36960bf4b06407b0cba4"
+    },
+    {
+      "map": "Arena",
+      "path": "reference/base/shared/maps/Arena.pms",
+      "sha256": "bb0d2ba2ace3db2e22d62909d12d956acc46954f4df9c6d6c0b6eac2dd54fa30"
+    },
+    {
+      "map": "Arena2",
+      "path": "reference/base/shared/maps/Arena2.pms",
+      "sha256": "a346df96c9b5463e4e828d53ef48dfb4ff43a03306655165d262dac3d3f444d4"
+    },
+    {
+      "map": "Arena3",
+      "path": "reference/base/shared/maps/Arena3.pms",
+      "sha256": "c6a317f30c3c05f62a4775c22509003dfb6d221b5751fc2f0fab44f86b7d6a6c"
+    },
+    {
+      "map": "Bigfalls",
+      "path": "reference/base/shared/maps/Bigfalls.pms",
+      "sha256": "cabbb14b0f13dbc0566b5a5da42a210e9842a5f86bf8d35c2c913cda33faf408"
+    },
+    {
+      "map": "Blox",
+      "path": "reference/base/shared/maps/Blox.pms",
+      "sha256": "3af45570c2e6af93d6ed7a752594025b50bd32d78fa84bd290bb2668351da8f9"
+    },
+    {
+      "map": "Bridge",
+      "path": "reference/base/shared/maps/Bridge.pms",
+      "sha256": "eb7e6039fea82ebba77b3738ed42a20e0a94701c4197de601e1981d2303e5e1a"
+    },
+    {
+      "map": "Bunker",
+      "path": "reference/base/shared/maps/Bunker.pms",
+      "sha256": "33f831d9ea556f3c32577d75b9497e0afa2992a4c7d93a67af7d04de832bfd4a"
+    },
+    {
+      "map": "Cambodia",
+      "path": "reference/base/shared/maps/Cambodia.pms",
+      "sha256": "5feaa5d38867d687a9cabc2148c26a99c6ab848dc354a1301515492a0f64100c"
+    },
+    {
+      "map": "CrackedBoot",
+      "path": "reference/base/shared/maps/CrackedBoot.pms",
+      "sha256": "d69f4c02762ab4017110a2de94e7cff2697080ee64679d75e3ae640fdc88d21d"
+    },
+    {
+      "map": "Daybreak",
+      "path": "reference/base/shared/maps/Daybreak.pms",
+      "sha256": "4285881e464d19ea2a8ae93f0bc02e579b05d9e817a14746a98780036b884541"
+    },
+    {
+      "map": "DesertWind",
+      "path": "reference/base/shared/maps/DesertWind.pms",
+      "sha256": "97b23ad7517b7fbfe6d1526f2aba8d22d65943ac2e09d1af8cd23463479d9e34"
+    },
+    {
+      "map": "Factory",
+      "path": "reference/base/shared/maps/Factory.pms",
+      "sha256": "7d06341651272c067e692d1145bfe2c3fbfc331743c422ef680464d97a9a7f57"
+    },
+    {
+      "map": "Flashback",
+      "path": "reference/base/shared/maps/Flashback.pms",
+      "sha256": "d19ee5a8a03cfe7f5ef0b6952388c316cf4e23d6d4301f691f5daaa853034536"
+    },
+    {
+      "map": "HH",
+      "path": "reference/base/shared/maps/HH.pms",
+      "sha256": "550a0f7de2bf7c9685ee8fa72aab19cd1a789fb75e152ff20eebf191045b87a8"
+    },
+    {
+      "map": "Island2k5",
+      "path": "reference/base/shared/maps/Island2k5.pms",
+      "sha256": "7292daf69845e81a52645cb99b9d4690704fb8648d802a74f0f6bd43c5d90fe2"
+    },
+    {
+      "map": "Jungle",
+      "path": "reference/base/shared/maps/Jungle.pms",
+      "sha256": "48b41b3d7acf4d0ee9bc09feeab5aace8b74ee3b02f61f22e4ca7ad09ba74382"
+    },
+    {
+      "map": "Krab",
+      "path": "reference/base/shared/maps/Krab.pms",
+      "sha256": "573d58b0686acd78eafafb0fc42e1aba46fbccb0e5ed4a81b6f82e635c02dfc3"
+    },
+    {
+      "map": "Lagrange",
+      "path": "reference/base/shared/maps/Lagrange.pms",
+      "sha256": "21ad091a1f42b35431d1072f2832496e87368c41d289cf2653fef422e443d5b4"
+    },
+    {
+      "map": "Leaf",
+      "path": "reference/base/shared/maps/Leaf.pms",
+      "sha256": "d3d1030506013e5a66e079405054744baaedc8694a11cfff71be7e5859d4312f"
+    },
+    {
+      "map": "MrSnowman",
+      "path": "reference/base/shared/maps/MrSnowman.pms",
+      "sha256": "77df55bde06cb2529e7bb15a8766b522bd4033534d3cb8dbaf05d8de4cfc2aca"
+    },
+    {
+      "map": "RR",
+      "path": "reference/base/shared/maps/RR.pms",
+      "sha256": "ca9051f8c03c98c5308d2b13a0c3f7453920d9a33b59981cc492911a1084d012"
+    },
+    {
+      "map": "RatCave",
+      "path": "reference/base/shared/maps/RatCave.pms",
+      "sha256": "c5b8be70ba07676bf6ab88cac11e919e19f7da2ff1ec4b2fed4acb1b136c0fee"
+    },
+    {
+      "map": "Rok",
+      "path": "reference/base/shared/maps/Rok.pms",
+      "sha256": "14638ffdd0c59f5ec0e010befdfdc607c25a6ecf3df02949bf55de652f0907cd"
+    },
+    {
+      "map": "Shau",
+      "path": "reference/base/shared/maps/Shau.pms",
+      "sha256": "0e6cd4ec269ba86b4d862acb1b643cb27c108eac162237de7102aed5b818ad4d"
+    },
+    {
+      "map": "Tropiccave",
+      "path": "reference/base/shared/maps/Tropiccave.pms",
+      "sha256": "4f3aeac1af582754d3f11748fd270ea8e67fd4d186c8ca8227e7c7cca2639a7c"
+    },
+    {
+      "map": "Unlim",
+      "path": "reference/base/shared/maps/Unlim.pms",
+      "sha256": "9e863f2f14dd08d3d244a2cf36d2e4ef3c8e185241089a8522560180193a1ea2"
+    },
+    {
+      "map": "Veoto",
+      "path": "reference/base/shared/maps/Veoto.pms",
+      "sha256": "2cc1e34ebe53abedce3e8c5a2e7db4396fac4dbd1bd73bc3774cf27cea105e14"
+    },
+    {
+      "map": "ctf_Aftermath",
+      "path": "reference/base/shared/maps/ctf_Aftermath.pms",
+      "sha256": "5ee4ff86756ba6a37bfe4763881943fdbd9545dc56eef5e0ce727fd34ea9f800"
+    },
+    {
+      "map": "ctf_Amnesia",
+      "path": "reference/base/shared/maps/ctf_Amnesia.pms",
+      "sha256": "28d9043589ee36776d9b4d7cd3119833f7566a6e58fbddf1a34916b2e1d3cf35"
+    },
+    {
+      "map": "ctf_Ash",
+      "path": "reference/base/shared/maps/ctf_Ash.pms",
+      "sha256": "75064ef07c9f7dcd84ce9b21f34dda6394244286b7cfde604607e27987df6d72"
+    },
+    {
+      "map": "ctf_B2b",
+      "path": "reference/base/shared/maps/ctf_B2b.pms",
+      "sha256": "8ba1b3ea0fcecc63af3a78b280813a78b624a1e056399678a05d0c772e42feb5"
+    },
+    {
+      "map": "ctf_Blade",
+      "path": "reference/base/shared/maps/ctf_Blade.pms",
+      "sha256": "90cdb3be555db7fb98bc3d47ac04d02f467ca2473cd5138806009bd2efad4383"
+    },
+    {
+      "map": "ctf_Campeche",
+      "path": "reference/base/shared/maps/ctf_Campeche.pms",
+      "sha256": "469f22db4145612b3e051e577c465b71f67c6c6b9413f1f18b8fe342c16c7004"
+    },
+    {
+      "map": "ctf_Cobra",
+      "path": "reference/base/shared/maps/ctf_Cobra.pms",
+      "sha256": "fb4c6a97922c5de17edc1cb130550f8dbc0c8c983a9c9078e1676ef104d192e1"
+    },
+    {
+      "map": "ctf_Crucifix",
+      "path": "reference/base/shared/maps/ctf_Crucifix.pms",
+      "sha256": "4f563e2478b706e4b9016d1524746472c77ac98287c982531c97180d368ba8eb"
+    },
+    {
+      "map": "ctf_Death",
+      "path": "reference/base/shared/maps/ctf_Death.pms",
+      "sha256": "ff3a60086bc79ff890c9083417beaced94ff1be3465719ba64c84de452f6e928"
+    },
+    {
+      "map": "ctf_Division",
+      "path": "reference/base/shared/maps/ctf_Division.pms",
+      "sha256": "453a60fb5e711a438966a6db95008830b8af9abb53622705acba923d1b6a7be7"
+    },
+    {
+      "map": "ctf_Dropdown",
+      "path": "reference/base/shared/maps/ctf_Dropdown.pms",
+      "sha256": "0b8095367d1c79f4db54369789ce0388a3fdf99533511b7ea7137cf5c3b62a2c"
+    },
+    {
+      "map": "ctf_Equinox",
+      "path": "reference/base/shared/maps/ctf_Equinox.pms",
+      "sha256": "7c8d4df06009ae47e04295be8a087e25dadb8790295d4276736639c5ede0b13f"
+    },
+    {
+      "map": "ctf_Guardian",
+      "path": "reference/base/shared/maps/ctf_Guardian.pms",
+      "sha256": "d54feb3645ab24e02d926216897c01fdaac99f198bcb46cde071498e7f8c89de"
+    },
+    {
+      "map": "ctf_Hormone",
+      "path": "reference/base/shared/maps/ctf_Hormone.pms",
+      "sha256": "360f34a437c5fc2f50362d18e894dd34782434b983995a5572b723cdb0fa6df8"
+    },
+    {
+      "map": "ctf_IceBeam",
+      "path": "reference/base/shared/maps/ctf_IceBeam.pms",
+      "sha256": "220dd67e4c03019d026e593a0296e0e3ce88d73cea518cbf90cb386b084caeb8"
+    },
+    {
+      "map": "ctf_Kampf",
+      "path": "reference/base/shared/maps/ctf_Kampf.pms",
+      "sha256": "7ee9604407aa063b48b1470285be61673f31a99c484c610a9a5a08ebeef21be8"
+    },
+    {
+      "map": "ctf_Lanubya",
+      "path": "reference/base/shared/maps/ctf_Lanubya.pms",
+      "sha256": "19f4ba502435ffdccd5e2baf7f2ceb5dc8064b5d115d189ad85b0e8820a20c3a"
+    },
+    {
+      "map": "ctf_Laos",
+      "path": "reference/base/shared/maps/ctf_Laos.pms",
+      "sha256": "72a98a6c338f14b5f25c14123dea6c6a2c3d9c458fd5b591d903f6a1f649d273"
+    },
+    {
+      "map": "ctf_MFM",
+      "path": "reference/base/shared/maps/ctf_MFM.pms",
+      "sha256": "67dcc3d2f5ce6362b54b50f6b35b917305b7845c741eff77d9d610eb0885ad05"
+    },
+    {
+      "map": "ctf_Maya",
+      "path": "reference/base/shared/maps/ctf_Maya.pms",
+      "sha256": "e02b03841b121844aaad1128dc2e46488bd1e36773c611303bf99aafcfc8bf09"
+    },
+    {
+      "map": "ctf_Mayapan",
+      "path": "reference/base/shared/maps/ctf_Mayapan.pms",
+      "sha256": "c5b98f1be41c0753940e5a68184fd94f81e6356735c58a88146812ee7fbbf050"
+    },
+    {
+      "map": "ctf_Nuubia",
+      "path": "reference/base/shared/maps/ctf_Nuubia.pms",
+      "sha256": "d6821f7e3307b0dcde8d4101539b8d233cd2eef1cd91a246274d336851e54538"
+    },
+    {
+      "map": "ctf_Raspberry",
+      "path": "reference/base/shared/maps/ctf_Raspberry.pms",
+      "sha256": "2043c30bf7410ea8e120a944f62a3bc6bd0b49c6359c8b3c3c536128455505b6"
+    },
+    {
+      "map": "ctf_Rotten",
+      "path": "reference/base/shared/maps/ctf_Rotten.pms",
+      "sha256": "fc6832750d91a432473d74243ec958e9652ba266412060b0eece38fa8b81da2f"
+    },
+    {
+      "map": "ctf_Ruins",
+      "path": "reference/base/shared/maps/ctf_Ruins.pms",
+      "sha256": "f6296c5cd13a7f2d4636623a29b1eb308f12176205ef469034986177a7f815fc"
+    },
+    {
+      "map": "ctf_Run",
+      "path": "reference/base/shared/maps/ctf_Run.pms",
+      "sha256": "41f346384f09acf405248a78b9233bdb93df38d0c9de74e93f6d1c454a0c700b"
+    },
+    {
+      "map": "ctf_Scorpion",
+      "path": "reference/base/shared/maps/ctf_Scorpion.pms",
+      "sha256": "e29d825d63a5833ea72271aeda57bd37018df6f4a5ab564f38cabca262ed565f"
+    },
+    {
+      "map": "ctf_Snakebite",
+      "path": "reference/base/shared/maps/ctf_Snakebite.pms",
+      "sha256": "566aadffc6bf052cccfb305d287abe205d6785703ebad5bb85dfb2627ebf3a71"
+    },
+    {
+      "map": "ctf_Steel",
+      "path": "reference/base/shared/maps/ctf_Steel.pms",
+      "sha256": "e5884803cd44b7e3770ec8bac8993116e073fc5b840175d379587f7ed47d5823"
+    },
+    {
+      "map": "ctf_Triumph",
+      "path": "reference/base/shared/maps/ctf_Triumph.pms",
+      "sha256": "09d366e90f2b3f3da59816cf646b7dca375539270313e72d7b1110436dfd5814"
+    },
+    {
+      "map": "ctf_Viet",
+      "path": "reference/base/shared/maps/ctf_Viet.pms",
+      "sha256": "05c10b4f85546e05c1a59f0aee1b112916d482aae952612b5a2fefb3b2e109d9"
+    },
+    {
+      "map": "ctf_Voland",
+      "path": "reference/base/shared/maps/ctf_Voland.pms",
+      "sha256": "43d8f5149d49a6f2e753110396f9e8bff4ae9afa5c2d40a43e8cd563f264f333"
+    },
+    {
+      "map": "ctf_Wretch",
+      "path": "reference/base/shared/maps/ctf_Wretch.pms",
+      "sha256": "6fd4b2e349a565b555ba7af4f483e371e5f2371d2acb2900c8d3e082559f0ebc"
+    },
+    {
+      "map": "ctf_X",
+      "path": "reference/base/shared/maps/ctf_X.pms",
+      "sha256": "2d4e826a0c68fdd155badfc96e6a8b198eeb6bacbb02be14093f6dd95b13344a"
+    },
+    {
+      "map": "htf_Arch",
+      "path": "reference/base/shared/maps/htf_Arch.pms",
+      "sha256": "32d50f761d2e23f447b2ec8eb2caf98ea8989167b7cca1085096c77bc303fcb9"
+    },
+    {
+      "map": "htf_Baire",
+      "path": "reference/base/shared/maps/htf_Baire.pms",
+      "sha256": "e8779442617706b7dc4b0f60100149645a2e468bd5418f4b5d31c7c27aa42e9e"
+    },
+    {
+      "map": "htf_Boxed",
+      "path": "reference/base/shared/maps/htf_Boxed.pms",
+      "sha256": "a4ae81a5dc96850c91ad34d93e884a5ce686303dc2df0f3d4d4a9ac4b50248a4"
+    },
+    {
+      "map": "htf_Desert",
+      "path": "reference/base/shared/maps/htf_Desert.pms",
+      "sha256": "8908aa3cee61477b2a45386ef8d984941abf30b73e4d446ebfc21ded35150224"
+    },
+    {
+      "map": "htf_Dorothy",
+      "path": "reference/base/shared/maps/htf_Dorothy.pms",
+      "sha256": "b59a58ce0147f6f598f6ca0ef5d2b638b91e92e0bdf320089f8f3621c7aea340"
+    },
+    {
+      "map": "htf_Dusk",
+      "path": "reference/base/shared/maps/htf_Dusk.pms",
+      "sha256": "ee7de83b47ecd252007b3d8b4e51befdb30aeab26f615353b217550123a9d7dd"
+    },
+    {
+      "map": "htf_Erbium",
+      "path": "reference/base/shared/maps/htf_Erbium.pms",
+      "sha256": "30974b4e13574a74b2be7080fce276aa7e019454b5988ae21b38dce3a878423d"
+    },
+    {
+      "map": "htf_Feast",
+      "path": "reference/base/shared/maps/htf_Feast.pms",
+      "sha256": "819760eead19a0ecc2426f0317a8201f03df4aaf4033705dda57af7c722a2160"
+    },
+    {
+      "map": "htf_Mossy",
+      "path": "reference/base/shared/maps/htf_Mossy.pms",
+      "sha256": "8d3f670a8f54f823a2c27a216014e77d3991cca55ea33fcf31aba47b2e0b4fcf"
+    },
+    {
+      "map": "htf_Muygen",
+      "path": "reference/base/shared/maps/htf_Muygen.pms",
+      "sha256": "e46b5276719b86fdae2866fbbb657764b65930303f3ddb2fd4575c4d1b2799e0"
+    },
+    {
+      "map": "htf_Niall",
+      "path": "reference/base/shared/maps/htf_Niall.pms",
+      "sha256": "bea42248d40da19e462800fd4ec9aa69baea30f6bd70f96a02704160fbacc142"
+    },
+    {
+      "map": "htf_Nuclear",
+      "path": "reference/base/shared/maps/htf_Nuclear.pms",
+      "sha256": "d9a50ec255b61f2c4af764fea543cac495ee78055e5301cc0c9d70dcd6567a53"
+    },
+    {
+      "map": "htf_Prison",
+      "path": "reference/base/shared/maps/htf_Prison.pms",
+      "sha256": "829421d35214efdbe48f5fde9f475fd06c3004008c499b9b25e87ea2d1efd022"
+    },
+    {
+      "map": "htf_Rubik",
+      "path": "reference/base/shared/maps/htf_Rubik.pms",
+      "sha256": "73c55f0305593a8318a8a41355cae74ce40665bccae7526ce7cb56cb08b0a31a"
+    },
+    {
+      "map": "htf_Star",
+      "path": "reference/base/shared/maps/htf_Star.pms",
+      "sha256": "7c3773b6faa3cc60cc2bd0bee52ed3262d5f5991ee31d2a865690a115188866b"
+    },
+    {
+      "map": "htf_Tower",
+      "path": "reference/base/shared/maps/htf_Tower.pms",
+      "sha256": "a0220168b3a42230880351a9f98d7e0fae2394d733a6a27519662cd40259e0df"
+    },
+    {
+      "map": "htf_Void",
+      "path": "reference/base/shared/maps/htf_Void.pms",
+      "sha256": "77e1dbdb05262ff93de0b8131858fb76a2ea60fc772deef5736c67f9f663644e"
+    },
+    {
+      "map": "htf_Vortex",
+      "path": "reference/base/shared/maps/htf_Vortex.pms",
+      "sha256": "ce1d62af877ad614b9791192dad7b1c7c0041495bb195d45bf966a6c286ee246"
+    },
+    {
+      "map": "htf_Zajacz",
+      "path": "reference/base/shared/maps/htf_Zajacz.pms",
+      "sha256": "730a4b939d04895d52b9ff0f03a44218c15c2bb1453065a4ceb80e28e90fe79e"
+    },
+    {
+      "map": "inf_Abel",
+      "path": "reference/base/shared/maps/inf_Abel.pms",
+      "sha256": "2e243df52d1b25ae2badd3e7a88b921399153a48c09124515745670eb2b798e2"
+    },
+    {
+      "map": "inf_April",
+      "path": "reference/base/shared/maps/inf_April.pms",
+      "sha256": "1260570022f1ef52f963d63b25b5597e4d340efd3c91dd4d0d9698069885f459"
+    },
+    {
+      "map": "inf_Argy",
+      "path": "reference/base/shared/maps/inf_Argy.pms",
+      "sha256": "dda5498533bef1d7e4df829e2dde6c184eb809b3bdcd70643839d35b9440b0b5"
+    },
+    {
+      "map": "inf_Belltower",
+      "path": "reference/base/shared/maps/inf_Belltower.pms",
+      "sha256": "20500fe99408cc08be0d0c7b424976d891ce4c138aeca2bb1d917f59cb443da4"
+    },
+    {
+      "map": "inf_Biologic",
+      "path": "reference/base/shared/maps/inf_Biologic.pms",
+      "sha256": "70a7c9d526debb53073d58ea0b71d22f121874e3f3739c645f850ba9bd1abd2e"
+    },
+    {
+      "map": "inf_Changeling",
+      "path": "reference/base/shared/maps/inf_Changeling.pms",
+      "sha256": "24c94a5d2acd70b6d91519aa42bbea6b9fe496efeace2b81805bdc50a9f1d0ed"
+    },
+    {
+      "map": "inf_Flute",
+      "path": "reference/base/shared/maps/inf_Flute.pms",
+      "sha256": "8ea1793a7e91e45c90b13ad93018d4e6f8d95c9e1b2414962e39c0e3785dfa04"
+    },
+    {
+      "map": "inf_Fortress",
+      "path": "reference/base/shared/maps/inf_Fortress.pms",
+      "sha256": "c883dfb79857f76c317f6467fc8380ff852f0a771803ff9d95e1de29c936aac6"
+    },
+    {
+      "map": "inf_Industrial",
+      "path": "reference/base/shared/maps/inf_Industrial.pms",
+      "sha256": "711814c233fb40d85247e188caec674e978ee70dd32df46f8042189653cb3203"
+    },
+    {
+      "map": "inf_Messner",
+      "path": "reference/base/shared/maps/inf_Messner.pms",
+      "sha256": "33742bfa942697caceec0f18b08a1b68e52a7905ae754ace1a85114a776297f2"
+    },
+    {
+      "map": "inf_Moonshine",
+      "path": "reference/base/shared/maps/inf_Moonshine.pms",
+      "sha256": "e06f90e6fd9a2948f2541604ebfab7cf1c2f4872736d3a6443f3b1ef55dfd7f3"
+    },
+    {
+      "map": "inf_Motheaten",
+      "path": "reference/base/shared/maps/inf_Motheaten.pms",
+      "sha256": "5237feb7c78b66b9844cbfd99f2158e81cfc5c9966fd590e4720d3c5313048d8"
+    },
+    {
+      "map": "inf_Outpost",
+      "path": "reference/base/shared/maps/inf_Outpost.pms",
+      "sha256": "1c8a64424734dc0c6d09e6630b5bf253b73d6f970c6919e68c7a3365e8a8aa54"
+    },
+    {
+      "map": "inf_Rescue",
+      "path": "reference/base/shared/maps/inf_Rescue.pms",
+      "sha256": "f45c5910df480b2718e613677ca6f9489c6fcc54e71af0e434c28390f9403b09"
+    },
+    {
+      "map": "inf_Rise",
+      "path": "reference/base/shared/maps/inf_Rise.pms",
+      "sha256": "b3fd61cabd15780068a35e69cf1e5761b64976e6f7487bdc98d4dc9d992f0a2c"
+    },
+    {
+      "map": "inf_Warehouse",
+      "path": "reference/base/shared/maps/inf_Warehouse.pms",
+      "sha256": "5ea5b43c19cc46a1222c38dc28f81e10ce2cb9ef831f0586e5089906843d0725"
+    },
+    {
+      "map": "inf_Warlock",
+      "path": "reference/base/shared/maps/inf_Warlock.pms",
+      "sha256": "cdfac2a1546ad650a9d301dcc808a14fc49516bc3a9bfba2bd9b14893ee664db"
+    }
+  ]
+}

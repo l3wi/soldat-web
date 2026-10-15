@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "map": "movement-poly-22",
+  "mapPath": "tests/fixtures/movement/maps/movement-poly-22.pms",
+  "mapSha256": "a5d588d3b31e4da5f6e5a397f706b0f0a14303e815f4851ac01a47c1606afa33",
+  "contentSetHash": "4e37508a22503c0d6d18656f592defb3e51bbc612851dc2a94dd3bb6dc372b6a",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "mapDirectory": "/fixture-maps",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": 0,
+      "y": -32,
+      "health": 150,
+      "heldFlag": 2
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 20,
+      "control": {
+        "Right": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 101,
+      "ticks": 20,
+      "control": {
+        "Left": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "poly-22-flag-2",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 1,
+      "edge": 1,
+      "polytype": 22,
+      "midpoint": [
+        0,
+        0
+      ],
+      "width": 3200,
+      "slope": 0,
+      "vertices": [
+        [
+          -1600,
+          0
+        ],
+        [
+          1600,
+          0
+        ],
+        [
+          1600,
+          300
+        ]
+      ],
+      "rawNormals": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          -1,
+          0,
+          1
+        ],
+        [
+          0.09334070980548859,
+          -0.9956341981887817,
+          1
+        ]
+      ]
+    },
+    "source": "test-only PMS: required missing polytype/capacity"
+  }
+}

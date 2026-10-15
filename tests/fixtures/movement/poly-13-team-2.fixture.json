@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "map": "ctf_Snakebite",
+  "mapPath": "reference/base/shared/maps/ctf_Snakebite.pms",
+  "mapSha256": "566aadffc6bf052cccfb305d287abe205d6785703ebad5bb85dfb2627ebf3a71",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 2,
+      "spawnpoint": 1,
+      "x": 1052.96240234375,
+      "y": -155.97720336914062,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 1,
+      "ticks": 20,
+      "control": {
+        "Right": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 21,
+      "ticks": 40,
+      "control": {
+        "Left": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "poly-13-team-2",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 452,
+      "edge": 0,
+      "polytype": 13,
+      "midpoint": [
+        1052.96240234375,
+        -123.97720336914062
+      ],
+      "width": 15.9998779296875,
+      "slope": 0,
+      "vertices": [
+        [
+          1064.96240234375,
+          -87.9771728515625
+        ],
+        [
+          1064.96240234375,
+          -159.9772186279297
+        ],
+        [
+          1080.9622802734375,
+          -159.9772186279297
+        ]
+      ],
+      "rawNormals": [
+        [
+          1,
+          0,
+          1
+        ],
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          -0.9761874675750732,
+          -0.21692876517772675,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical"
+  }
+}

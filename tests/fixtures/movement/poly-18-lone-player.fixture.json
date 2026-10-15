@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "map": "ctf_Crucifix",
+  "mapPath": "reference/base/shared/maps/ctf_Crucifix.pms",
+  "mapSha256": "4f563e2478b706e4b9016d1524746472c77ac98287c982531c97180d368ba8eb",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": 1.68157958984375,
+      "y": 1036.4052734375,
+      "health": 150
+    }
+  ],
+  "inputs": [],
+  "metadata": {
+    "purpose": "poly-18-lone-player",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 176,
+      "edge": 1,
+      "polytype": 18,
+      "midpoint": [
+        1.68157958984375,
+        1068.4052734375
+      ],
+      "width": 470.1282958984375,
+      "slope": 0.00009555237451545468,
+      "vertices": [
+        [
+          -233.382568359375,
+          1068.3828125
+        ],
+        [
+          236.7457275390625,
+          1068.427734375
+        ],
+        [
+          0.5468749403953552,
+          1283.3681640625
+        ]
+      ],
+      "rawNormals": [
+        [
+          -0.0003344333090353757,
+          3.5,
+          1
+        ],
+        [
+          -2.3556394577026367,
+          -2.588621139526367,
+          1
+        ],
+        [
+          2.3683266639709473,
+          -2.577019214630127,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "lonePlayer": true
+  }
+}

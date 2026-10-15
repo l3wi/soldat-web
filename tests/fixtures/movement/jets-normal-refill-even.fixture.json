@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "map": "Arena",
+  "mapPath": "reference/base/shared/maps/Arena.pms",
+  "mapSha256": "bb0d2ba2ace3db2e22d62909d12d956acc46954f4df9c6d6c0b6eac2dd54fa30",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 900,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -409,
+      "y": -75,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 120,
+      "control": {
+        "Right": true,
+        "MouseAimX": 400
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 181,
+      "ticks": 20,
+      "control": {
+        "Up": true,
+        "MouseAimX": 400
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 201,
+      "ticks": 300,
+      "control": {
+        "Jetpack": true,
+        "MouseAimX": 400
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "jets-normal-refill-even",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 38,
+      "edge": 1,
+      "polytype": 0,
+      "midpoint": [
+        -458.5,
+        -495
+      ],
+      "width": 621,
+      "slope": -0.394524959742351,
+      "vertices": [
+        [
+          -769,
+          -372.5
+        ],
+        [
+          -148,
+          -617.5
+        ],
+        [
+          -229,
+          -500
+        ]
+      ],
+      "rawNormals": [
+        [
+          0.36699599027633667,
+          0.9302225112915039,
+          1
+        ],
+        [
+          -0.8233257532119751,
+          -0.5675692558288574,
+          1
+        ],
+        [
+          -0.22979268431663513,
+          -0.9732396006584167,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "jetRaw": 190,
+    "jetCapacity": 226,
+    "releaseTick": 501
+  }
+}

@@ -1,0 +1,3349 @@
+{
+  "version": 1,
+  "meaning": "Evidence review of original Linux server oracle, not sim-native/WASM equivalence. StandingPolyType is measured; exact source polygon identity is inferred from recorded probe geometry. False checks remain unproven and must not be called passing coverage.",
+  "fixtures": 98,
+  "checks": [
+    {
+      "name": "capture:flat-left.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 389715,
+        "sha256": "affdb189939d0fd7e199919de4164f92dc9d6a5941d3369a15f454d47dced425"
+      }
+    },
+    {
+      "name": "capture:flat-right.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 388631,
+        "sha256": "66ec397ce20c88b91ae11677aebef09ca95e0a2b6c8811945ee186ebabb6f937"
+      }
+    },
+    {
+      "name": "capture:slope-left.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 381649,
+        "sha256": "cbecd1c5e48edbb7dda7ce5cb7661009322fe81d0209288c9e7388c3c9eac489"
+      }
+    },
+    {
+      "name": "capture:slope-right.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 379518,
+        "sha256": "cb86bd91d51826b13cfc942d66e8e2f27bda9916856334f86f0d2ba1bc154a04"
+      }
+    },
+    {
+      "name": "capture:acute-edges.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 411661,
+        "sha256": "cd16a0ec3275e67d27404f87a482910630dc139957f927ecbcd3f6b0ba629db0"
+      }
+    },
+    {
+      "name": "capture:overlap-seams.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 419741,
+        "sha256": "a29751a69beecbc067f923e82cf10a7a7b6f63744d63b0899f4e7afa9eb94fe5"
+      }
+    },
+    {
+      "name": "capture:both-keys-left-first-ground.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 332206,
+        "sha256": "e813657ef6ea7bb88974fc20d0eb0512f7ead479151791e524c7e3866654ae3c"
+      }
+    },
+    {
+      "name": "capture:both-keys-left-first-air.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 339912,
+        "sha256": "ede4c96b275720ad42387f8757a437c08f962ba183fafa69166e5b8463d8a93d"
+      }
+    },
+    {
+      "name": "capture:both-keys-right-first-ground.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 334190,
+        "sha256": "687b70fc32aed5daa4ecc2285c90170ca967fb0aeb2998b86f698b578db5f21c"
+      }
+    },
+    {
+      "name": "capture:both-keys-right-first-air.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 338003,
+        "sha256": "ef11f2f8ab49dbe2e43495096a246eb47ba855a1b861f386682faba9d5b75f6b"
+      }
+    },
+    {
+      "name": "capture:up-down-order-up-first.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 333949,
+        "sha256": "5851ce8c9a21d3f4c44485463fa1fc4224b99b4a30ad4cd3b253b2cd029e0c67"
+      }
+    },
+    {
+      "name": "capture:up-down-order-down-first.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 333949,
+        "sha256": "5851ce8c9a21d3f4c44485463fa1fc4224b99b4a30ad4cd3b253b2cd029e0c67"
+      }
+    },
+    {
+      "name": "capture:jump-tap.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 301051,
+        "sha256": "5b8d5272231aca6fc7795d26259a63aff2e809cf025651ff22e114e2bbdd2d99"
+      }
+    },
+    {
+      "name": "capture:jump-hold.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 335890,
+        "sha256": "8fbb1a6d786d5921dcf4786e48a7bf0f4365a3fa4d0910860c7ee27e4607c8f6"
+      }
+    },
+    {
+      "name": "capture:sidejump-left.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 322989,
+        "sha256": "d9d7431e0939547e3b3fe24a9d93e716eb8428b01d7c337deefb9c6d3e32a4e7"
+      }
+    },
+    {
+      "name": "capture:backflip-left.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 332111,
+        "sha256": "c498af2dd2877fdf418ac40198662ae35960c5ee5ac6c1a955df9504fbfa1135"
+      }
+    },
+    {
+      "name": "capture:roll-crouch-prone-getup-left.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 360263,
+        "sha256": "f0abd9d0bf8f3be85a1b3cb27bf950ad9e98ea1c723dd879111a40c220b7617d"
+      }
+    },
+    {
+      "name": "capture:sidejump-right.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 321123,
+        "sha256": "f6861274122ccc4789d1c1a22083395409b52fe7d6f9a6cdb6a6ff884f27d721"
+      }
+    },
+    {
+      "name": "capture:backflip-right.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 330504,
+        "sha256": "1642bf71ddaa343066d6442bc77106ca559c9dc8d564056bdbc9f80445e24754"
+      }
+    },
+    {
+      "name": "capture:roll-crouch-prone-getup-right.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 359121,
+        "sha256": "986db50ea02d115c9292527b42233158397a262ea5b507356cd6bfd1be69c328"
+      }
+    },
+    {
+      "name": "capture:jets-zero-refill-even.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 600,
+        "states": 3601,
+        "requiredStates": 3601,
+        "compressedBytes": 457634,
+        "sha256": "fc09c286777239c937de7e5ec2c23582df5c68701417beda83c47b423e937e37"
+      }
+    },
+    {
+      "name": "capture:jets-zero-refill-odd.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 600,
+        "states": 3601,
+        "requiredStates": 3601,
+        "compressedBytes": 457568,
+        "sha256": "733e04ff0706d0f400caf498e50f45fd2185d99483d57f0d0a813e2d5057d379"
+      }
+    },
+    {
+      "name": "capture:jets-one-refill-even.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 600,
+        "states": 3601,
+        "requiredStates": 3601,
+        "compressedBytes": 551515,
+        "sha256": "d773e6f7a228593f28761e0df69c032520a048dd08dcef4cc812261359d79ffb"
+      }
+    },
+    {
+      "name": "capture:jets-one-refill-odd.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 600,
+        "states": 3601,
+        "requiredStates": 3601,
+        "compressedBytes": 551245,
+        "sha256": "e0c2548d3b0da252f562e192cb35a6dc9e0835a32b57743e4b31dd8d9d1a4d4a"
+      }
+    },
+    {
+      "name": "capture:jets-normal-refill-even.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 900,
+        "states": 5401,
+        "requiredStates": 5401,
+        "compressedBytes": 913941,
+        "sha256": "fdc51a7aeca255e92d2b09cca37f678d459072267377f25c706e16ff505bbbda"
+      }
+    },
+    {
+      "name": "capture:jets-normal-refill-odd.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 900,
+        "states": 5401,
+        "requiredStates": 5401,
+        "compressedBytes": 939296,
+        "sha256": "7dffebe0bab6faefd98c8c0bb6fd004311a144dc986a3329e1982a652a26c283"
+      }
+    },
+    {
+      "name": "capture:poly-0-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 284730,
+        "sha256": "1af5daa3b0dc1b72529ca04ad2d2e71a023877346c5b1a2aa9f95394f1754256"
+      }
+    },
+    {
+      "name": "capture:poly-1-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 285999,
+        "sha256": "e7f40bbb0f440ff2f83937aae3d7cc7fd01e86677856629abbb0933c7cef35f7"
+      }
+    },
+    {
+      "name": "capture:poly-2-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 262922,
+        "sha256": "97fc0c5a57cd1995d8dcf0477df1387c9e557200b52a25625723b66679781e16"
+      }
+    },
+    {
+      "name": "capture:poly-3-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 351273,
+        "sha256": "831d64ae4419c0a9a69b22add6300d09c2c5890c5971c72caa729b3bdd4ba540"
+      }
+    },
+    {
+      "name": "capture:poly-4-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 438535,
+        "sha256": "f9861eb3891ea3a911b2c8eee3d3f453eccc933d76fe29a23edcee57ded87a5a"
+      }
+    },
+    {
+      "name": "capture:poly-5-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 364530,
+        "sha256": "26cadefaa52ca04e87b0d798e51dcc28e27763abee4d07ed4a008eec39a47444"
+      }
+    },
+    {
+      "name": "capture:poly-6-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 402562,
+        "sha256": "f159a3d8ffa340ccc9b08eda56f215dc677bff966a64d5d210622e037cf0c96b"
+      }
+    },
+    {
+      "name": "capture:poly-7-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 325941,
+        "sha256": "f3553fb663eedfd3a1a99790146fea21ac0dd0ae4c7852133a3db30dc550771f"
+      }
+    },
+    {
+      "name": "capture:poly-8-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 273431,
+        "sha256": "9a0939e6328f6d53d6e41a84f1330ab059697a712ea136625c83d5d642183a95"
+      }
+    },
+    {
+      "name": "capture:poly-9-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 378361,
+        "sha256": "0983cca098a288e5ad8c86f8e704436758f878ae6f5b78b54e68ff24401db3ae"
+      }
+    },
+    {
+      "name": "capture:poly-10-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463867,
+        "sha256": "36da958cda9fed89f38453cf24c2557d81301c4df464883490c6295cef278184"
+      }
+    },
+    {
+      "name": "capture:poly-10-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "c9a352f72b3b8fa0890510e312c92cf0bf7a30ff4253e40c33039a8ee24847ff"
+      }
+    },
+    {
+      "name": "capture:poly-10-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463884,
+        "sha256": "75051a01f6a4de6ce67d118c95f1b25c95a9ce47eefdbf3363df84770967d23d"
+      }
+    },
+    {
+      "name": "capture:poly-10-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "977524ac1f70f8bb285f1f226cc75d98a8138734ea5d31d97e68eef9ff3d0ee7"
+      }
+    },
+    {
+      "name": "capture:poly-10-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "722f4c4e4eb9bb88974bd2706311c240342d709d7f2cf00cf791e6b99a3fd5fc"
+      }
+    },
+    {
+      "name": "capture:poly-11-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 297468,
+        "sha256": "19f54aefcea4e8a89eb7f75178dd4090bb7088f7bc10f6cda81afa2af923f16d"
+      }
+    },
+    {
+      "name": "capture:poly-11-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 302787,
+        "sha256": "9869882936327d9e02cc3abdeff3e77492049f3eaa2633e14041445818ebdfd0"
+      }
+    },
+    {
+      "name": "capture:poly-11-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 297488,
+        "sha256": "63a6fc9d21a7fc429361572bfbf58c74d87bae5564925a1d56b22d567a1d2844"
+      }
+    },
+    {
+      "name": "capture:poly-11-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 297488,
+        "sha256": "869bfd059efc2ce5133d786a4dd22ee38536aef667926db58b6b459183972d71"
+      }
+    },
+    {
+      "name": "capture:poly-11-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 297488,
+        "sha256": "d6aa6c063f0ff025fa9396aa15aa80358516b624f0ce3488745a2f105ae5472d"
+      }
+    },
+    {
+      "name": "capture:poly-12-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463871,
+        "sha256": "44074b5559e7c4615934a831f1a718de8e56229d70c72024313864d3a81426f6"
+      }
+    },
+    {
+      "name": "capture:poly-12-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463889,
+        "sha256": "161b1abd7f3c68e048ab9dfab40f30714f7cb06835ce68c80d99f4428f4996e2"
+      }
+    },
+    {
+      "name": "capture:poly-12-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463889,
+        "sha256": "1dc7c96aa83ef744f11185afc9ddd7f71d307f01bfd3339dfe28e6e0f29e1ca8"
+      }
+    },
+    {
+      "name": "capture:poly-12-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463890,
+        "sha256": "20ae80cbb4969bc002cb12aed1e87af8c2b0beaa282bf329be35fe065fd47109"
+      }
+    },
+    {
+      "name": "capture:poly-12-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463890,
+        "sha256": "654b19e84174853b5cc40547979707bd0b803c0480329fbeb264a1415ee6c19c"
+      }
+    },
+    {
+      "name": "capture:poly-13-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 306075,
+        "sha256": "020bf519b1cc693481cdc0e4538c70538e68d5b36911739e3c5c6ce5325f1262"
+      }
+    },
+    {
+      "name": "capture:poly-13-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 306095,
+        "sha256": "961e7d7756e5b1538bef6019122d49f2dc39e9f9e46066262598a2405be590e9"
+      }
+    },
+    {
+      "name": "capture:poly-13-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 307085,
+        "sha256": "b273d7ac90c2afc84643b06a44fbe39c6b551750af5e7d0251986626e1afb0d8"
+      }
+    },
+    {
+      "name": "capture:poly-13-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 306095,
+        "sha256": "c4e29d06f6bc352502ecb987c45a1b9eb9a08c7506ef8e70385baf1cb8126d4f"
+      }
+    },
+    {
+      "name": "capture:poly-13-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 306095,
+        "sha256": "90ac4b5a5fddb9768e465e4ae33351dbc025ceec943531eee28c45ba7c6c9c6d"
+      }
+    },
+    {
+      "name": "capture:poly-14-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463869,
+        "sha256": "870f293ff7593f8d42e0cfb0b6137abcb99b285679ac6ee52a9fc70d987d098c"
+      }
+    },
+    {
+      "name": "capture:poly-14-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463887,
+        "sha256": "52f33c6e918b0cc1d03946ca0bbfe22eb90dedc4a49c2beeb22c737fa8dbbd5d"
+      }
+    },
+    {
+      "name": "capture:poly-14-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463886,
+        "sha256": "00dbfda0fb0da4a3a9086cbc42cb8514e25d1e1fe62265b824cab8111177d570"
+      }
+    },
+    {
+      "name": "capture:poly-14-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463887,
+        "sha256": "6d536c878926ef7f8be24b1f8778751e4696671a62e0f5504f4d1a0f79eb5775"
+      }
+    },
+    {
+      "name": "capture:poly-14-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463887,
+        "sha256": "65d6b4fb343f1345837273259652864895c74eeba563535113bcd3651da3bdce"
+      }
+    },
+    {
+      "name": "capture:poly-15-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463867,
+        "sha256": "42c7ef73fe03e320ecd8bab46f91ea25a4a94775abb091bf06ee5cae166ed950"
+      }
+    },
+    {
+      "name": "capture:poly-15-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463883,
+        "sha256": "fb2c8f4ebdcc2c5696959ef5079464f967fe6805c4fabb8f4dd13450df20bd6a"
+      }
+    },
+    {
+      "name": "capture:poly-15-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463883,
+        "sha256": "9edda357cc034ed9a99bf72c1b9b96ee968eee01e995eed2a8904e1915c2086f"
+      }
+    },
+    {
+      "name": "capture:poly-15-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 370482,
+        "sha256": "d3e4509b2fb3e0ef2ecec94ec046c1d3c1059c26888f1d14f3f91d95c1c3c62f"
+      }
+    },
+    {
+      "name": "capture:poly-15-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463884,
+        "sha256": "dab63acedfcf7ea0a119ae3241eed7c390fe9d2e02b82c87376ee9e2df3bea48"
+      }
+    },
+    {
+      "name": "capture:poly-16-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463868,
+        "sha256": "33245eebbec31c1f1f9d9ba6055e1d6abf61736572ae1b5a3ca91f8f2ee11030"
+      }
+    },
+    {
+      "name": "capture:poly-16-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "cc236c5679470b37c08eb4610f898f393e964df34cba42bb0560274c23cd8976"
+      }
+    },
+    {
+      "name": "capture:poly-16-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "f0a6a77d9651a1d100b2486c82f9164fd3d3b4c907460f5e0547d3ab5d310936"
+      }
+    },
+    {
+      "name": "capture:poly-16-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "b53a530d611f0139fe23b625dbbae28c9a178f5fa1873e21bc72ad4902d041d1"
+      }
+    },
+    {
+      "name": "capture:poly-16-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463886,
+        "sha256": "16a99a5fca9234f9ba8f334fceb17c998696a53e9575b73333425e180c7189a0"
+      }
+    },
+    {
+      "name": "capture:poly-17-team-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463868,
+        "sha256": "e31148281a66a031a8be98ddf6c7649b17242282788281478f77864f0bf3acbe"
+      }
+    },
+    {
+      "name": "capture:poly-17-team-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463886,
+        "sha256": "c30b8c8b285c3801b3b8efd39003be8154b48f0b8e0fead3e70141d7bd4886b7"
+      }
+    },
+    {
+      "name": "capture:poly-17-team-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463885,
+        "sha256": "0731e89a35440a98e9aa7fd40a314dd221d29438982b63d4e600460cd0e6411e"
+      }
+    },
+    {
+      "name": "capture:poly-17-team-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 463886,
+        "sha256": "692d020697d64c8ebfeebbea6ba3442e7c9238ed8bde5e43159c6e7cd667a0f1"
+      }
+    },
+    {
+      "name": "capture:poly-17-team-4.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 370486,
+        "sha256": "619627ba817a317626e32a304a593df6e577d9783068668ff885c8536cc3db1f"
+      }
+    },
+    {
+      "name": "capture:poly-18-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 459280,
+        "sha256": "d779facd93d876761200341c46671ab634408058481b4a93e2138d85b1aa5654"
+      }
+    },
+    {
+      "name": "capture:poly-19-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 496343,
+        "sha256": "b37fffe7aa5f7828ce2df5a88db16b55f758da71d8661c69e2feaf0aa7096bff"
+      }
+    },
+    {
+      "name": "capture:poly-20-flag-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 321662,
+        "sha256": "43dd58f68232cd663c3cdfb4b7674097038aae32d7ad83f4053056194648de03"
+      }
+    },
+    {
+      "name": "capture:poly-20-flag-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 466163,
+        "sha256": "4b618026c0e55d3775a2cd2de4905173f8e6c55bd55ebe0b75d9d77601227d99"
+      }
+    },
+    {
+      "name": "capture:poly-20-flag-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 488324,
+        "sha256": "ef4ef8f39243e0f95468940282736d998321c430a81138c98dc4002717c782ab"
+      }
+    },
+    {
+      "name": "capture:poly-20-flag-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 488324,
+        "sha256": "528bbd41617dfa0bcb81860203f14e5cc1d4d64779852bba5bf412c8f2d58ee3"
+      }
+    },
+    {
+      "name": "capture:poly-21-flag-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 350113,
+        "sha256": "fe026bfbb31b70737657b9d45b4fec5b4d78701d9fbd92c46983e8f569386e94"
+      }
+    },
+    {
+      "name": "capture:poly-21-flag-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 395088,
+        "sha256": "7045b9043a33b80bca7b6ee11477d11ecc5a5140ae5f2b2d9035d4498fb2d10c"
+      }
+    },
+    {
+      "name": "capture:poly-21-flag-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 395369,
+        "sha256": "b40ee3c7e266e134532122577952837a43d69328b6b022a10a03a8697db2bdfb"
+      }
+    },
+    {
+      "name": "capture:poly-21-flag-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 395369,
+        "sha256": "649c0e9023d36377fdfd4e0f0eb686679578d19afaf936f8ecac3036737eacef"
+      }
+    },
+    {
+      "name": "capture:poly-22-flag-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 341624,
+        "sha256": "420fd220bb37b3e0b1960362ed13e1241690f6e39e8d47bf6050c66c47e27d3a"
+      }
+    },
+    {
+      "name": "capture:poly-22-flag-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 548355,
+        "sha256": "e8e9100e351bc4e097d174818a5eefe80983da98b9b4f3d227151b9aebc2a1be"
+      }
+    },
+    {
+      "name": "capture:poly-22-flag-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 548341,
+        "sha256": "6926344dff2d09fff6775d491133537a8e3383336556f0018ff9441c3093a463"
+      }
+    },
+    {
+      "name": "capture:poly-22-flag-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 548342,
+        "sha256": "c96e899c704305e7a7ddabf0830c6090ea8e9a8dae6496e5455fa7ad0f19561c"
+      }
+    },
+    {
+      "name": "capture:poly-23-flag-0.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 313558,
+        "sha256": "c4512208d99e3ee2dd7cc027270dfbc7662c16c9fe141cbc09d3538ca3778eb4"
+      }
+    },
+    {
+      "name": "capture:poly-23-flag-1.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 384247,
+        "sha256": "46442071bf203618799336ef0f64445506386019a87020ad79eae02f00748d36"
+      }
+    },
+    {
+      "name": "capture:poly-23-flag-2.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 383502,
+        "sha256": "1934535195dc027a421332d40c8e094b5a484da4b818b2a6cc0cd218b1b38c51"
+      }
+    },
+    {
+      "name": "capture:poly-23-flag-3.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 383502,
+        "sha256": "40558f6f0ea90bb1e2d28504bb4a2c74497d604d07027bc06c1f01be5768d475"
+      }
+    },
+    {
+      "name": "capture:poly-24-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 414815,
+        "sha256": "35d99f3e5b052156f5f643e36d27acb612b8626b769022df741f907ad3aa4a4d"
+      }
+    },
+    {
+      "name": "capture:poly-25-lone-player.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 360,
+        "states": 2161,
+        "requiredStates": 2161,
+        "compressedBytes": 295277,
+        "sha256": "00f9effe9c22c2f92658fc128d7ae7676993272a121c04be90bd84bd23cf7b0f"
+      }
+    },
+    {
+      "name": "capture:long-flat-10000.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 10000,
+        "states": 60001,
+        "requiredStates": 60001,
+        "compressedBytes": 11733975,
+        "sha256": "9b4348dc6cdf0ca11ba9644e4607e342bb0c1c97d5841f15c0904eeaf7b1e53e"
+      }
+    },
+    {
+      "name": "capture:long-slope-10000.fixture.json",
+      "proven": true,
+      "evidence": {
+        "ticks": 10000,
+        "states": 60001,
+        "requiredStates": 60001,
+        "compressedBytes": 12315069,
+        "sha256": "d4e26d4b09d79609067a0283f5e64c9ec5a808c585aca78c907e498c2c714709"
+      }
+    },
+    {
+      "name": "animation:sidejump-left",
+      "proven": true,
+      "evidence": {
+        "required": [
+          4
+        ],
+        "observed": [
+          0,
+          1,
+          2,
+          4,
+          5
+        ]
+      }
+    },
+    {
+      "name": "animation:backflip-left",
+      "proven": true,
+      "evidence": {
+        "required": [
+          23
+        ],
+        "observed": [
+          0,
+          2,
+          5,
+          23
+        ]
+      }
+    },
+    {
+      "name": "animation:roll-crouch-prone-getup-left",
+      "proven": true,
+      "evidence": {
+        "required": [
+          22,
+          6,
+          34,
+          38,
+          39
+        ],
+        "observed": [
+          0,
+          1,
+          2,
+          5,
+          6,
+          22,
+          34,
+          38,
+          39
+        ]
+      }
+    },
+    {
+      "name": "animation:sidejump-right",
+      "proven": true,
+      "evidence": {
+        "required": [
+          4
+        ],
+        "observed": [
+          0,
+          1,
+          4,
+          5
+        ]
+      }
+    },
+    {
+      "name": "animation:backflip-right",
+      "proven": true,
+      "evidence": {
+        "required": [
+          23
+        ],
+        "observed": [
+          0,
+          1,
+          2,
+          5,
+          23
+        ]
+      }
+    },
+    {
+      "name": "animation:roll-crouch-prone-getup-right",
+      "proven": true,
+      "evidence": {
+        "required": [
+          22,
+          6,
+          34,
+          38,
+          39
+        ],
+        "observed": [
+          0,
+          1,
+          5,
+          6,
+          22,
+          34,
+          38,
+          39
+        ]
+      }
+    },
+    {
+      "name": "backflip-upward-impulse:left",
+      "proven": true,
+      "evidence": {
+        "tick": 55,
+        "frame": 6,
+        "velocityY": -0.8098239898681641
+      }
+    },
+    {
+      "name": "backflip-upward-impulse:right",
+      "proven": true,
+      "evidence": {
+        "tick": 55,
+        "frame": 6,
+        "velocityY": -0.8098254203796387
+      }
+    },
+    {
+      "name": "terrain-run:flat-left",
+      "proven": true,
+      "evidence": {
+        "polygon": 3,
+        "polytype": 0,
+        "minimumMainParticleToEdgeDistance": 1.9432373046875,
+        "firstStandingTypeTick": 32,
+        "nearTargetStandingTicks": 265,
+        "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+      }
+    },
+    {
+      "name": "terrain-run:flat-right",
+      "proven": true,
+      "evidence": {
+        "polygon": 3,
+        "polytype": 0,
+        "minimumMainParticleToEdgeDistance": 1.9432373046875,
+        "firstStandingTypeTick": 32,
+        "nearTargetStandingTicks": 271,
+        "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+      }
+    },
+    {
+      "name": "terrain-run:slope-left",
+      "proven": true,
+      "evidence": {
+        "polygon": 57,
+        "polytype": 0,
+        "minimumMainParticleToEdgeDistance": 2.3726371651060094,
+        "firstStandingTypeTick": 32,
+        "nearTargetStandingTicks": 239,
+        "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+      }
+    },
+    {
+      "name": "terrain-run:slope-right",
+      "proven": true,
+      "evidence": {
+        "polygon": 110,
+        "polytype": 0,
+        "minimumMainParticleToEdgeDistance": 2.4422157799538033,
+        "firstStandingTypeTick": 32,
+        "nearTargetStandingTicks": 238,
+        "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+      }
+    },
+    {
+      "name": "key-order:left-ground",
+      "proven": true,
+      "evidence": {
+        "initialX": -0.5,
+        "tick100X": 45.050899505615234,
+        "expectedDirection": 1
+      }
+    },
+    {
+      "name": "key-order:left-air",
+      "proven": true,
+      "evidence": {
+        "initialX": -0.5,
+        "tick100X": -84.35819244384766,
+        "expectedDirection": -1
+      }
+    },
+    {
+      "name": "key-order:right-ground",
+      "proven": true,
+      "evidence": {
+        "initialX": -0.5,
+        "tick100X": -46.050899505615234,
+        "expectedDirection": -1
+      }
+    },
+    {
+      "name": "key-order:right-air",
+      "proven": true,
+      "evidence": {
+        "initialX": -0.5,
+        "tick100X": 83.35819244384766,
+        "expectedDirection": 1
+      }
+    },
+    {
+      "name": "up-down-order-preserves-original-no-priority",
+      "proven": true,
+      "evidence": {
+        "upFirst": "5851ce8c9a21d3f4c44485463fa1fc4224b99b4a30ad4cd3b253b2cd029e0c67",
+        "downFirst": "5851ce8c9a21d3f4c44485463fa1fc4224b99b4a30ad4cd3b253b2cd029e0c67"
+      }
+    },
+    {
+      "name": "acute-vertex-probe",
+      "proven": true,
+      "evidence": {
+        "nearestAcuteVertex": 3.4066681561463663,
+        "target": {
+          "polygon": 3,
+          "polytype": 0,
+          "minimumMainParticleToEdgeDistance": 2.0255126953125,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 23,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        },
+        "acuteVertex": [
+          1434,
+          -1277
+        ]
+      }
+    },
+    {
+      "name": "overlapping-stock-triangle-probe",
+      "proven": true,
+      "evidence": {
+        "overlapPolygons": [
+          55
+        ],
+        "target": {
+          "polygon": 96,
+          "polytype": 0,
+          "minimumMainParticleToEdgeDistance": 1.9461602456185225,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 175,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "ice-contact",
+      "proven": true,
+      "evidence": {
+        "polygon": 367,
+        "polytype": 4,
+        "minimumMainParticleToEdgeDistance": 2.246871614218824,
+        "firstStandingTypeTick": 32,
+        "nearTargetStandingTicks": 222,
+        "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+      }
+    },
+    {
+      "name": "tap/hold-jump",
+      "proven": true,
+      "evidence": {
+        "tapGrounded": 319,
+        "holdGrounded": 204
+      }
+    },
+    {
+      "name": "fuel:zero-even",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 0,
+        "firstEmpty": 0,
+        "groundedAfterEmpty": 32,
+        "groundedRefills": 0,
+        "airborneRefills": 0,
+        "refillTickParity": []
+      }
+    },
+    {
+      "name": "fuel:one-even",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 1,
+        "firstEmpty": 61,
+        "groundedAfterEmpty": 70,
+        "groundedRefills": 2,
+        "airborneRefills": 0,
+        "refillTickParity": [
+          1
+        ]
+      }
+    },
+    {
+      "name": "fuel:normal-even",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 226,
+        "firstEmpty": 426,
+        "groundedAfterEmpty": 476,
+        "groundedRefills": 226,
+        "airborneRefills": 0,
+        "refillTickParity": [
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "name": "fuel:zero-odd",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 0,
+        "firstEmpty": 0,
+        "groundedAfterEmpty": 32,
+        "groundedRefills": 0,
+        "airborneRefills": 0,
+        "refillTickParity": []
+      }
+    },
+    {
+      "name": "fuel:one-odd",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 1,
+        "firstEmpty": 62,
+        "groundedAfterEmpty": 71,
+        "groundedRefills": 2,
+        "airborneRefills": 0,
+        "refillTickParity": [
+          0
+        ]
+      }
+    },
+    {
+      "name": "fuel:normal-odd",
+      "proven": true,
+      "evidence": {
+        "min": 0,
+        "max": 226,
+        "firstEmpty": 427,
+        "groundedAfterEmpty": 477,
+        "groundedRefills": 226,
+        "airborneRefills": 0,
+        "refillTickParity": [
+          0,
+          1
+        ]
+      }
+    },
+    {
+      "name": "team-filter:10",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": null,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-10-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 10,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-10-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 10,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-10-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 10,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-10-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 10,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-10-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 10,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:11",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": 1,
+        "distinctFromTeam0": [
+          false,
+          true,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-11-team-0.fixture.json",
+            "target": {
+              "polygon": 451,
+              "polytype": 11,
+              "minimumMainParticleToEdgeDistance": 0.06850597842754337,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 271,
+            "final": [
+              {
+                "bits": "c53d73e1",
+                "decimal": -3031.242431640625
+              },
+              {
+                "bits": "c3ced44f",
+                "decimal": -413.6586608886719
+              }
+            ]
+          },
+          {
+            "fixture": "poly-11-team-1.fixture.json",
+            "target": {
+              "polygon": 451,
+              "polytype": 11,
+              "minimumMainParticleToEdgeDistance": 1.89940113060409,
+              "firstStandingTypeTick": 32,
+              "nearTargetStandingTicks": 296,
+              "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+            },
+            "standingTypes": [
+              0,
+              11
+            ],
+            "grounded": 296,
+            "final": [
+              {
+                "bits": "c53cd0d0",
+                "decimal": -3021.05078125
+              },
+              {
+                "bits": "c404ed0b",
+                "decimal": -531.7037963867188
+              }
+            ]
+          },
+          {
+            "fixture": "poly-11-team-2.fixture.json",
+            "target": {
+              "polygon": 451,
+              "polytype": 11,
+              "minimumMainParticleToEdgeDistance": 0.06850597842754337,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 271,
+            "final": [
+              {
+                "bits": "c53d73e1",
+                "decimal": -3031.242431640625
+              },
+              {
+                "bits": "c3ced44f",
+                "decimal": -413.6586608886719
+              }
+            ]
+          },
+          {
+            "fixture": "poly-11-team-3.fixture.json",
+            "target": {
+              "polygon": 451,
+              "polytype": 11,
+              "minimumMainParticleToEdgeDistance": 0.06850597842754337,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 271,
+            "final": [
+              {
+                "bits": "c53d73e1",
+                "decimal": -3031.242431640625
+              },
+              {
+                "bits": "c3ced44f",
+                "decimal": -413.6586608886719
+              }
+            ]
+          },
+          {
+            "fixture": "poly-11-team-4.fixture.json",
+            "target": {
+              "polygon": 451,
+              "polytype": 11,
+              "minimumMainParticleToEdgeDistance": 0.06850597842754337,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 271,
+            "final": [
+              {
+                "bits": "c53d73e1",
+                "decimal": -3031.242431640625
+              },
+              {
+                "bits": "c3ced44f",
+                "decimal": -413.6586608886719
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:12",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": null,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-12-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 12,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-12-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 12,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-12-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 12,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-12-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 12,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-12-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 12,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:13",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": 2,
+        "distinctFromTeam0": [
+          false,
+          false,
+          true,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-13-team-0.fixture.json",
+            "target": {
+              "polygon": 452,
+              "polytype": 13,
+              "minimumMainParticleToEdgeDistance": 1.93115234375,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 304,
+            "final": [
+              {
+                "bits": "448391ca",
+                "decimal": 1052.555908203125
+              },
+              {
+                "bits": "c2bd9039",
+                "decimal": -94.78168487548828
+              }
+            ]
+          },
+          {
+            "fixture": "poly-13-team-1.fixture.json",
+            "target": {
+              "polygon": 452,
+              "polytype": 13,
+              "minimumMainParticleToEdgeDistance": 1.93115234375,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 304,
+            "final": [
+              {
+                "bits": "448391ca",
+                "decimal": 1052.555908203125
+              },
+              {
+                "bits": "c2bd9039",
+                "decimal": -94.78168487548828
+              }
+            ]
+          },
+          {
+            "fixture": "poly-13-team-2.fixture.json",
+            "target": {
+              "polygon": 452,
+              "polytype": 13,
+              "minimumMainParticleToEdgeDistance": 3.8287353515625,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0,
+              13
+            ],
+            "grounded": 307,
+            "final": [
+              {
+                "bits": "44826fe6",
+                "decimal": 1043.496826171875
+              },
+              {
+                "bits": "c2bd7170",
+                "decimal": -94.7215576171875
+              }
+            ]
+          },
+          {
+            "fixture": "poly-13-team-3.fixture.json",
+            "target": {
+              "polygon": 452,
+              "polytype": 13,
+              "minimumMainParticleToEdgeDistance": 1.93115234375,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 304,
+            "final": [
+              {
+                "bits": "448391ca",
+                "decimal": 1052.555908203125
+              },
+              {
+                "bits": "c2bd9039",
+                "decimal": -94.78168487548828
+              }
+            ]
+          },
+          {
+            "fixture": "poly-13-team-4.fixture.json",
+            "target": {
+              "polygon": 452,
+              "polytype": 13,
+              "minimumMainParticleToEdgeDistance": 1.93115234375,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 304,
+            "final": [
+              {
+                "bits": "448391ca",
+                "decimal": 1052.555908203125
+              },
+              {
+                "bits": "c2bd9039",
+                "decimal": -94.78168487548828
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:14",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": null,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-14-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 14,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-14-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 14,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-14-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 14,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-14-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 14,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-14-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 14,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:15",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": 3,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          true,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-15-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 15,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-15-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 15,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-15-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 15,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-15-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 15,
+              "minimumMainParticleToEdgeDistance": 1.9430813789367676,
+              "firstStandingTypeTick": 32,
+              "nearTargetStandingTicks": 303,
+              "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+            },
+            "standingTypes": [
+              0,
+              15
+            ],
+            "grounded": 303,
+            "final": [
+              {
+                "bits": "c155d476",
+                "decimal": -13.364370346069336
+              },
+              {
+                "bits": "bffe5e68",
+                "decimal": -1.9872560501098633
+              }
+            ]
+          },
+          {
+            "fixture": "poly-15-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 15,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:16",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": null,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          {
+            "fixture": "poly-16-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 16,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-16-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 16,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-16-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 16,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-16-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 16,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-16-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 16,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "team-filter:17",
+      "proven": true,
+      "evidence": {
+        "eligibleTeam": 4,
+        "distinctFromTeam0": [
+          false,
+          false,
+          false,
+          false,
+          true
+        ],
+        "groups": [
+          {
+            "fixture": "poly-17-team-0.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 17,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-17-team-1.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 17,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-17-team-2.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 17,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-17-team-3.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 17,
+              "minimumMainParticleToEdgeDistance": 0.008486697768155036,
+              "firstStandingTypeTick": null,
+              "nearTargetStandingTicks": 0,
+              "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+            },
+            "standingTypes": [
+              0
+            ],
+            "grounded": 0,
+            "final": [
+              {
+                "bits": "c2597f96",
+                "decimal": -54.374595642089844
+              },
+              {
+                "bits": "44c1be0b",
+                "decimal": 1549.9388427734375
+              }
+            ]
+          },
+          {
+            "fixture": "poly-17-team-4.fixture.json",
+            "target": {
+              "polygon": 1,
+              "polytype": 17,
+              "minimumMainParticleToEdgeDistance": 1.9430813789367676,
+              "firstStandingTypeTick": 32,
+              "nearTargetStandingTicks": 303,
+              "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+            },
+            "standingTypes": [
+              0,
+              17
+            ],
+            "grounded": 303,
+            "final": [
+              {
+                "bits": "c155d476",
+                "decimal": -13.364370346069336
+              },
+              {
+                "bits": "bffe5e68",
+                "decimal": -1.9872560501098633
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "flag-filter:20",
+      "proven": true,
+      "evidence": [
+        {
+          "fixture": "poly-20-flag-0.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 311,
+          "standingTypes": [
+            0,
+            20
+          ],
+          "target": {
+            "polygon": 162,
+            "polytype": 20,
+            "minimumMainParticleToEdgeDistance": 1.7136140641280841,
+            "firstStandingTypeTick": 32,
+            "nearTargetStandingTicks": 311,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "c46ce1d6",
+              "decimal": -947.5286865234375
+            },
+            {
+              "bits": "4297f798",
+              "decimal": 75.98358154296875
+            }
+          ]
+        },
+        {
+          "fixture": "poly-20-flag-1.fixture.json",
+          "health": [
+            -10,
+            150
+          ],
+          "grounded": 241,
+          "standingTypes": [
+            0,
+            20
+          ],
+          "target": {
+            "polygon": 162,
+            "polytype": 20,
+            "minimumMainParticleToEdgeDistance": 1.7136140641280841,
+            "firstStandingTypeTick": 32,
+            "nearTargetStandingTicks": 240,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "c46db2b9",
+              "decimal": -950.7925415039062
+            },
+            {
+              "bits": "429334c8",
+              "decimal": 73.60308837890625
+            }
+          ]
+        },
+        {
+          "fixture": "poly-20-flag-2.fixture.json",
+          "health": [
+            -10,
+            150
+          ],
+          "grounded": 241,
+          "standingTypes": [
+            0,
+            20
+          ],
+          "target": {
+            "polygon": 162,
+            "polytype": 20,
+            "minimumMainParticleToEdgeDistance": 1.7136140641280841,
+            "firstStandingTypeTick": 32,
+            "nearTargetStandingTicks": 240,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "c46db2b9",
+              "decimal": -950.7925415039062
+            },
+            {
+              "bits": "429334c8",
+              "decimal": 73.60308837890625
+            }
+          ]
+        },
+        {
+          "fixture": "poly-20-flag-3.fixture.json",
+          "health": [
+            -10,
+            150
+          ],
+          "grounded": 241,
+          "standingTypes": [
+            0,
+            20
+          ],
+          "target": {
+            "polygon": 162,
+            "polytype": 20,
+            "minimumMainParticleToEdgeDistance": 1.7136140641280841,
+            "firstStandingTypeTick": 32,
+            "nearTargetStandingTicks": 240,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "c46db2b9",
+              "decimal": -950.7925415039062
+            },
+            {
+              "bits": "429334c8",
+              "decimal": 73.60308837890625
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flag-filter:21",
+      "proven": true,
+      "evidence": [
+        {
+          "fixture": "poly-21-flag-0.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 284,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 3,
+            "polytype": 21,
+            "minimumMainParticleToEdgeDistance": 4.779828193193976,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "42e70dd4",
+              "decimal": 115.52700805664062
+            },
+            {
+              "bits": "c0352842",
+              "decimal": -2.8305821418762207
+            }
+          ]
+        },
+        {
+          "fixture": "poly-21-flag-1.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 312,
+          "standingTypes": [
+            0,
+            21
+          ],
+          "target": {
+            "polygon": 3,
+            "polytype": 21,
+            "minimumMainParticleToEdgeDistance": 12.000002461069453,
+            "firstStandingTypeTick": 12,
+            "nearTargetStandingTicks": 12,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "42bb763b",
+              "decimal": 93.73091888427734
+            },
+            {
+              "bits": "c1dc2d21",
+              "decimal": -27.522035598754883
+            }
+          ]
+        },
+        {
+          "fixture": "poly-21-flag-2.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 312,
+          "standingTypes": [
+            0,
+            21
+          ],
+          "target": {
+            "polygon": 3,
+            "polytype": 21,
+            "minimumMainParticleToEdgeDistance": 12.000002461069453,
+            "firstStandingTypeTick": 12,
+            "nearTargetStandingTicks": 12,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "42bb763b",
+              "decimal": 93.73091888427734
+            },
+            {
+              "bits": "c1dc2d21",
+              "decimal": -27.522035598754883
+            }
+          ]
+        },
+        {
+          "fixture": "poly-21-flag-3.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 312,
+          "standingTypes": [
+            0,
+            21
+          ],
+          "target": {
+            "polygon": 3,
+            "polytype": 21,
+            "minimumMainParticleToEdgeDistance": 12.000002461069453,
+            "firstStandingTypeTick": 12,
+            "nearTargetStandingTicks": 12,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "42bb763b",
+              "decimal": 93.73091888427734
+            },
+            {
+              "bits": "c1dc2d21",
+              "decimal": -27.522035598754883
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flag-filter:22",
+      "proven": true,
+      "evidence": [
+        {
+          "fixture": "poly-22-flag-0.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 306,
+          "standingTypes": [
+            0,
+            22
+          ],
+          "target": {
+            "polygon": 1,
+            "polytype": 22,
+            "minimumMainParticleToEdgeDistance": 1.9430813789367676,
+            "firstStandingTypeTick": 32,
+            "nearTargetStandingTicks": 306,
+            "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+          },
+          "final": [
+            {
+              "bits": "be17eec8",
+              "decimal": -0.14837181568145752
+            },
+            {
+              "bits": "bffeff14",
+              "decimal": -1.992159366607666
+            }
+          ]
+        },
+        {
+          "fixture": "poly-22-flag-1.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 0,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 1,
+            "polytype": 22,
+            "minimumMainParticleToEdgeDistance": 0.06860625743865967,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "3fcf75af",
+              "decimal": 1.6207789182662964
+            },
+            {
+              "bits": "44c1be0b",
+              "decimal": 1549.9388427734375
+            }
+          ]
+        },
+        {
+          "fixture": "poly-22-flag-2.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 0,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 1,
+            "polytype": 22,
+            "minimumMainParticleToEdgeDistance": 0.06860625743865967,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "3fcf75af",
+              "decimal": 1.6207789182662964
+            },
+            {
+              "bits": "44c1be0b",
+              "decimal": 1549.9388427734375
+            }
+          ]
+        },
+        {
+          "fixture": "poly-22-flag-3.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 0,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 1,
+            "polytype": 22,
+            "minimumMainParticleToEdgeDistance": 0.06860625743865967,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "3fcf75af",
+              "decimal": 1.6207789182662964
+            },
+            {
+              "bits": "44c1be0b",
+              "decimal": 1549.9388427734375
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "flag-filter:23",
+      "proven": true,
+      "evidence": [
+        {
+          "fixture": "poly-23-flag-0.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 254,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 198,
+            "polytype": 23,
+            "minimumMainParticleToEdgeDistance": 0.06849130303150558,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "c486b84d",
+              "decimal": -1077.7593994140625
+            },
+            {
+              "bits": "c3a71281",
+              "decimal": -334.1445617675781
+            }
+          ]
+        },
+        {
+          "fixture": "poly-23-flag-1.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 254,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 198,
+            "polytype": 23,
+            "minimumMainParticleToEdgeDistance": 0.06849130303150558,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "c486b84d",
+              "decimal": -1077.7593994140625
+            },
+            {
+              "bits": "c3a71281",
+              "decimal": -334.1445617675781
+            }
+          ]
+        },
+        {
+          "fixture": "poly-23-flag-2.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 254,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 198,
+            "polytype": 23,
+            "minimumMainParticleToEdgeDistance": 0.06849130303150558,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "c486b84d",
+              "decimal": -1077.7593994140625
+            },
+            {
+              "bits": "c3a71281",
+              "decimal": -334.1445617675781
+            }
+          ]
+        },
+        {
+          "fixture": "poly-23-flag-3.fixture.json",
+          "health": [
+            150,
+            150
+          ],
+          "grounded": 254,
+          "standingTypes": [
+            0
+          ],
+          "target": {
+            "polygon": 198,
+            "polytype": 23,
+            "minimumMainParticleToEdgeDistance": 0.06849130303150558,
+            "firstStandingTypeTick": null,
+            "nearTargetStandingTicks": 0,
+            "evidence": "No matched grounded contact proof; inspect paired path/health/background outcomes. Proximity alone is not proof."
+          },
+          "final": [
+            {
+              "bits": "c486b84d",
+              "decimal": -1077.7593994140625
+            },
+            {
+              "bits": "c3a71281",
+              "decimal": -334.1445617675781
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "special-poly:5",
+      "proven": true,
+      "evidence": {
+        "health": [
+          -50,
+          150
+        ],
+        "deadTicks": 180,
+        "standingTypes": [
+          0,
+          5
+        ],
+        "target": {
+          "polygon": 42,
+          "polytype": 5,
+          "minimumMainParticleToEdgeDistance": 3.406986815647957,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 109,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "special-poly:6",
+      "proven": true,
+      "evidence": {
+        "health": [
+          -400,
+          150
+        ],
+        "deadTicks": 180,
+        "standingTypes": [
+          0,
+          6
+        ],
+        "target": {
+          "polygon": 573,
+          "polytype": 6,
+          "minimumMainParticleToEdgeDistance": 3.59627896768531,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 115,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "special-poly:7",
+      "proven": true,
+      "evidence": {
+        "health": [
+          -10,
+          150
+        ],
+        "deadTicks": 111,
+        "standingTypes": [
+          0,
+          7
+        ],
+        "target": {
+          "polygon": 437,
+          "polytype": 7,
+          "minimumMainParticleToEdgeDistance": 2.002376414487355,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 269,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "special-poly:8",
+      "proven": true,
+      "evidence": {
+        "health": [
+          50,
+          104
+        ],
+        "deadTicks": 0,
+        "standingTypes": [
+          0,
+          8
+        ],
+        "target": {
+          "polygon": 34,
+          "polytype": 8,
+          "minimumMainParticleToEdgeDistance": 1.943206787109375,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 321,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "special-poly:9",
+      "proven": true,
+      "evidence": {
+        "health": [
+          -10,
+          150
+        ],
+        "deadTicks": 87,
+        "standingTypes": [
+          0,
+          9
+        ],
+        "target": {
+          "polygon": 109,
+          "polytype": 9,
+          "minimumMainParticleToEdgeDistance": 2.3932345415855263,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 284,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "special-poly:19",
+      "proven": true,
+      "evidence": {
+        "health": [
+          -600,
+          150
+        ],
+        "deadTicks": 296,
+        "standingTypes": [
+          0,
+          19
+        ],
+        "target": {
+          "polygon": 1,
+          "polytype": 19,
+          "minimumMainParticleToEdgeDistance": 2.4840097427368164,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 125,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "background:24",
+      "proven": true,
+      "evidence": {
+        "transitions": [
+          {
+            "tick": 0,
+            "status": 1,
+            "poly": -2,
+            "testResult": false
+          },
+          {
+            "tick": 1,
+            "status": 0,
+            "poly": -1,
+            "testResult": false
+          },
+          {
+            "tick": 78,
+            "status": 1,
+            "poly": -1,
+            "testResult": true
+          },
+          {
+            "tick": 87,
+            "status": 1,
+            "poly": 4,
+            "testResult": true
+          },
+          {
+            "tick": 203,
+            "status": 0,
+            "poly": -1,
+            "testResult": false
+          }
+        ],
+        "observedBackgroundPolygons": [
+          {
+            "polygon": 4,
+            "polytype": 24
+          }
+        ],
+        "polygonIdentity": "Measured original BackgroundPoly resolves to raw PMS type24."
+      }
+    },
+    {
+      "name": "background:25",
+      "proven": true,
+      "evidence": {
+        "transitions": [
+          {
+            "tick": 0,
+            "status": 1,
+            "poly": -2,
+            "testResult": false
+          },
+          {
+            "tick": 1,
+            "status": 0,
+            "poly": -1,
+            "testResult": false
+          },
+          {
+            "tick": 32,
+            "status": 1,
+            "poly": -1,
+            "testResult": true
+          },
+          {
+            "tick": 48,
+            "status": 0,
+            "poly": -1,
+            "testResult": false
+          },
+          {
+            "tick": 63,
+            "status": 1,
+            "poly": -1,
+            "testResult": true
+          },
+          {
+            "tick": 64,
+            "status": 0,
+            "poly": -1,
+            "testResult": false
+          },
+          {
+            "tick": 65,
+            "status": 1,
+            "poly": -1,
+            "testResult": true
+          }
+        ],
+        "observedBackgroundPolygons": [],
+        "polygonIdentity": "Specific type25 polygon identity inferred from probe proximity; background entry/exit state transitions are measured."
+      }
+    },
+    {
+      "name": "bouncy-raw-normal",
+      "proven": true,
+      "evidence": {
+        "minimumVerticalVelocity": -9.561607360839844,
+        "maximumVerticalVelocity": 3.8032755851745605,
+        "target": {
+          "polygon": 176,
+          "polytype": 18,
+          "minimumMainParticleToEdgeDistance": 3.36193846121482,
+          "firstStandingTypeTick": 32,
+          "nearTargetStandingTicks": 3,
+          "evidence": "Measured matching StandingPolyType while grounded within16 world units of target geometry; polygon identity inferred from geometry."
+        }
+      }
+    },
+    {
+      "name": "two-long-runs",
+      "proven": true,
+      "evidence": [
+        {
+          "fixture": "long-flat-10000.fixture.json",
+          "ticks": 10000,
+          "sha256": "9b4348dc6cdf0ca11ba9644e4607e342bb0c1c97d5841f15c0904eeaf7b1e53e",
+          "compressedBytes": 11733975
+        },
+        {
+          "fixture": "long-slope-10000.fixture.json",
+          "ticks": 10000,
+          "sha256": "d4e26d4b09d79609067a0283f5e64c9ec5a808c585aca78c907e498c2c714709",
+          "compressedBytes": 12315069
+        }
+      ]
+    }
+  ],
+  "unproven": [],
+  "rawBytes": 3051208429,
+  "gzipBytes": 63506135,
+  "retainedGoldens": 96
+}

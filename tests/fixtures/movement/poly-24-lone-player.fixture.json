@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "map": "movement-poly-24",
+  "mapPath": "tests/fixtures/movement/maps/movement-poly-24.pms",
+  "mapSha256": "30ea566478bb1626aca5c6a50d30298a19323bbce867cb4a8f7f57453aa58aee",
+  "contentSetHash": "e947feebd1e381a11649f1ce1d1b2171d05e634809481f5d18a6ffb18e163db6",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "mapDirectory": "/fixture-maps",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -150,
+      "y": 68,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 41,
+      "ticks": 80,
+      "control": {
+        "Right": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 141,
+      "ticks": 100,
+      "control": {
+        "Left": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "poly-24-lone-player",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 3,
+      "edge": 1,
+      "polytype": 24,
+      "midpoint": [
+        0,
+        -100
+      ],
+      "width": 160,
+      "slope": 0,
+      "vertices": [
+        [
+          -80,
+          -100
+        ],
+        [
+          80,
+          -100
+        ],
+        [
+          80,
+          100
+        ]
+      ],
+      "rawNormals": [
+        [
+          0,
+          1,
+          1
+        ],
+        [
+          -1,
+          0,
+          1
+        ],
+        [
+          0.7808688282966614,
+          -0.6246950626373291,
+          1
+        ]
+      ]
+    },
+    "source": "test-only PMS: required missing polytype/capacity",
+    "lonePlayer": true
+  }
+}

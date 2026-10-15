@@ -1,0 +1,98 @@
+{
+  "version": 1,
+  "map": "Lagrange",
+  "mapPath": "reference/base/shared/maps/Lagrange.pms",
+  "mapSha256": "21ad091a1f42b35431d1072f2832496e87368c41d289cf2653fef422e443d5b4",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 600,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -308.5,
+      "y": -545.5,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 62,
+      "ticks": 260,
+      "control": {
+        "Jetpack": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 322,
+      "ticks": 60,
+      "control": {
+        "Down": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 382,
+      "ticks": 40,
+      "control": {
+        "Jetpack": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "jets-zero-refill-odd",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 96,
+      "edge": 1,
+      "polytype": 0,
+      "midpoint": [
+        -308.5,
+        -513.5
+      ],
+      "width": 2683,
+      "slope": -0.003354453969437197,
+      "vertices": [
+        [
+          -1650,
+          -509
+        ],
+        [
+          1033,
+          -518
+        ],
+        [
+          -837,
+          -449
+        ]
+      ],
+      "rawNormals": [
+        [
+          0.0033544350881129503,
+          0.9999943375587463,
+          1
+        ],
+        [
+          -0.03687330335378647,
+          -0.9993199110031128,
+          1
+        ],
+        [
+          0.07360057532787323,
+          -0.9972878098487854,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "jetRaw": 0,
+    "jetCapacity": 0,
+    "releaseTick": 322
+  }
+}

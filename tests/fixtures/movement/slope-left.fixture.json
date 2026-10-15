@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "map": "ctf_MFM",
+  "mapPath": "reference/base/shared/maps/ctf_MFM.pms",
+  "mapSha256": "67dcc3d2f5ce6362b54b50f6b35b917305b7845c741eff77d9d610eb0885ad05",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -364.1043701171875,
+      "y": -558,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 90,
+      "control": {
+        "Left": true,
+        "MouseAimX": -3000
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 151,
+      "ticks": 90,
+      "control": {
+        "Right": true,
+        "MouseAimX": 3000
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "slope-left",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 57,
+      "edge": 1,
+      "polytype": 0,
+      "midpoint": [
+        -364.1043701171875,
+        -526
+      ],
+      "width": 534,
+      "slope": 0.42134831460674155,
+      "vertices": [
+        [
+          -631.1043701171875,
+          -638.5
+        ],
+        [
+          -97.1043701171875,
+          -413.5
+        ],
+        [
+          -384.1043701171875,
+          -55.5
+        ]
+      ],
+      "rawNormals": [
+        [
+          -0.3882884383201599,
+          0.9215379357337952,
+          1
+        ],
+        [
+          -0.7802305221557617,
+          -0.6254920959472656,
+          1
+        ],
+        [
+          0.9207710027694702,
+          -0.39010366797447205,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "mirrorPair": "slope-left/right",
+    "mirrorMeaning": "Opposite stock ctf_MFM hills, exactly opposite top-edge slopes; upstream vertical asymmetry retained."
+  }
+}

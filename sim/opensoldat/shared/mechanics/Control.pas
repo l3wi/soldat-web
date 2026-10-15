@@ -51,7 +51,7 @@ uses
   Game,
   Net,
   Sprites,
-  Weapons;
+  Weapons{$IFDEF SIM}, SimRandom{$ENDIF};
 
 
 procedure ControlSprite(var SpriteC: TSprite);

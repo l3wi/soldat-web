@@ -12,6 +12,7 @@ git -c safe.directory=/repo/reference/base -C /repo/reference/base archive "$bas
 cd /work/source
 git apply --recount /repo/tools/oracle/patches/0001-oracle-entry-and-stage-hooks.patch
 cp /repo/tools/oracle/OracleHarness.pas server/OracleHarness.pas
+cp /repo/tools/oracle/OracleTrace.inc server/OracleTrace.inc
 cmake -S /work/source -B /work/cmake \
   -DBUILD_CLIENT=OFF -DBUILD_SERVER=ON -DBUILD_SCRIPTCORE=OFF -DBUILD_RCON=OFF \
   -DBUILD_STEAM=OFF -DADD_ASSETS=OFF -DCMAKE_BUILD_TYPE=Release \

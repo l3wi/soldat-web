@@ -33,6 +33,9 @@ uses
 
   // Library units
   IniFiles,
+  {$IFDEF SIM}
+  PhysFS,
+  {$ENDIF}
 
   // Helper units
   Util,
@@ -249,17 +252,37 @@ var
   WeaponIndex: Integer;
   Gun: ^TGun;
   Filename: string;
+  {$IFDEF SIM}
+  Source: TStream;
+  {$ENDIF}
 begin
   Result := False;
   ini := nil;
   conf := nil;
 
+  {$IFDEF SIM}
+  if not PHYSFS_exists(PChar(FilePath)) then
+    Exit;
+  {$ELSE}
   if not FileExists(FilePath) then
     Exit;
+  {$ENDIF}
 
   try
     conf := TStringList.Create;
+    {$IFDEF SIM}
+    Source := PHYSFS_readAsStream(PChar(FilePath));
+    try
+      conf.LoadFromStream(Source);
+    finally
+      Source.Free;
+    end;
+    ini := TMemIniFile.Create('');
+    ini.SetStrings(conf);
+    conf.Clear;
+    {$ELSE}
     ini := TMemIniFile.Create(FilePath);
+    {$ENDIF}
 
     if ini.SectionExists('Info') then
     begin

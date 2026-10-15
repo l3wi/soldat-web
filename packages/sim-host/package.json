@@ -5,6 +5,8 @@
   "exports": "./src/index.ts",
   "scripts": {
     "spike:node": "node src/node.ts",
-    "spike:serve": "bun src/serve.ts"
+    "spike:serve": "bun src/serve.ts",
+    "fixture:node": "node src/fixture-node.ts",
+    "fixture:serve": "bun src/fixture-serve.ts"
   }
 }

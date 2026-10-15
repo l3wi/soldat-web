@@ -108,7 +108,7 @@ uses
   Client,
   {$ENDIF}
   Bullets,
-  Game;
+  Game{$IFDEF SIM}, SimRandom{$ENDIF};
 
 
 function CreateThing(sPos: TVector2; owner, sStyle, N: Byte):

@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "map": "inf_Outpost",
+  "mapPath": "reference/base/shared/maps/inf_Outpost.pms",
+  "mapSha256": "1c8a64424734dc0c6d09e6630b5bf253b73d6f970c6919e68c7a3365e8a8aa54",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 4,
+      "spawnpoint": 1,
+      "x": -3009,
+      "y": -563,
+      "health": 150
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 20,
+      "control": {
+        "Right": true
+      },
+      "pressOrder": 0
+    },
+    {
+      "player": 1,
+      "start": 81,
+      "ticks": 40,
+      "control": {
+        "Left": true
+      },
+      "pressOrder": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "poly-11-team-4",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 451,
+      "edge": 1,
+      "polytype": 11,
+      "midpoint": [
+        -3009,
+        -531
+      ],
+      "width": 80,
+      "slope": -0.1,
+      "vertices": [
+        [
+          -3049,
+          -527
+        ],
+        [
+          -2969,
+          -535
+        ],
+        [
+          -2969,
+          -525
+        ]
+      ],
+      "rawNormals": [
+        [
+          0.09950372576713562,
+          0.9950371980667114,
+          1
+        ],
+        [
+          -1,
+          0,
+          1
+        ],
+        [
+          0.024992192164063454,
+          -0.999687671661377,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical"
+  }
+}

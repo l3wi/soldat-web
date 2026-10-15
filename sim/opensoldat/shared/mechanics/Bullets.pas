@@ -129,7 +129,7 @@ uses
     Sound,
     Sparks,
   {$ENDIF}
-  Game;
+  Game{$IFDEF SIM}, SimRandom{$ENDIF};
 
 
 function CreateBullet(sPos, sVelocity: TVector2; sNum: Byte;

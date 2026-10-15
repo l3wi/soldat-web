@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "map": "inf_Moonshine",
+  "mapPath": "reference/base/shared/maps/inf_Moonshine.pms",
+  "mapSha256": "e06f90e6fd9a2948f2541604ebfab7cf1c2f4872736d3a6443f3b1ef55dfd7f3",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": 766.4987182617188,
+      "y": 538.5833587646484,
+      "health": 150
+    }
+  ],
+  "inputs": [],
+  "metadata": {
+    "purpose": "poly-3-lone-player",
+    "coordinateSystem": "Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.",
+    "target": {
+      "polygon": 215,
+      "edge": 2,
+      "polytype": 3,
+      "midpoint": [
+        766.4987182617188,
+        570.5833587646484
+      ],
+      "width": 1748.6639404296875,
+      "slope": -0.11399790437104779,
+      "vertices": [
+        [
+          2647.16650390625,
+          679.25537109375
+        ],
+        [
+          -107.833251953125,
+          670.25537109375
+        ],
+        [
+          1640.8306884765625,
+          470.9113464355469
+        ]
+      ],
+      "rawNormals": [
+        [
+          0.00326677062548697,
+          -0.999994695186615,
+          1
+        ],
+        [
+          0.11326431483030319,
+          0.9935649037361145,
+          1
+        ],
+        [
+          -0.2027330845594406,
+          0.9792340397834778,
+          1
+        ]
+      ]
+    },
+    "source": "pinned stock PMS byte-identical",
+    "lonePlayer": true
+  }
+}
