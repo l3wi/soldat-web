@@ -51,8 +51,6 @@
         "style": 1
       }
     ],
-    "limitations": [
-      "Touch-return requires the flag first leave base; inspect inBase transition and base coordinates rather than the fixture name."
-    ]
+    "limitations": []
   }
 }

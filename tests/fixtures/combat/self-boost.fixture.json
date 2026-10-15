@@ -37,9 +37,9 @@
       "y": 0,
       "vx": 10,
       "vy": 0,
-      "timeout": 400,
       "target": 1,
       "hitCircle": 6,
+      "timeout": 400,
       "hitMultiply": 1
     }
   ],

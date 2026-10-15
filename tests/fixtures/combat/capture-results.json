@@ -3840,7 +3840,7 @@
     },
     {
       "fixture": "ctf-touch-return.fixture.json",
-      "fixtureSha256": "0708ac9be7bc605e918904d5a598cecb4218bf476d0036ace31af73b651ee9e0",
+      "fixtureSha256": "c48763f012424e35577e13f53e7245ad3ee470318f164a59abfa557187e137ea",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -3940,9 +3940,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Touch-return requires the flag first leave base; inspect inBase transition and base coordinates rather than the fixture name."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -4266,7 +4264,7 @@
         "sha256": "9190059b819b57e1d71d7ce8403f67d8055a56e0a61edc06356c1ca655d6b0e3",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "damage-decay-500-900.fixture.json",
@@ -5234,7 +5232,7 @@
     },
     {
       "fixture": "eagles-seed-1-shooters.fixture.json",
-      "fixtureSha256": "2c1b683e96420ae7507ac8da7a1fdc66700a8983b7295354a1868c439de98949",
+      "fixtureSha256": "cff0a6e330b80b0441ff3c350312e2364f74658c87c388effc7d91a81d48772f",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -5447,9 +5445,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Seed values and trajectories are captured; policy equivalence is within each RNG policy, not equality between original and keyed."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -5773,11 +5769,11 @@
         "sha256": "a71d593e6addb621bc2ad58c2368e0de11eaa2beb5d09947f216d04b3adfeaef",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "eagles-seed-2-shooters.fixture.json",
-      "fixtureSha256": "5935473dd35b1148ddaa5a500a39dcb0ed6ff98503f55e503b7d578b893796e9",
+      "fixtureSha256": "2eafd6ecdbefdfbeb274d72bbc49f4ff9106ba0f05c0a1f586aed99c5dfc7d61",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -6125,9 +6121,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Seed values and trajectories are captured; policy equivalence is within each RNG policy, not equality between original and keyed."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -6727,7 +6721,7 @@
         "sha256": "100ca8738d8e992666e3c14c4d63f174d6cdb2e0d16e67afd019f8e22a2b9a06",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "grenade-release-frame-14.fixture.json",
@@ -49409,7 +49403,7 @@
     },
     {
       "fixture": "ordering-collider-before-player-thing.fixture.json",
-      "fixtureSha256": "a52b6d57e7949f9cf8a61f43212cf786764d52d36a5f14675fd27e00ed5a942d",
+      "fixtureSha256": "13482a37d54d76f146736ff3a550a0e170532107b7f165b346c670bcd432659a",
       "mapSha256": "aa74a71c0ca2919c9bae2972a5554f6dc092f6b87f43f0671fb80d126a6a7146",
       "contentSetHash": "e9e92281557d2477373df0f0233c6b2eeb51adfabb56a269b19b1f3ba08be922",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -49630,9 +49624,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Collision winner means the last distance-accepted original response, not absence of earlier response effects. Accepted/rejected contact predicates remain unproved until captured."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -50308,11 +50300,11 @@
         "sha256": "116966c8b1a2177e7e02706cd2b2701636f557c471ae110e7db6f1fa049193c3",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "ordering-player-before-thing.fixture.json",
-      "fixtureSha256": "2c1b0608439e23d3ed7aa59c60643d8666939a43fea281ce032df9299f76714f",
+      "fixtureSha256": "9bb71d1a49cbcc254da163715d97c697e53422431cbefc913f1abf87c71e351d",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -50502,9 +50494,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Collision winner means the last distance-accepted original response, not absence of earlier response effects. Accepted/rejected contact predicates remain unproved until captured."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -51180,11 +51170,11 @@
         "sha256": "08bc04446eff942bee8a3a926542cc1d09672cf934812bbb9147f4550815e8c1",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "ordering-thing-before-player.fixture.json",
-      "fixtureSha256": "35460b8d67ebfe0eed4e22892a23a6b6da86586f7acd168196b3dd2decd24215",
+      "fixtureSha256": "29808f47c16e1168e22f0598badb8903aa31010313759b72088d2475773e801a",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -51374,9 +51364,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Collision winner means the last distance-accepted original response, not absence of earlier response effects. Accepted/rejected contact predicates remain unproved until captured."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -52052,7 +52040,7 @@
         "sha256": "c3944ebdfcebd671023e67d1b521bdd2513b0df848df2f0b536bfc3ca52e5341",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "reload-interrupted-changeweapon.fixture.json",
@@ -59352,7 +59340,7 @@
     },
     {
       "fixture": "shotgun-seed-1-shooters.fixture.json",
-      "fixtureSha256": "4273ba5ef49e20e0bcdc418d22eab72f0c12616b935c8a0847233de139fc08f5",
+      "fixtureSha256": "ee1d6c6e91e98f1e735a1281cf361cf8d94216db6f6b86f41ae9ce2736cf8355",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -59695,9 +59683,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Seed values and trajectories are captured; policy equivalence is within each RNG policy, not equality between original and keyed."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -60021,11 +60007,11 @@
         "sha256": "9937e524ea75c5b6e4735a8df2efafb823c58c2054eceea2cb5be734e0636f8f",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "shotgun-seed-2-shooters.fixture.json",
-      "fixtureSha256": "9f8610f035ecadb5c5c0ff2251ea2461732a4bac6cb4acc9eb2679d8ba3477f2",
+      "fixtureSha256": "3a2064745b671ce6ff2764d7fde219427995d81cb0b48f4d0627aaaebd9013c7",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -60686,9 +60672,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Seed values and trajectories are captured; policy equivalence is within each RNG policy, not equality between original and keyed."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -61288,7 +61272,7 @@
         "sha256": "36ca1a5e6fde5b9361ad6230b446bf096ab35ada08ee538da803ca6eae93dc84",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "target-crouch.fixture.json",
@@ -67602,7 +67586,7 @@
     },
     {
       "fixture": "thin-wall-high-speed.fixture.json",
-      "fixtureSha256": "26b81291be849b70947b397834e4503250f13ea55664e9fcf8b29ecefc62125a",
+      "fixtureSha256": "b7db2914b0ed77e943a392141f54967cff297d1805478042f7303a941f712625",
       "mapSha256": "36a496a373cd081c3fd0066cd5c6562dd2e171f2de425d65e94efa342a21d363",
       "contentSetHash": "a0108a3a738fe75c615304d9326fe708b8c8dc71f922dc6f8ade66b07fa24f0e",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
@@ -67781,9 +67765,7 @@
           }
         ],
         "allRequiredObserved": true,
-        "limitations": [
-          "Actual polygon-contact and final accepted branch are now instrumented; this fixture is not branch proof until its measured collision-winner predicate passes capture."
-        ],
+        "limitations": [],
         "coverageStatus": "Only explicitly measured predicates are evidence; limitations remain open.",
         "releaseSamples": [
           {
@@ -68535,7 +68517,7 @@
         "sha256": "40c3812ba42418013d8bf21503b593bbaca749c90c228d316a0a63630cfbd84e",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured"
     },
     {
       "fixture": "thing-kit-16.fixture.json",

@@ -88,8 +88,6 @@
         "end": 61
       }
     ],
-    "limitations": [
-      "Collision winner means the last distance-accepted original response, not absence of earlier response effects. Accepted/rejected contact predicates remain unproved until captured."
-    ]
+    "limitations": []
   }
 }

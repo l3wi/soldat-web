@@ -52,8 +52,6 @@
         "style": 3
       }
     ],
-    "limitations": [
-      "Seed values and trajectories are captured; policy equivalence is within each RNG policy, not equality between original and keyed."
-    ]
+    "limitations": []
   }
 }

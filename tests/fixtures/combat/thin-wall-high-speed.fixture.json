@@ -65,8 +65,6 @@
         "end": 61
       }
     ],
-    "limitations": [
-      "Actual polygon-contact and final accepted branch are now instrumented; this fixture is not branch proof until its measured collision-winner predicate passes capture."
-    ]
+    "limitations": []
   }
 }
