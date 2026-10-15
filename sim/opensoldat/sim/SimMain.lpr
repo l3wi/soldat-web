@@ -37,6 +37,8 @@ function fx_step: LongInt; cdecl;
 begin Result := SimCore.fx_step; end;
 function fx_render_view: LongInt; cdecl;
 begin Result := SimCore.fx_render_view; end;
+function fx_set_view(X,Y,Width,Height:Single;Slot:LongWord):LongInt;cdecl;
+begin Result:=SimCore.fx_set_view(X,Y,Width,Height,Slot);end;
 exports
   sim_version,
   sim_alloc,
@@ -54,6 +56,7 @@ exports
   sim_hash_state,
   sim_trace_state,
   fx_step,
-  fx_render_view;
+  fx_render_view,
+  fx_set_view;
 begin
 end.

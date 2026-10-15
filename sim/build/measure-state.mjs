@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -19,6 +19,13 @@ try {
     const events = host.events();
     if (typeof events === 'number') requireStatus(events, 'events');
   }
+  // Exercise a real mutation boundary before EVERY sample. Otherwise a
+  // repeated save/hash benchmark would time only the valid-snapshot cache.
+  // Reapplying idle input at this tick keeps bytes/size stable while forcing
+  // the next save to encode and hash the complete current gameplay state.
+  const idleInput = {};
+  const invalidate = () => requireStatus(host.setInput(1, 60, idleInput), 'invalidate input');
+  invalidate();
   const size = requireStatus(host.exports.sim_save_state(0, 0), 'size');
   const pointer = host.exports.sim_alloc(size);
   if (!pointer) throw new Error('State allocation failed');
@@ -28,10 +35,14 @@ try {
       if (count !== size) throw new Error('State length changed during timing');
     };
     const hash = () => host.exports.sim_hash_state();
-    for (let i = 0; i < 100; i++) { save(); hash(); }
+    save();
+    const expectedHash = hash();
+    for (let i = 0; i < 100; i++) { invalidate(); save(); hash(); }
     const saveTimes = [], hashTimes = [], combined = [];
     for (let i = 0; i < 500; i++) {
-      const start = performance.now(); save(); const middle = performance.now(); hash(); const end = performance.now();
+      invalidate();
+      const start = performance.now(); save(); const middle = performance.now(); const stateHash = hash(); const end = performance.now();
+      if (stateHash !== expectedHash) throw new Error('Identical idle input changed the gameplay hash');
       saveTimes.push(middle - start); hashTimes.push(end - middle); combined.push(end - start);
     }
     const stats = samples => {
@@ -40,9 +51,15 @@ try {
         p50Ms: sorted[Math.floor(sorted.length * .5)], p95Ms: sorted[Math.floor(sorted.length * .95)],
         p99Ms: sorted[Math.floor(sorted.length * .99)], maxMs: sorted.at(-1) };
     };
-    console.log(JSON.stringify({ runtime: process.version, platform: `${process.platform}/${process.arch}`,
+    const savePlusHash = stats(combined);
+    const result = { runtime: process.version, platform: `${process.platform}/${process.arch}`,
       wasmSha256: createHash('sha256').update(wasm).digest('hex'), players: 2, tick: 60, stateBytes: size,
-      iterations: 500, persistentOutputBuffer: true, save: stats(saveTimes), hash: stats(hashTimes),
-      combined: stats(combined), belowOneMillisecondP95: stats(combined).p95Ms < 1 }));
+      iterations: 500, warmups: 100, persistentOutputBuffer: true,
+      mutationBeforeEverySample: 'set_input (outside timing)', snapshotCacheWarmAtSampleStart: false,
+      save: stats(saveTimes), hashAfterSave: stats(hashTimes), savePlusHash,
+      belowOneMillisecondP95: savePlusHash.p95Ms <= 1 };
+    await mkdir('build-out/sim/g3',{recursive:true});
+    await writeFile('build-out/sim/g3/state-performance.json',JSON.stringify(result,null,2)+'\n');
+    console.log(JSON.stringify(result));
   } finally { host.exports.sim_free(pointer); }
 } finally { host.dispose(); }

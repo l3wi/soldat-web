@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 const root = resolve(import.meta.dirname, '../..');
 const corpus = join(root, 'tests/fixtures/movement');
 const output = resolve(process.argv[2] ?? join(root, 'build-out/sim/t1'));
+const authoritative = process.argv.includes('--authoritative');
 if (!output.startsWith(`${root}/`)) throw new Error('Output must remain inside the repository host bind mount');
 await mkdir(output, { recursive: true });
 await mkdir(join(output, 'tmp'), { recursive: true });
@@ -63,6 +64,7 @@ for (const fixture of fixtures) {
   const trace = join(output, `${name}.jsonl`);
   const expected = await golden(fixture, name);
   const args = ['run', '--rm', '--network', 'none', '-v', `${root}:/work`,
+    '-e', `SIM_CONTROL_POLICY=${authoritative ? 'authoritative' : 'human'}`,
     '-e', `TMPDIR=${containerPath(join(output, 'tmp'))}`,
     '-e', `SIM_RECEIPT_OUT=${containerPath(join(output, `${name}.hashes.jsonl`))}`,
     '-e', `HOME=${containerPath(join(output, 'home'))}`, '-w', '/work',
@@ -80,7 +82,7 @@ for (const fixture of fixtures) {
   results.push(result);
   console.log(JSON.stringify(result));
 }
-const summary = { tier: 'T1', passed: results.filter(result => result.status === 'pass').length,
+const summary = { tier: 'T1', control: authoritative ? 'authoritative' : 'human', passed: results.filter(result => result.status === 'pass').length,
   total: results.length, results };
 await writeFile(join(output, 'results.json'), `${JSON.stringify(summary, null, 2)}\n`);
 if (summary.passed !== summary.total) process.exitCode = 1;

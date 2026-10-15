@@ -51,7 +51,7 @@ uses
   Game,
   Net,
   Sprites,
-  Weapons{$IFDEF SIM}, SimRandom{$ENDIF};
+  Weapons{$IFDEF SIM}, SimRandom, Sound, Sparks, SimPresentation, SimFXRandom{$ENDIF};
 
 
 procedure ControlSprite(var SpriteC: TSprite);
@@ -378,7 +378,10 @@ begin
                (SpriteC.BodyAnimation.ID <> Roll.ID) and
                (SpriteC.BodyAnimation.ID <> RollBack.ID) then
               SpriteC.LegsApplyAnimation(Fall, 1);
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             a.x := SpriteC.Skeleton.Pos[1].X - 1;
             a.y := SpriteC.Skeleton.Pos[1].Y + 3;
 
@@ -406,20 +409,31 @@ begin
             if Random(7) = 0 then
               CreateSpark(a, b, 62, SpriteC.Num, 40);
 
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
             Dec(SpriteC.JetsCount);
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
+{$IFNDEF SIM}
             if (SpriteC.JetsCount = 1) and SpriteC.Control.Jetpack then
               SpriteC.JetsCount := 0;
+{$ENDIF}
 
             // play rockets sound
             PlaySound(SFX_ROCKETZ, SpriteParts.Pos[SpriteC.Num], SpriteC.JetsSoundChannel);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
           end
           else
           begin
-           {$IFNDEF SERVER}
+           {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+           {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+           if SimFXAllowed then begin
+           {$ENDIF}
            StopSound(SpriteC.JetsSoundChannel);
+           {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
            {$ENDIF}
           end;
         // Jets
@@ -465,13 +479,20 @@ begin
                   begin
                     if SpriteC.Weapon.StartUpTime > 0 then
                     begin
-                      {$IFNDEF SERVER}
+                      {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                      {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                      if SimFXAllowed then begin
+                      {$ENDIF}
                       StopSound(SpriteC.GattlingSoundChannel2);
+                      {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                       {$ENDIF}
 
                       if SpriteC.Weapon.StartUpTimeCount > 0 then
                       begin
-                        {$IFNDEF SERVER}
+                        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                        if SimFXAllowed then begin
+                        {$ENDIF}
                         if SpriteC.Weapon.StartUpTimeCount = SpriteC.Weapon.StartUpTime then
                         begin
                           // Barrett wind up
@@ -495,6 +516,7 @@ begin
                                   PlaySound(SFX_LAW_START, SpriteParts.Pos[SpriteC.Num], SpriteC.GattlingSoundChannel)
                           end;
                         end;
+                        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                         {$ENDIF}
                         if (SpriteC.Weapon.Num <> Guns[LAW].Num) or
                            ((SpriteC.OnGround or SpriteC.OnGroundPermanent) and
@@ -516,7 +538,10 @@ begin
               end
               else
               begin
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 StopSound(SpriteC.GattlingSoundChannel);
 
                 if SpriteC.Weapon.StartUpTimeCount < SpriteC.Weapon.StartUpTime then
@@ -536,7 +561,10 @@ begin
                         PlaySound(SFX_LAW_END, SpriteParts.Pos[SpriteC.Num], SpriteC.GattlingSoundChannel2);
                 end;
 
+{$IFNDEF SIM}
                 SpriteC.Weapon.StartUpTimeCount := SpriteC.Weapon.StartUpTime;
+{$ENDIF}
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
             end;
@@ -597,7 +625,7 @@ begin
           if SpriteC.Control.ChangeWeapon then
           begin
             SpriteC.BodyApplyAnimation(Change, 1);
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
             SetSoundPaused(SpriteC.ReloadSoundChannel, True);
             {$ENDIF}
           end;
@@ -626,8 +654,12 @@ begin
           if SpriteC.Weapon.Num = Guns[KNIFE].Num then
             SpriteC.BodyAnimation.Speed := 2;
 
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         StopSound(SpriteC.ReloadSoundChannel);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
         end;
 
@@ -666,8 +698,12 @@ begin
         if (SpriteC.BodyAnimation.ID = Reload.ID) and
            (SpriteC.BodyAnimation.CurrFrame = 7) then
         begin
-          {$IFNDEF SERVER}
+          {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+          {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+          if SimFXAllowed then begin
+          {$ENDIF}
           PlaySound(SFX_SPAS12_RELOAD, SpriteParts.Pos[SpriteC.Num], SpriteC.ReloadSoundChannel);
+          {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
           {$ENDIF}
           Inc(SpriteC.BodyAnimation.CurrFrame);
         end;
@@ -686,7 +722,10 @@ begin
         if (SpriteC.BodyAnimation.ID = Change.ID) and
            (SpriteC.BodyAnimation.CurrFrame = 2) then
         begin
-          {$IFNDEF SERVER}
+          {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+          {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+          if SimFXAllowed then begin
+          {$ENDIF}
           if SpriteC.SecondaryWeapon.Num = Guns[COLT].Num then
             PlaySound(SFX_CHANGESPIN, SpriteParts.Pos[SpriteC.Num])
           else if SpriteC.SecondaryWeapon.Num = Guns[KNIFE].Num then
@@ -695,6 +734,7 @@ begin
             PlaySound(SFX_CHAINSAW_D, SpriteParts.Pos[SpriteC.Num])
           else
             PlaySound(SFX_CHANGEWEAPON, SpriteParts.Pos[SpriteC.Num]);
+          {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
           {$ENDIF}
           Inc(SpriteC.BodyAnimation.CurrFrame);
         end;
@@ -728,16 +768,20 @@ begin
             (SpriteC.Weapon.AmmoCount = 0) then
         begin
           SpriteC.BodyApplyAnimation(Stand, 1);
-          {$IFNDEF SERVER}
+          {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
           SetSoundPaused(SpriteC.ReloadSoundChannel, False);
           {$ENDIF}
         end;
 
         // Throw away weapon
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         if (SpriteC.BodyAnimation.ID = ThrowWeapon.ID) and
            (SpriteC.BodyAnimation.CurrFrame = 2) then
          PlaySound(SFX_THROWGUN, SpriteParts.Pos[SpriteC.Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
         if SpriteC.Weapon.Num <> Guns[KNIFE].Num then
           if (SpriteC.BodyAnimation.ID = ThrowWeapon.ID) and
@@ -795,9 +839,13 @@ begin
             CreateBullet(a, b, SpriteC.Weapon.Num, SpriteC.Num, 255,
               SpriteC.Weapon.HitMultiply, True, False);
 
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             if SpriteC.Weapon.Num = Guns[KNIFE].Num then
               PlaySound(SFX_SLASH, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
 
             Inc(SpriteC.BodyAnimation.CurrFrame);
@@ -815,8 +863,12 @@ begin
             CreateBullet(a, b, Guns[NOWEAPON].Num, SpriteC.Num, 255,
               Guns[NOWEAPON].HitMultiply, True, True);
 
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             PlaySound(SFX_SLASH, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
           end;
 
@@ -828,7 +880,10 @@ begin
         if (SpriteC.BodyAnimation.ID = Shotgun.ID) and
            (SpriteC.BodyAnimation.CurrFrame = 24) then
         begin
-          {$IFNDEF SERVER}
+          {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+          {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+          if SimFXAllowed then begin
+          {$ENDIF}
           B := SpriteC.GetHandsAimDirection();
           Vec2Scale(B, B, SpriteC.Weapon.Speed);
           b.x := SpriteC.Direction * 0.025 * b.y + SpriteParts.Velocity[SpriteC.Num].X;
@@ -837,6 +892,7 @@ begin
           a.y := SpriteC.Skeleton.Pos[15].y - 2 - SpriteC.Direction * 0.015 * b.y;
 
           CreateSpark(a, b, 51, SpriteC.Num, 255);  // czerwona luska
+          {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
           {$ENDIF}
           Inc(SpriteC.BodyAnimation.CurrFrame);
         end;
@@ -845,7 +901,10 @@ begin
         if (SpriteC.Weapon.Num = Guns[M79].Num) and
            (SpriteC.Weapon.ReloadTimeCount = SpriteC.Weapon.ClipOutTime) then
         begin
-          {$IFNDEF SERVER}
+          {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+          {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+          if SimFXAllowed then begin
+          {$ENDIF}
           B := SpriteC.GetHandsAimDirection();
           Vec2Scale(B, B, SpriteC.Weapon.Speed);
           b.x := SpriteC.Direction * 0.08 * b.y + SpriteParts.Velocity[SpriteC.Num].X;
@@ -854,6 +913,7 @@ begin
           a.y := SpriteC.Skeleton.Pos[15].y - 2 - SpriteC.Direction * 0.015 * b.y;
 
           CreateSpark(a, b, 52, SpriteC.Num, 255); {m79 luska}
+          {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
           {$ENDIF}
           if SpriteC.Weapon.ReloadTimeCount > 0 then
             Dec(SpriteC.Weapon.ReloadTimeCount);
@@ -866,8 +926,12 @@ begin
              (SpriteC.LegsAnimation.ID <> Prone.ID) and
              (SpriteC.LegsAnimation.ID <> ProneMove.ID) then
           begin
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             PlaySound(SFX_GOPRONE, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
 
             SpriteC.LegsApplyAnimation(Prone, 1);
@@ -894,8 +958,12 @@ begin
                 SpriteC.LegsAnimation := GetUp;
                 SpriteC.LegsAnimation.CurrFrame := 9;
                 SpriteC.Control.Prone := False;
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 PlaySound(SFX_STANDUP, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
               if (SpriteC.BodyAnimation.ID <> Reload.ID) and
@@ -1013,8 +1081,12 @@ begin
           if (SpriteC.BodyAnimation.ID = Smoke.ID) and
              (SpriteC.BodyAnimation.CurrFrame = 17) then
           begin
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             PlaySound(SFX_STUFF, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
             Inc(SpriteC.BodyAnimation.CurrFrame);
           end;
@@ -1025,12 +1097,16 @@ begin
                (SpriteC.BodyAnimation.ID <> Smoke.ID) and
                (SpriteC.LegsAnimation.ID = Stand.ID) then
             begin
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               a := SpriteC.Skeleton.Pos[12];
               b := SpriteC.GetHandsAimDirection();
               Vec2Scale(b, b, 2);
               CreateSpark(a, b, 32, SpriteC.Num, 245);
               PlaySound(SFX_SPIT, SpriteParts.Pos[SpriteC.Num]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               SpriteC.IdleTime := DEFAULT_IDLETIME;
               SpriteC.IdleRandom := -1;
@@ -1091,8 +1167,12 @@ begin
               if SpriteC.HasCigar = 5 then
               begin
                 // Step 4/8
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 PlaySound(SFX_MATCH, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
                 Inc(SpriteC.BodyAnimation.CurrFrame);
               end;
@@ -1104,7 +1184,10 @@ begin
               begin
                 // Step 5/8
                 SpriteC.HasCigar := 10;
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 a := SpriteC.Skeleton.Pos[12];
                 a.X := a.X + SpriteC.Direction * 4;
                 b.x := 0;
@@ -1116,6 +1199,7 @@ begin
                 b.x := SpriteC.Direction / 2;
                 b.y := 0.15;
                 CreateSpark(a, b, 33, SpriteC.Num, 245);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
                 Inc(SpriteC.BodyAnimation.CurrFrame);
                 SpriteC.IdleTime := LONGER_IDLETIME;
@@ -1133,13 +1217,17 @@ begin
               (SpriteC.BodyAnimation.CurrFrame = 37)) then
             begin
               // Step 7/8
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               a := SpriteC.Skeleton.Pos[12];
               a.X := a.X + SpriteC.Direction * 4;
               b.x := 0;
               b.y := -0.7;
               CreateSpark(a, b, 31, SpriteC.Num, 65);
               PlaySound(SFX_SMOKE, SpriteParts.Pos[SpriteC.Num]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               Inc(SpriteC.BodyAnimation.CurrFrame);
             end;
@@ -1149,11 +1237,15 @@ begin
             begin
               // Step 8/8
               SpriteC.HasCigar := 0;
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               a := SpriteC.Skeleton.Pos[15];
               b.x := SpriteC.Direction / 1.5;
               b.y := 0.1;
               CreateSpark(a, b, 34, SpriteC.Num, 245);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               Inc(SpriteC.BodyAnimation.CurrFrame);
               SpriteC.IdleTime := DEFAULT_IDLETIME;
@@ -1240,8 +1332,12 @@ begin
             SpriteC.IdleTime := DEFAULT_IDLETIME;
             SpriteC.IdleRandom := -1;
 
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             PlaySound(SFX_ROAR, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
           end;
         end
@@ -1255,8 +1351,12 @@ begin
             {$ENDIF}
             SpriteC.IdleTime := DEFAULT_IDLETIME;
 
-            {$IFNDEF SERVER}
+            {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+            {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+            if SimFXAllowed then begin
+            {$ENDIF}
             PlaySound(SFX_PISS, SpriteParts.Pos[SpriteC.Num]);
+            {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
             {$ENDIF}
           end;
 
@@ -1267,7 +1367,10 @@ begin
             begin
               if Random(2) = 0 then
               begin
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 a := SpriteC.Skeleton.Pos[20];
                 lookpoint.x := SpriteC.Control.MouseAimX;
                 lookpoint.y := SpriteC.Control.MouseAimY;
@@ -1275,6 +1378,7 @@ begin
                 Vec2Normalize(B, B);
                 Vec2Scale(B, B, -1.3);
                 CreateSpark(a, b, 57, SpriteC.Num, 165);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
             end
@@ -1283,7 +1387,10 @@ begin
             begin
               if Random(3) = 0 then
               begin
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 a := SpriteC.Skeleton.Pos[20];
                 lookpoint.x := SpriteC.Control.MouseAimX;
                 lookpoint.y := SpriteC.Control.MouseAimY;
@@ -1291,6 +1398,7 @@ begin
                 Vec2Normalize(B, B);
                 Vec2Scale(B, B, -1.9);
                 CreateSpark(a, b, 57, SpriteC.Num, 120);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
             end
@@ -1299,7 +1407,10 @@ begin
             begin
               if Random(4) = 0 then
               begin
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 a := SpriteC.Skeleton.Pos[20];
                 lookpoint.x := SpriteC.Control.MouseAimX;
                 lookpoint.y := SpriteC.Control.MouseAimY;
@@ -1308,6 +1419,7 @@ begin
                 Vec2Scale(B, B, -1.3);
 
                 CreateSpark(a, b, 57, SpriteC.Num, 120);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
             end
@@ -1346,6 +1458,10 @@ begin
               PlaySound(SFX_MINIGUN_START, SpriteParts.Pos[SpriteC.Num]);
               {$Else}
               ServerIdleAnimation(SpriteC.Num, SpriteC.IdleRandom);
+              {$IFDEF SIM}
+              PlaySound(SFX_MERCY, SpriteParts.Pos[SpriteC.Num]);
+              if SpriteC.Weapon.Num=Guns[MINIGUN].Num then PlaySound(SFX_MINIGUN_START,SpriteParts.Pos[SpriteC.Num]);
+              {$ENDIF}
               {$ENDIF}
               SpriteC.IdleTime := DEFAULT_IDLETIME;
 
@@ -1364,7 +1480,10 @@ begin
             if (SpriteC.BodyAnimation.CurrFrame = 20) then
             begin
               SpriteC.Fire();
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               if SpriteC.Weapon.Num = Guns[KNIFE].Num then
                 PlaySound(SFX_SLASH, SpriteParts.Pos[SpriteC.Num], Sprite[SpriteC.Num].GattlingSoundChannel);
               if SpriteC.Weapon.Num = Guns[CHAINSAW].Num then
@@ -1372,8 +1491,11 @@ begin
               if SpriteC.Weapon.Num = Guns[NOWEAPON].Num then
                 PlaySound(SFX_DEAD_HIT, SpriteParts.Pos[SpriteC.Num], Sprite[SpriteC.Num].GattlingSoundChannel);
 
+              {$IFNDEF SIM}
               if SpriteC.Num = MySprite then
                 ClientSendStringMessage('kill', MSGTYPE_CMD);
+              {$ENDIF}
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               Inc(SpriteC.BodyAnimation.CurrFrame);
 
@@ -1448,6 +1570,7 @@ begin
                 PlaySound(SFX_SCOPE, SpriteParts.Pos[SpriteC.Num]);
                 {$ELSE}
                 ServerSpriteDeltasMouse(SpriteC.Num);
+                {$IFDEF SIM}PlaySound(SFX_SCOPE,SpriteParts.Pos[SpriteC.Num]);{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1461,6 +1584,7 @@ begin
                     PlaySound(SFX_SCOPERUN, SpriteParts.Pos[SpriteC.Num]);
                     {$ELSE}
                     ServerSpriteDeltasMouse(SpriteC.Num);
+                {$IFDEF SIM}PlaySound(SFX_SCOPERUN,SpriteParts.Pos[SpriteC.Num]);{$ENDIF}
                     {$ENDIF}
                   end;
                 end;
@@ -1475,6 +1599,7 @@ begin
                     PlaySound(SFX_SCOPERUN, SpriteParts.Pos[SpriteC.Num]);
                     {$ELSE}
                     ServerSpriteDeltasMouse(SpriteC.Num);
+                {$IFDEF SIM}PlaySound(SFX_SCOPERUN,SpriteParts.Pos[SpriteC.Num]);{$ENDIF}
                     {$ENDIF}
                   end;
                 end;
@@ -1486,9 +1611,13 @@ begin
               if SpriteC.AimDistCoef < DEFAULTAIMDIST then
               begin
                 SpriteC.AimDistCoef := SpriteC.AimDistCoef + AIMDISTINCR;
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if SpriteC.AimDistCoef = DEFAULTAIMDIST then
                   PlaySound(SFX_SCOPE, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
                   if MainTickCounter mod 27 = 0 then
                   begin
@@ -1496,6 +1625,7 @@ begin
                     PlaySound(SFX_SCOPERUN, SpriteParts.Pos[SpriteC.Num]);
                     {$ELSE}
                     ServerSpriteDeltasMouse(SpriteC.Num);
+                {$IFDEF SIM}PlaySound(SFX_SCOPERUN,SpriteParts.Pos[SpriteC.Num]);{$ENDIF}
                     {$ENDIF}
                   end;
               end;
@@ -1508,6 +1638,7 @@ begin
               PlaySound(SFX_SCOPEBACK, SpriteParts.Pos[SpriteC.Num]);
               {$ELSE}
               ServerSpriteDeltasMouse(SpriteC.Num);
+                {$IFDEF SIM}PlaySound(SFX_SCOPEBACK,SpriteParts.Pos[SpriteC.Num]);{$ENDIF}
               {$ENDIF}
             end;
 
@@ -1675,12 +1806,16 @@ begin
                   SpriteC.Control.Prone := False;
                   SpriteC.Position := POS_STAND;
                 end;
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if (SpriteC.LegsAnimation.ID <> RollBack.ID) and
                   (SpriteC.LegsAnimation.ID <> Roll.ID) then
                     PlaySound(SFX_ROLL, SpriteParts.Pos[SpriteC.Num]);
 
                 SetSoundPaused(SpriteC.ReloadSoundChannel, True);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
 
                 if SpriteC.Direction = 1 then
@@ -1732,12 +1867,16 @@ begin
                   SpriteC.Control.Prone := False;
                   SpriteC.Position := POS_STAND;
                 end;
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if (SpriteC.LegsAnimation.ID <> RollBack.ID) and
                    (SpriteC.LegsAnimation.ID <> Roll.ID) then
                     PlaySound(SFX_ROLL, SpriteParts.Pos[SpriteC.Num]);
 
                 SetSoundPaused(SpriteC.ReloadSoundChannel, True);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
 
                 if SpriteC.Direction = 1 then
@@ -1827,8 +1966,12 @@ begin
                  (SpriteC.LegsAnimation.ID = CrouchRunBack.ID) then
               begin
                 SpriteC.LegsApplyAnimation(JumpSide, 1);
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 PlaySound(SFX_JUMP, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1875,8 +2018,12 @@ begin
                  (SpriteC.LegsAnimation.ID = CrouchRunBack.ID) then
               begin
                 SpriteC.LegsApplyAnimation(JumpSide, 1);
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 PlaySound(SFX_JUMP, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1917,8 +2064,12 @@ begin
               if SpriteC.LegsAnimation.ID <> Jump.ID then
               begin
                 SpriteC.LegsApplyAnimation(Jump, 1);
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 PlaySound(SFX_JUMP, SpriteParts.Pos[SpriteC.Num]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1942,11 +2093,15 @@ begin
           begin
             if SpriteC.OnGround then  // if staying on ground
             begin
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               if (SpriteC.LegsAnimation.ID <> CrouchRun.ID) and
                  (SpriteC.LegsAnimation.ID <> CrouchRunBack.ID) and
                  (SpriteC.LegsAnimation.ID <> Crouch.ID) then
                    PlaySound(SFX_CROUCH, SpriteParts.Pos[SpriteC.Num]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
 
               SpriteC.LegsApplyAnimation(Crouch, 1);
@@ -2011,10 +2166,14 @@ begin
           begin
             if SpriteC.OnGround then  // if staying on ground
             begin
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               if not SpriteC.DeadMeat then
                 if SpriteC.LegsAnimation.ID <> Stand.ID then
                   PlaySound(SFX_STOP, SpriteParts.Pos[SpriteC.Num]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               SpriteC.LegsApplyAnimation(Stand, 1);
             end

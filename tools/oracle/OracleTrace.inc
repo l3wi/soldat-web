@@ -79,6 +79,12 @@ begin
   Row.Add('entity', Entity);
   Row.Add('randSeed', Int64(RandSeed));
   Row.Add('jetCapacity', Map.StartJet);
+  if CombatDiagnostics.Enabled then
+  begin
+    Row.Add('teamScores', TJSONArray.Create([TeamScore[1],TeamScore[2],TeamScore[3],TeamScore[4]]));
+    Row.Add('combatHits', CombatDiagnostics.HitRows(CurrentTick));
+    Row.Add('combatCollisions', CombatDiagnostics.CollisionRows(CurrentTick));
+  end;
   Soldiers := TJSONArray.Create;
   Row.Add('sprites', Soldiers);
   for I := 1 to MAX_SPRITES do
@@ -108,6 +114,13 @@ begin
       S.Add('body', Animation(Sprite[I].BodyAnimation));
       S.Add('direction', Sprite[I].Direction);
       S.Add('health', F32(Sprite[I].Health));
+      if CombatDiagnostics.Enabled then
+      begin
+        S.Add('vest', F32(Sprite[I].Vest));
+        S.Add('ceaseFire', Sprite[I].CeaseFireCounter);
+        S.Add('bonusStyle', Sprite[I].BonusStyle);
+        S.Add('bonusTime', Sprite[I].BonusTime);
+      end;
       S.Add('team', Sprite[I].Player.Team);
       S.Add('standingPolyType', Sprite[I].Player.StandingPolyType);
       S.Add('heldThing', Sprite[I].HoldedThing);
@@ -127,6 +140,18 @@ begin
       B.Add('id', I);
       B.Add('style', Game.Bullet[I].Style);
       B.Add('timeout', Game.Bullet[I].TimeOut);
+      if CombatDiagnostics.Enabled then
+      begin
+        B.Add('owner', Game.Bullet[I].Owner);
+        B.Add('weapon', Game.Bullet[I].OwnerWeapon);
+        B.Add('hitMultiply', F32(Game.Bullet[I].HitMultiply));
+        B.Add('initial', V(Game.Bullet[I].Initial));
+        B.Add('degradeCount', Game.Bullet[I].DegradeCount);
+        B.Add('ricochetCount', Game.Bullet[I].RicochetCount);
+        B.Add('hitBody', Game.Bullet[I].HitBody);
+        B.Add('hitSpot', V(Game.Bullet[I].HitSpot));
+        B.Add('seed', Game.Bullet[I].Seed);
+      end;
       Bullets.Add(B);
     end;
   Things := TJSONArray.Create;
@@ -138,6 +163,13 @@ begin
       T.Add('id', I);
       T.Add('style', Thing[I].Style);
       T.Add('timeout', Thing[I].TimeOut);
+      if CombatDiagnostics.Enabled then
+      begin
+        T.Add('owner', Thing[I].Owner);
+        T.Add('holdingSprite', Thing[I].HoldingSprite);
+        T.Add('inBase', Thing[I].InBase);
+        T.Add('ammo', Thing[I].AmmoCount);
+      end;
       Skeleton := TJSONArray.Create;
       T.Add('particles', Skeleton);
       for J := 1 to Thing[I].Skeleton.PartCount do

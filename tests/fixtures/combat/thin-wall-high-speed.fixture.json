@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "map": "combat-thin-wall",
+  "mapPath": "tests/fixtures/combat/maps/combat-thin-wall.pms",
+  "mapDirectory": "/fixture-maps",
+  "mapSha256": "36a496a373cd081c3fd0066cd5c6562dd2e171f2de425d65e94efa342a21d363",
+  "contentSetHash": "a0108a3a738fe75c615304d9326fe708b8c8dc71f922dc6f8ade66b07fa24f0e",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "rules": {
+    "mode": "dm",
+    "rng": "original",
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -300,
+      "y": -32,
+      "weapon": 2,
+      "secondaryWeapon": 0,
+      "health": 150,
+      "grenades": 3,
+      "control": "authoritative"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": 100,
+      "y": -32,
+      "weapon": 2,
+      "secondaryWeapon": 0,
+      "health": 150,
+      "grenades": 3,
+      "control": "authoritative"
+    }
+  ],
+  "inputs": [],
+  "commands": [
+    {
+      "tick": 60,
+      "kind": "bullet",
+      "weapon": 2,
+      "owner": 1,
+      "x": -99.5,
+      "y": -22,
+      "vx": 300,
+      "vy": 0
+    }
+  ],
+  "metadata": {
+    "purpose": "thin-wall-high-speed",
+    "source": "Test-only PMS v11; pinned weapons/animations/objects from simulation manifest.",
+    "controlRole": "authoritative: original BOT authority with Dummy=true disables AI; adapter restores original HUMAN held-trigger gating before the server cooldown step. Legacy fixtures default to unmodified HUMAN.",
+    "humanControlExpectation": "Pinned Control.pas:555-569 resets BurstCount when Fire is released; FireMode=2 holds the cooldown above zero after the first shot while Fire remains held. One trigger hold emits one firing action, not one projectile (Eagles/Spas emit multiple).",
+    "commandTiming": "Commands at tick N are applied after completing step N and before its recorded state, affecting step N+1.",
+    "evidenceStatus": "authored-not-captured",
+    "requiredObservations": [
+      {
+        "kind": "collision-winner",
+        "collisionKind": "map",
+        "start": 61,
+        "end": 61
+      }
+    ],
+    "limitations": [
+      "Actual polygon-contact and final accepted branch are now instrumented; this fixture is not branch proof until its measured collision-winner predicate passes capture."
+    ]
+  }
+}

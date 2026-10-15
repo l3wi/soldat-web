@@ -108,7 +108,7 @@ uses
   Client,
   {$ENDIF}
   Bullets,
-  Game{$IFDEF SIM}, SimRandom{$ENDIF};
+  Game{$IFDEF SIM}, SimRandom, Sound, Sparks, SimPresentation, SimFXRandom{$ENDIF};
 
 
 function CreateThing(sPos: TVector2; owner, sStyle, N: Byte):
@@ -864,11 +864,15 @@ begin
               begin
                 if Sprite[HoldingSprite].Player.Team = TEAM_ALPHA then
                 begin
-                  {$IFNDEF SERVER}
-                  if sv_gamemode.IntValue = GAMESTYLE_INF then
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
+                  if sv_gamemode.{$IFDEF SIM}Value{$ELSE}IntValue{$ENDIF} = GAMESTYLE_INF then
                     PlaySound(SFX_INFILTMUS)
                   else
                     PlaySound(SFX_CTF);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   Sprite[HoldingSprite].Player.Flags := Sprite[HoldingSprite].Player.Flags + 1;
@@ -886,7 +890,10 @@ begin
                     if (TeamScore[1] < 0) then TeamScore[1] := 0;
                     {$ENDIF}
 
-                    {$IFNDEF SERVER}
+                    {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                    {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                    if SimFXAllowed then begin
+                    {$ENDIF}
                     // flame it
                     for j := 1 to 10 do
                     begin
@@ -896,12 +903,17 @@ begin
                       if Random(2) = 0 then
                         CreateSpark(a, b, 37, 0, 75);
                     end;
+                    {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                     {$ENDIF}
                   end;
 
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   // cap spark
                   CreateSpark(Thing[i].Skeleton.Pos[2], b, 61, HoldingSprite, 18);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   SortPlayers;
@@ -921,18 +933,26 @@ begin
                 end;
                 if Sprite[HoldingSprite].Player.Team = TEAM_BRAVO then
                 begin
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   PlaySound(SFX_CTF);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
                   Sprite[HoldingSprite].Player.Flags :=
                     Sprite[HoldingSprite].Player.Flags + 1;
                   Inc(TeamScore[2], 1);
 
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   // cap spark
                   b.x := 0;
                   b.y := 0;
                   CreateSpark(Thing[i].Skeleton.Pos[2], b, 61, HoldingSprite, 15);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   SortPlayers;
@@ -1009,12 +1029,16 @@ begin
         end;
   end;
 
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+  if SimFXAllowed then begin
+  {$ENDIF}
   // flag on wind sound - and para
   if (Style < OBJECT_USSOCOM) or (Style = OBJECT_PARACHUTE) then
     if Random(75) = 0 then
       if Vec2Length(Vec2Subtract(Skeleton.Pos[2], Skeleton.OldPos[2])) > 1.0 then
         PlaySound(SFX_FLAG + Random(2), Skeleton.Pos[2]);
+  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
   {$ENDIF}
 
   // Parachute
@@ -1430,11 +1454,15 @@ begin
                 Skeleton.Pos[i] := Skeleton.OldPos[i];
                 Skeleton.Pos[i] := Vec2Subtract(Skeleton.Pos[i], Perp);
 
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if (CollideCount[i] = 0) or
                    ((Vec2Length(Vec2Subtract(Skeleton.Pos[i], Skeleton.OldPos[i])) > 1.5) and
                     (CollideCount[i] < 30)) then
                   PlaySound(SFX_WEAPONHIT, Skeleton.Pos[i]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1444,11 +1472,15 @@ begin
                 Skeleton.Pos[i] := Skeleton.OldPos[i];
                 Skeleton.Pos[i] := Vec2Subtract(Skeleton.Pos[i], Perp);
 
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if (CollideCount[i] = 0) or
                    ((Vec2Length(Vec2Subtract(Skeleton.Pos[i], Skeleton.OldPos[i])) > 1.5) and
                     (CollideCount[i] < 3)) then
                   PlaySound(SFX_KIT_FALL + Random(2), Skeleton.Pos[i]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1457,11 +1489,15 @@ begin
                 Skeleton.Pos[i] := Skeleton.OldPos[i];
                 Skeleton.Pos[i] := Vec2Subtract(Skeleton.Pos[i], Perp);
 
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 if (CollideCount[i] = 0) or
                    ((Vec2Length(Vec2Subtract(Skeleton.Pos[i], Skeleton.OldPos[i])) > 1.5) and
                     (CollideCount[i] < 3)) then
                   PlaySound(SFX_FLAG + Random(2), Skeleton.Pos[i]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
               end;
 
@@ -1724,7 +1760,10 @@ begin
       (Sprite[j].TertiaryWeapon.AmmoCount = 0))
       {$ENDIF}) then
     begin
-      {$IFNDEF SERVER}
+      {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+      {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+      if SimFXAllowed then begin
+      {$ENDIF}
       if ((Style > OBJECT_POINTMATCH_FLAG) and
           (Style < OBJECT_RAMBO_BOW)) or
          (Style > OBJECT_PARACHUTE) then  // take sound
@@ -1745,6 +1784,7 @@ begin
         PlaySound(SFX_BERSERKER, SpriteParts.Pos[Sprite[j].Num])
       else if Style = OBJECT_CLUSTER_KIT then  // take cluster kit sound
         PlaySound(SFX_PICKUPGUN, SpriteParts.Pos[Sprite[j].Num]);
+      {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
       {$ENDIF}
 
       {$IFDEF SERVER}
@@ -1778,9 +1818,13 @@ begin
           begin
             if (HoldingSprite = 0) and (Sprite[j].FlagGrabCooldown < 1) then
             begin
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               // capture sound
               PlaySound(SFX_CAPTURE, Skeleton.Pos[1]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
               HoldingSprite := j;
               {$IFDEF SERVER}
@@ -2242,8 +2286,12 @@ begin
               begin
                 if Sprite[i].UseTime > M2GUN_OVERHEAT then
                 begin
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   PlaySound(SFX_M2OVERHEAT, SpriteParts.Pos[i]);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
                   Exit;
                 end;
@@ -2268,7 +2316,10 @@ begin
                 CreateBullet(Pos, Norm, Guns[M2].Num, i, 255,
                   Guns[M2].HitMultiply, True, False);
 
-                {$IFNDEF SERVER}
+                {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                if SimFXAllowed then begin
+                {$ENDIF}
                 Pos := Vec2Add(Pos, Norm);
                 Vec2Scale(Norm, Norm, 0.1);
                 CreateSpark(Pos, Norm, 35, i, 15);  // smoke
@@ -2282,6 +2333,7 @@ begin
                 CreateSpark(Pos, Norm, 22, i, 255);  // hull
 
                 PlaySound(SFX_M2FIRE, SpriteParts.Pos[i]);
+                {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                 {$ENDIF}
 
                 Inc(Sprite[i].UseTime);
@@ -2320,8 +2372,12 @@ begin
 
                   if Sprite[j].LegsAnimation.ID = Stand.ID then
                   begin
-                    {$IFNDEF SERVER}
+                    {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                    {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                    if SimFXAllowed then begin
+                    {$ENDIF}
                     PlaySound(SFX_M2USE, SpriteParts.Pos[j]);
+                    {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                     {$ENDIF}
 
                     StaticType := True;

@@ -1,4 +1,4 @@
-import { loadSim, loadSimContent, requireStatus, sha256, type Control, type SimCommand, type SimHost, type SimManifest, type ReadContent } from "./sim.ts";
+import { SIM_ABI_VERSION, loadSim, loadSimContent, requireStatus, sha256, type Control, type SimCommand, type SimHost, type SimManifest, type ReadContent } from "./sim.ts";
 
 export interface Fixture {
   version: 1;
@@ -10,7 +10,7 @@ export interface Fixture {
   seed: number;
   ticks: number;
   rules?: Record<string, unknown>;
-  players: { team: number; spawnpoint: number; x?: number; y?: number; health?: number; heldFlag?: number }[];
+  players: { team: number; spawnpoint: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" }[];
   inputs: { player: number; start: number; ticks: number; control: Control; pressOrder?: number }[];
   commands?: (SimCommand & { tick: number })[];
 }
@@ -27,6 +27,7 @@ export interface FixtureReceipt {
   map: string;
   mapSha256: string;
   contentSetHash: string;
+  rngPolicy: "original" | "keyed";
   seed: number;
   ticks: number;
   checkpointInterval: 50;
@@ -43,6 +44,7 @@ export interface FixtureRunOptions {
   manifest: SimManifest;
   readContent: ReadContent;
   readFixtureAsset?: ReadContent;
+  rngPolicy?: "original" | "keyed";
   runtime: string;
   /** Called only for uninterrupted baseline, including tick zero. */
   trace?: (host: SimHost, tick: number) => void;
@@ -59,7 +61,7 @@ export class ReceiptMismatch extends Error {
 }
 
 export function assertMatchingReceipts(expected: FixtureReceipt, actual: FixtureReceipt): void {
-  for (const key of ["version", "abiVersion", "fixtureSha256", "wasmSha256", "mapSha256", "contentSetHash", "seed", "ticks", "checkpointInterval"] as const) {
+  for (const key of ["version", "abiVersion", "fixtureSha256", "wasmSha256", "mapSha256", "contentSetHash", "rngPolicy", "seed", "ticks", "checkpointInterval"] as const) {
     if (expected[key] !== actual[key]) throw new ReceiptMismatch({ field: key, expected: expected[key], actual: actual[key] });
   }
   for (const lane of ["baseline", "restored"] as const) {
@@ -104,7 +106,7 @@ export async function runFixture(options: FixtureRunOptions): Promise<FixtureRec
     const host = await loadSim(options.wasm as Uint8Array<ArrayBuffer>);
     try {
       await loadSimContent(host, manifest, name => overlay && name === fixture.mapPath ? Promise.resolve(overlay) : options.readContent(name));
-      requireStatus(host.init(fixture.rules ?? {}, fixture.seed, 0, 0), "sim_init");
+      requireStatus(host.init({ ...fixture.rules, ...(options.rngPolicy ? { rng: options.rngPolicy } : {}) }, fixture.seed, 0, 0), "sim_init");
       requireStatus(host.loadMap(fixture.map), "sim_load_map");
       const activeSlots = Array.from({ length: 33 }, () => false);
       for (let i = 0; i < fixture.players.length; i++) {
@@ -150,9 +152,10 @@ export async function runFixture(options: FixtureRunOptions): Promise<FixtureRec
   const baseline = await lane(false);
   const restored = await lane(true);
   const receipt: FixtureReceipt = {
-    type: "sim-fixture-receipt", version: 1, abiVersion: 0x00010001, runtime: options.runtime,
+    type: "sim-fixture-receipt", version: 1, abiVersion: SIM_ABI_VERSION, runtime: options.runtime,
     fixture: options.fixtureName, fixtureSha256: await sha256(options.fixtureBytes), wasmSha256: await sha256(options.wasm),
     map: fixture.map, mapSha256: map.sha256, contentSetHash: manifest.sha256, seed: fixture.seed, ticks: fixture.ticks,
+    rngPolicy: options.rngPolicy ?? (fixture.rules?.rng === "keyed" ? "keyed" : "original"),
     checkpointInterval: 50, baseline, restored, checkpoints,
     identical: baseline.every((row, i) => row.tick === restored[i]?.tick && row.hash === restored[i]?.hash && row.events === restored[i]?.events),
   };

@@ -10,7 +10,7 @@ const output = document.querySelector("pre")!;
 try {
   const configResponse = await fetch("/config");
   if (!configResponse.ok) throw new Error("Fixture server configuration unavailable");
-  const config = await configResponse.json() as { fixtures: { name: string; url: string }[] };
+  const config = await configResponse.json() as { fixtures: { name: string; url: string }[]; rng?: "original" | "keyed" };
   const wasm = await bytes("/sim.wasm");
   const manifest = JSON.parse(new TextDecoder().decode(await bytes("/content/sim/manifest.json"))) as SimManifest;
   for (const file of config.fixtures) {
@@ -19,6 +19,7 @@ try {
     const receipt = await runFixture({
       wasm, manifest, fixture: JSON.parse(new TextDecoder().decode(fixtureBytes)) as Fixture,
       fixtureBytes, fixtureName: file.name, runtime: navigator.userAgent,
+      rngPolicy: config.rng,
       readContent: path => bytes(`/content/${path.split("/").map(encodeURIComponent).join("/")}`),
       readFixtureAsset: path => bytes(`/fixture-assets/${path.split("/").map(encodeURIComponent).join("/")}`),
     });

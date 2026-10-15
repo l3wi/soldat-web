@@ -23,10 +23,10 @@ const server = Bun.serve({
   async fetch(request) {
     const path = new URL(request.url).pathname;
     try {
-      if (path === "/") return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><title>Movement corpus determinism</title><h1>Movement corpus determinism</h1><pre>Starting…</pre><script type="module" src="/fixture-browser.js"></script></html>', { headers: { "content-type": "text/html" } });
+      if (path === "/") return new Response('<!doctype html><html lang="en"><meta charset="utf-8"><title>Simulation corpus determinism</title><h1>Simulation corpus determinism</h1><pre>Starting…</pre><script type="module" src="/fixture-browser.js"></script></html>', { headers: { "content-type": "text/html" } });
       if (path === "/fixture-browser.js") return new Response(bundle.outputs[0], { headers: { "content-type": "text/javascript" } });
       if (path === "/sim.wasm") return new Response(Bun.file(resolve(args.wasm)), { headers: { "content-type": "application/wasm" } });
-      if (path === "/config") return Response.json({ fixtures: fixtures.map((name, index) => ({ name, url: `/fixtures/${index}` })) });
+      if (path === "/config") return Response.json({ rng: args.rng, fixtures: fixtures.map((name, index) => ({ name, url: `/fixtures/${index}` })) });
       if (path.startsWith("/fixtures/")) {
         const index = Number(path.slice("/fixtures/".length));
         if (!Number.isInteger(index) || !fixtures[index]) return new Response("Unknown fixture", { status: 404 });

@@ -29,11 +29,13 @@ function sim_hash_state: QWord;
 function sim_trace_state(Buffer: Pointer; Capacity: LongWord): LongInt;
 function fx_step: LongInt;
 function fx_render_view: LongInt;
+function fx_set_view(X,Y,Width,Height:Single; Slot:LongWord):LongInt;
 implementation
 uses Classes, SysUtils, Math, fpjson, jsonparser, PhysFS, Anims,
   Constants, Cvar, Demo, Game, Net, Parts, PolyMap, Server, Sprites,
   Things, Bullets, Util, Vector, Weapons, SimState, SimRender, SimEvents,
-  NetworkServerSprite, SimAnimationContent, SimRandom;
+  NetworkServerSprite, SimAnimationContent, SimRandom, Sparks, SimFXRandom,
+  SimPresentation, CombatDiagnostics;
 var
   Initialized, MapLoaded, CvarsReady: Boolean;
   Fixture: TJSONObject = nil;
@@ -76,6 +78,7 @@ function sim_vfs_put(Path: Pointer; PathLength: LongWord; Data: Pointer; DataLen
 var S: AnsiString;
 begin
   if Initialized then Exit(SIM_INVALID);
+  SimInvalidateState;
   if not TextArgument(Path,PathLength,S) or ((Data = nil) and (DataLength <> 0)) then Exit(SIM_INVALID);
   if SimVFSPut(S,Data,DataLength) then Result := SIM_OK else Result := SIM_INVALID;
 end;
@@ -87,15 +90,16 @@ begin
   begin
     Name := Obj.Names[J]; Value := Obj.Items[J];
     if Name = 'mode' then
-    begin if (Value.JSONType <> jtString) or (Value.AsString <> 'dm') then Exit; end
+    begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'dm') and (Value.AsString <> 'ctf')) then Exit; end
     else if Name = 'rng' then
-    begin if (Value.JSONType <> jtString) or (Value.AsString <> 'original') then Exit; end
+    begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'original') and (Value.AsString <> 'keyed')) then Exit; end
     else if (Name = 'ai') or (Name = 'realistic') or (Name = 'survival') then
     begin if (Value.JSONType <> jtBoolean) or Value.AsBoolean then Exit; end
     else if Name = 'bonusFrequency' then
     begin if (Value.JSONType <> jtNumber) or (Value.AsFloat <> 0) then Exit; end
     else if Name = 'tickRate' then
     begin if (Value.JSONType <> jtNumber) or (Value.AsFloat <> 60) then Exit; end
+    else if Name='traceCombat' then begin if Value.JSONType<>jtBoolean then Exit;end
     else Exit;
   end;
   Result := True;
@@ -131,19 +135,28 @@ const RequiredFiles: array[0..49] of PChar = (
   'anims/kolba.poa', 'anims/rucha.poa', 'objects/gostek.po',
   'objects/kit.po', 'objects/flag.po', 'objects/para.po',
   'objects/stat.po', 'objects/karabin.po');
-var Obj: TJSONObject; J: Integer;
+var Obj: TJSONObject; J,Mode: Integer; Keyed,TraceCombat:Boolean;
 begin
   if Initialized then Exit(SIM_UNSUPPORTED);
-  if (Flags <> 0) or (SeedHi <> 0) then Exit(SIM_UNSUPPORTED);
+  SimInvalidateState;
+  if Flags and not LongWord(2) <> 0 then Exit(SIM_UNSUPPORTED);
   if not ReadObject(Rules,RulesLength,Obj) then Exit(SIM_MALFORMED);
-  try if not RulesSupported(Obj) then Exit(SIM_UNSUPPORTED); finally Obj.Free; end;
+  try
+    if not RulesSupported(Obj) then Exit(SIM_UNSUPPORTED);
+    Keyed := (Obj.Get('rng','original')='keyed') or (Flags and 2<>0);
+    if not Keyed and (SeedHi<>0) then Exit(SIM_UNSUPPORTED);
+    Mode:=GAMESTYLE_DEATHMATCH;
+    if Obj.Get('mode','dm')='ctf' then Mode:=GAMESTYLE_CTF;
+    TraceCombat:=Obj.Get('traceCombat',False);
+  finally Obj.Free; end;
   for J := Low(RequiredFiles) to High(RequiredFiles) do
     if not PHYSFS_exists(RequiredFiles[J]) then Exit(SIM_MISSING);
   SetExceptionMask([exInvalidOp,exDenormalized,exZeroDivide,exOverflow,exUnderflow,exPrecision]);
   DefaultFormatSettings.DecimalSeparator := '.';
   SimResetOriginalRNG(SeedLo);
+  SetRandomPolicy(Keyed,SeedLo,SeedHi);
   if not CvarsReady then begin CvarInit; CvarsReady := True; end;
-  sv_gamemode.SetValue(GAMESTYLE_DEATHMATCH);
+  sv_gamemode.SetValue(Mode);
   sv_bonus_frequency.SetValue(0); sv_survivalmode.SetValue(False);
   sv_realisticmode.SetValue(False); sv_lobby.SetValue(False);
   sc_enable.SetValue(False); log_enable.SetValue(False);
@@ -161,17 +174,20 @@ begin
   begin
     SimWasJumping[J] := False; SimWasRunningLeft[J] := False;
     NoClientUpdateTime[J] := 0;
+    SimChosenPrimary[J]:=NOWEAPON_NUM;SimChosenSecondary[J]:=NOWEAPON_NUM;
   end;
   LoadAnimObjects('');
   SimBindAnimationContent;
   Initialized := True; MapLoaded := False;
-  SimEventsReset; SimResetRender;
+  SimEventsReset; SimResetRender; SimFXReset(SeedLo); SimFXAllowed:=True;
+  CombatDiagnostics.Reset; CombatDiagnostics.Enabled:=TraceCombat;
   Result := SIM_OK;
 end;
 function sim_load_map(Name: Pointer; NameLength: LongWord): LongInt;
 var S: AnsiString; Info: TMapInfo; J: Integer;
 begin
   if not Initialized then Exit(SIM_NOT_INITIALIZED);
+  SimInvalidateState;
   if not TextArgument(Name,NameLength,S) then Exit(SIM_INVALID);
   if MapLoaded then Exit(SIM_UNSUPPORTED);
   if not GetMapInfo(S,UserDirectory,Info) then Exit(SIM_MISSING);
@@ -193,25 +209,104 @@ begin
   Result := not IsNan(X) and not IsInfinite(X) and (X >= Low(LongInt)) and (X <= High(LongInt)) and (Frac(X) = 0);
   if Result then Value := D.AsInt64;
 end;
+function JsonScalar(Obj:TJSONObject;const Key:string;DefaultValue:Single;out Value:Single):Boolean;
+var D:TJSONData;X:Double;
+begin
+  D:=Obj.Find(Key);Value:=DefaultValue;if D=nil then Exit(True);
+  if D.JSONType<>jtNumber then Exit(False);
+  X:=D.AsFloat;Result:=not IsNan(X) and not IsInfinite(X) and (Abs(X)<=1000000);
+  if Result then Value:=X;
+end;
+function CombatCommand(Obj:TJSONObject;const Kind:string):LongInt;
+var S,W,Owner,Ammo,Target,Circle,Timeout,Frame,Secondary:Int64;
+  Pos,Velocity:TVector2;HitM:Single;Index:Integer;
+begin
+  Result:=SIM_INVALID;
+  if Kind='weapon-choice' then begin
+    if not JsonInteger(Obj,'slot',0,S) or (S<1) or (S>MAX_PLAYERS) or not Sprite[S].Active then Exit;
+    if (Sprite[S].Player.ControlMethod<>BOT) or not Sprite[S].Dummy then Exit(SIM_UNSUPPORTED);
+    if not JsonInteger(Obj,'weapon',-1,W) or (W<0) or (W>255) or (WeaponNumToIndex(W)<1) or
+      not JsonInteger(Obj,'secondaryWeapon',SimChosenSecondary[S],Secondary) or
+      (Secondary<0) or (Secondary>255) or (WeaponNumToIndex(Secondary)<1) then Exit;
+    SimChosenPrimary[S]:=W;SimChosenSecondary[S]:=Secondary;Sprite[S].Brain.FavWeapon:=W;
+    Exit(SIM_OK);
+  end;
+  if Kind='fixture-sprite' then begin
+    if not CombatDiagnostics.Enabled then Exit(SIM_UNSUPPORTED);
+    if not JsonInteger(Obj,'slot',0,S) or (S<1) or (S>MAX_PLAYERS) then Exit;
+    if not Sprite[S].Active then Exit;
+    if Obj.Get('bodyAnimation','')<>'Throw' then Exit(SIM_UNSUPPORTED);
+    if not JsonInteger(Obj,'bodyFrame',0,Frame) or (Frame<1) or (Frame>Throw.NumFrames) then Exit;
+    if not JsonInteger(Obj,'grenadeWeapon',FRAGGRENADE_NUM,W) or
+      ((W<>FRAGGRENADE_NUM) and (W<>CLUSTERGRENADE_NUM)) then Exit;
+    Sprite[S].BodyApplyAnimation(Throw,Frame);
+    Sprite[S].GrenadeCanThrow:=False;Sprite[S].CeaseFireCounter:=-1;
+    if Obj.Find('grenadeWeapon')<>nil then begin
+      Sprite[S].TertiaryWeapon:=Guns[WeaponNumToIndex(W)];
+      Sprite[S].TertiaryWeapon.AmmoCount:=3;
+    end;
+    Exit(SIM_OK);
+  end;
+  if not JsonScalar(Obj,'x',0,Pos.X) or not JsonScalar(Obj,'y',0,Pos.Y) then Exit;
+  if not JsonInteger(Obj,'owner',0,Owner) or (Owner<0) or (Owner>MAX_PLAYERS) then Exit;
+  if Kind='thing' then begin
+    if not JsonInteger(Obj,'style',0,W) or (W<1) or (W>OBJECT_STATIONARY_GUN) then Exit;
+    if not JsonInteger(Obj,'ammo',255,Ammo) or (Ammo<0) or (Ammo>255) then Exit;
+    if CreateThing(Pos,Owner,W,Ammo)<1 then Exit(SIM_CAPACITY);
+    Exit(SIM_OK);
+  end;
+  if Kind<>'bullet' then Exit(SIM_UNSUPPORTED);
+  if not CombatDiagnostics.Enabled then Exit(SIM_UNSUPPORTED);
+  if (Owner=0) or not Sprite[Owner].Active then Exit;
+  if not JsonInteger(Obj,'weapon',-1,W) or (W<0) or (W>255) then Exit;
+  Index:=WeaponNumToIndex(W);if (Index<1) or (Index>TOTAL_WEAPONS) then Exit;
+  if not JsonInteger(Obj,'target',0,Target) or (Target<0) or (Target>MAX_PLAYERS) then Exit;
+  if not JsonInteger(Obj,'hitCircle',0,Circle) then Exit;
+  if Target<>0 then begin
+    if not Sprite[Target].Active or not (Circle in [3,4,5,6,10,11,12]) then Exit;
+    Pos.X:=Pos.X+Sprite[Target].Skeleton.Pos[Circle].X-2;
+    Pos.Y:=Pos.Y+Sprite[Target].Skeleton.Pos[Circle].Y;
+  end;
+  if not JsonScalar(Obj,'vx',0,Velocity.X) or not JsonScalar(Obj,'vy',0,Velocity.Y) or
+    not JsonScalar(Obj,'hitMultiply',Guns[Index].HitMultiply,HitM) then Exit;
+  if not JsonInteger(Obj,'timeout',Guns[Index].Timeout,Timeout) or
+    (Timeout<1) or (Timeout>High(SmallInt)) then Exit;
+  Index:=CreateBullet(Pos,Velocity,W,Owner,255,HitM,False,True);
+  if Index<1 then Exit(SIM_CAPACITY);
+  if Obj.Find('timeout')<>nil then Bullet[Index].TimeOut:=Timeout;
+  Result:=SIM_OK;
+end;
 function sim_command(Tick: LongWord; Data: Pointer; Length: LongWord): LongInt;
-var Obj: TJSONObject; Kind, Key: string; S, Team, Spawn, Flag: Int64;
-  Position, Velocity: TVector2; P: TPlayer; J, Created: Integer; Health: Single; D: TJSONData;
+var Obj: TJSONObject; Kind, Key: string; S, Team, Spawn, Flag,W,Secondary,Ammo,Grenades: Int64;
+  Position, Velocity: TVector2; P: TPlayer; J, Created: Integer; Health,Vest: Single; D: TJSONData;
 begin
   if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  SimInvalidateState;
   if Tick <> LongWord(MainTickCounter) then Exit(SIM_INVALID);
   if not ReadObject(Data,Length,Obj) then Exit(SIM_MALFORMED);
   try
     D := Obj.Find('kind'); if (D = nil) or (D.JSONType <> jtString) then Exit(SIM_MALFORMED);
     Kind := D.AsString;
+    if (Kind='thing') or (Kind='bullet') or (Kind='fixture-sprite') or (Kind='weapon-choice') then Exit(CombatCommand(Obj,Kind));
     if (Kind <> 'join') and (Kind <> 'leave') and (Kind <> 'team') and (Kind <> 'spawn') then Exit(SIM_UNSUPPORTED);
     for J := 0 to Obj.Count-1 do
     begin
       Key := Obj.Names[J];
       if (Key <> 'kind') and (Key <> 'slot') and (Key <> 'team') and (Key <> 'spawn') and
-         (Key <> 'x') and (Key <> 'y') and (Key <> 'health') and (Key <> 'heldFlag') then Exit(SIM_UNSUPPORTED);
+         (Key <> 'x') and (Key <> 'y') and (Key <> 'health') and (Key <> 'heldFlag') and
+         (Key <> 'weapon') and (Key <> 'secondaryWeapon') and (Key <> 'ammo') and
+         (Key <> 'grenades') and (Key <> 'vest') and (Key <> 'control') then Exit(SIM_UNSUPPORTED);
     end;
     if (Obj.Find('slot') = nil) or not JsonInteger(Obj,'slot',0,S) or (S < 1) or (S > MAX_PLAYERS) then Exit(SIM_INVALID);
     if not JsonInteger(Obj,'team',0,Team) or (Team < 0) or (Team > TEAM_SPECTATOR) then Exit(SIM_INVALID);
+    if (Obj.Get('control','human')<>'human') and (Obj.Get('control','human')<>'authoritative') then Exit(SIM_UNSUPPORTED);
+    if not JsonInteger(Obj,'weapon',255,W) or (W<0) or (W>255) or
+      not JsonInteger(Obj,'secondaryWeapon',255,Secondary) or (Secondary<0) or (Secondary>255) or
+      not JsonInteger(Obj,'ammo',-1,Ammo) or (Ammo< -1) or (Ammo>255) or
+      not JsonInteger(Obj,'grenades',-1,Grenades) or (Grenades< -1) or (Grenades>255) or
+      not JsonScalar(Obj,'vest',0,Vest) or (Vest<0) then Exit(SIM_INVALID);
+    if ((Obj.Find('weapon')<>nil) and (WeaponNumToIndex(W)<1)) or
+      ((Obj.Find('secondaryWeapon')<>nil) and (WeaponNumToIndex(Secondary)<1)) then Exit(SIM_INVALID);
     if Kind = 'leave' then
     begin
       if not Sprite[S].Active then Exit(SIM_INVALID);
@@ -251,11 +346,29 @@ begin
     begin
       P := TPlayer.Create; P.Team := Team; P.ControlMethod := HUMAN;
       P.Name := 'oracle-' + IntToStr(S);
+      if Obj.Get('control','human')='authoritative' then begin
+        P.ControlMethod:=BOT;bots_chat.SetValue(False);bots_difficulty.SetValue(100);
+      end;
     end
     else P := Sprite[S].Player;
     Created := CreateSprite(Position,Velocity,1,S,P,True);
     if Created <> S then Exit(SIM_CAPACITY);
     Sprite[S].Health := Health;
+    if P.ControlMethod=BOT then begin
+      if Kind='join' then begin
+        SimChosenPrimary[S]:=W;SimChosenSecondary[S]:=Secondary;
+        if Obj.Find('weapon')=nil then SimChosenPrimary[S]:=Sprite[S].Weapon.Num;
+        if Obj.Find('secondaryWeapon')=nil then SimChosenSecondary[S]:=Sprite[S].SecondaryWeapon.Num;
+      end;
+      Sprite[S].Dummy:=True;Sprite[S].Brain.Use:=255;Sprite[S].Brain.FavWeapon:=SimChosenPrimary[S];
+      if Kind='spawn' then begin
+        Sprite[S].ApplyWeaponByNum(SimChosenPrimary[S],1);Sprite[S].ApplyWeaponByNum(SimChosenSecondary[S],2);
+      end;
+    end;
+    if Obj.Find('weapon')<>nil then Sprite[S].ApplyWeaponByNum(W,1,Ammo);
+    if Obj.Find('secondaryWeapon')<>nil then Sprite[S].ApplyWeaponByNum(Secondary,2);
+    if Grenades>=0 then Sprite[S].TertiaryWeapon.AmmoCount:=Grenades;
+    Sprite[S].Vest:=Vest;
     if Flag <> 0 then
     begin
       Created := CreateThing(Position,S,Flag,255);
@@ -271,6 +384,7 @@ function sim_set_input(Slot, Tick: LongWord; Data: Pointer): LongInt;
 var Bits, Order: Word; C: TControl;
 begin
   if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  SimInvalidateState;
   if (Slot < 1) or (Slot > MAX_PLAYERS) or not Sprite[Slot].Active or
     (Tick <> LongWord(MainTickCounter)) or (Data = nil) then Exit(SIM_INVALID);
   Bits := Read16(Data,0); Order := Read16(Data,8);
@@ -308,6 +422,15 @@ begin if Assigned(SimTraceHook) then SimTraceHook(Name,Entity); end;
 procedure UpdateMovementFrame;
 var I,J: Integer;
 begin
+  { Original human release/burst guard at the injected-input boundary. }
+  for J:=1 to MAX_PLAYERS do if Sprite[J].Active and Sprite[J].Dummy and
+    (Sprite[J].Player.ControlMethod=BOT) then begin
+    Sprite[J].Brain.FavWeapon:=SimChosenPrimary[J];
+    if not Sprite[J].Control.Fire then Sprite[J].BurstCount:=0;
+    if (Sprite[J].Weapon.FireMode=2) and Sprite[J].Control.Fire and
+      ((Sprite[J].BurstCount>0) or Sprite[J].Control.Reload) and
+      (Sprite[J].Weapon.FireIntervalCount<2) then Inc(Sprite[J].Weapon.FireIntervalCount);
+  end;
   if MapChangeCounter < 0 then
   begin
     for J := 1 to MAX_SPRITES do
@@ -319,11 +442,21 @@ begin
     for J := 1 to MAX_SPRITES do
       if Sprite[J].Active and Sprite[J].IsNotSpectator then SpriteParts.DoEulerTimeStepFor(J);
     Stage('sprite-parts');
-    for J := 1 to MAX_SPRITES do if Sprite[J].Active then begin Sprite[J].Update; Stage('sprite',J); end;
-    for J := 1 to MAX_BULLETS do if Bullet[J].Active then Bullet[J].Update;
+    for J := 1 to MAX_SPRITES do if Sprite[J].Active then begin
+      BeginRandomEvent(J,1);
+      try Sprite[J].Update; finally EndRandomEvent; end;
+      Stage('sprite',J);
+    end;
+    for J := 1 to MAX_BULLETS do if Bullet[J].Active then begin
+      BeginRandomEvent(Bullet[J].Owner,$10000+Bullet[J].Seed);
+      try Bullet[J].Update; finally EndRandomEvent; end;
+    end;
     Stage('bullets');
     BulletParts.DoEulerTimeStep; Stage('bullet-parts');
-    for J := 1 to MAX_THINGS do if Thing[J].Active then Thing[J].Update;
+    for J := 1 to MAX_THINGS do if Thing[J].Active then begin
+      BeginRandomEvent(Thing[J].Owner,$20000+Thing[J].Style);
+      try Thing[J].Update; finally EndRandomEvent; end;
+    end;
     Stage('things');
   end;
   { Original ServerLoop.UpdateFrame remainder for supported normal DM rules.
@@ -367,17 +500,27 @@ begin
   if PlayersTeamNum[2] = PlayersTeamNum[1] then HTFTime := sv_htf_pointstime.Value*60;
 end;
 function sim_step(Flags: LongWord): LongInt;
-var J: Integer;
+var J: Integer; WasDead:TSimInputHistory;
 begin
   if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  SimInvalidateState;
   if Flags and not LongWord(1) <> 0 then Exit(SIM_UNSUPPORTED);
   SimCapturePreviousPose;
   Inc(Ticks); Inc(ServerTickCounter); Inc(MainTickCounter);
   SimEventsSetTick(MainTickCounter); SimEventsSetReplay(Flags and 1 <> 0);
+  SimFXAllowed := Flags and 1 = 0;
+  SimFXReplay(not SimFXAllowed);
   for J := 1 to MAX_SPRITES do if Sprite[J].Active then NoClientUpdateTime[J] := 0;
+  for J:=1 to MAX_PLAYERS do WasDead[J]:=Sprite[J].DeadMeat;
   try
     try
-      UpdateMovementFrame; Stage('tick');
+      UpdateMovementFrame;
+      for J:=1 to MAX_PLAYERS do if WasDead[J] and Sprite[J].Active and not Sprite[J].DeadMeat and
+        Sprite[J].Dummy and (Sprite[J].Player.ControlMethod=BOT) then begin
+        Sprite[J].ApplyWeaponByNum(SimChosenPrimary[J],1);
+        Sprite[J].ApplyWeaponByNum(SimChosenSecondary[J],2);
+      end;
+      Stage('tick');
     except
       on E: ESimEventOverflow do Exit(SIM_CAPACITY);
       on E: ENotSupportedException do Exit(SIM_UNSUPPORTED);
@@ -421,7 +564,25 @@ begin
   if Result <> 0 then Move(SimTraceRow[1],Buffer^,Result);
 end;
 function fx_step: LongInt;
-begin Result := SIM_UNSUPPORTED; end;
+begin
+  if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  Result := SimFXStep;
+end;
 function fx_render_view: LongInt;
-begin Result := SIM_UNSUPPORTED; end;
+begin
+  if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  Result := PtrUInt(SimFXRenderView);
+end;
+function fx_set_view(X,Y,Width,Height:Single;Slot:LongWord):LongInt;
+begin
+  if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
+  if IsNan(X) or IsNan(Y) or IsNan(Width) or IsNan(Height) or
+    IsInfinite(X) or IsInfinite(Y) or IsInfinite(Width) or IsInfinite(Height) or
+    (Width<=0) or (Height<=0) or (Width>16384) or (Height>16384) or (Slot>MAX_PLAYERS) then Exit(SIM_INVALID);
+  SimFXSetView(X,Y,Width,Height);
+  SimPresentation.CameraX:=X; SimPresentation.CameraY:=Y;
+  SimPresentation.GameWidth:=Width; SimPresentation.GameHeight:=Height;
+  SimPresentation.MySprite:=Slot; SimPresentation.CameraFollowSprite:=Slot;
+  Result:=SIM_OK;
+end;
 end.

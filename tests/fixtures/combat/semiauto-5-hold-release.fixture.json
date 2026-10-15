@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "map": "combat-flat",
+  "mapPath": "tests/fixtures/combat/maps/combat-flat.pms",
+  "mapDirectory": "/fixture-maps",
+  "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
+  "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
+  "seed": 123456789,
+  "ticks": 1000,
+  "traceStages": "all",
+  "rules": {
+    "mode": "dm",
+    "rng": "original",
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": -300,
+      "y": -32,
+      "weapon": 5,
+      "secondaryWeapon": 0,
+      "health": 150,
+      "grenades": 3,
+      "control": "authoritative"
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 241,
+      "ticks": 300,
+      "control": {
+        "Fire": true,
+        "MouseAimX": 900,
+        "MouseAimY": -200
+      }
+    },
+    {
+      "player": 1,
+      "start": 601,
+      "ticks": 300,
+      "control": {
+        "Fire": true,
+        "MouseAimX": 900,
+        "MouseAimY": -200
+      }
+    }
+  ],
+  "commands": [],
+  "metadata": {
+    "purpose": "semiauto-5-hold-release",
+    "source": "Test-only PMS v11; pinned weapons/animations/objects from simulation manifest.",
+    "controlRole": "authoritative: original BOT authority with Dummy=true disables AI; adapter restores original HUMAN held-trigger gating before the server cooldown step. Legacy fixtures default to unmodified HUMAN.",
+    "humanControlExpectation": "Pinned Control.pas:555-569 resets BurstCount when Fire is released; FireMode=2 holds the cooldown above zero after the first shot while Fire remains held. One trigger hold emits one firing action, not one projectile (Eagles/Spas emit multiple).",
+    "commandTiming": "Commands at tick N are applied after completing step N and before its recorded state, affecting step N+1.",
+    "evidenceStatus": "authored-not-captured",
+    "requiredObservations": [
+      {
+        "kind": "shot-count",
+        "slot": 1,
+        "weapon": 5,
+        "start": 241,
+        "end": 540,
+        "count": 1
+      },
+      {
+        "kind": "shot-count",
+        "slot": 1,
+        "weapon": 5,
+        "start": 601,
+        "end": 900,
+        "count": 1
+      }
+    ],
+    "limitations": []
+  }
+}

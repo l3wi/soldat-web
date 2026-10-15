@@ -111,6 +111,9 @@ uses
   // Helper units
   Calc,
   TraceLog,
+  {$IF defined(SIM) or defined(ORACLE)}
+  CombatDiagnostics,
+  {$ENDIF}
   {$IFNDEF SERVER}
     Util,
   {$ENDIF}
@@ -129,7 +132,7 @@ uses
     Sound,
     Sparks,
   {$ENDIF}
-  Game{$IFDEF SIM}, SimRandom{$ENDIF};
+  Game{$IFDEF SIM}, SimRandom, Sound, Sparks, SimPresentation, SimFXRandom, Util{$ENDIF};
 
 
 function CreateBullet(sPos, sVelocity: TVector2; sNum: Byte;
@@ -215,6 +218,7 @@ begin
   if {$IFNDEF SERVER}(sOwner = CameraFollowSprite) or{$ENDIF}
     (sStyle = BULLET_STYLE_FLAMEARROW) or (sStyle = BULLET_STYLE_FLAME) then
     Bullet[i].Whizzed := True;
+  {$IFDEF SIM}FXWhizzed[i] := Bullet[i].Whizzed;{$ENDIF}
 
   if Sprite[sOwner].Player.ControlMethod = HUMAN then
     Bullet[i].OwnerPingTick := Sprite[sOwner].Player.PingTicksB {$IFDEF SERVER} + PingTicksAdd{$ENDIF}
@@ -713,8 +717,12 @@ begin
     end;
   end;
 
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+  if SimFXAllowed then begin
+  {$ENDIF}
   // Bullet Tracking
+  {$IFNDEF SIM}
   if Owner = MySprite then
     if Tracking = 255 then
       Tracking := Owner;
@@ -730,13 +738,14 @@ begin
       Tracking := 0;
     end;
   end;
+  {$ENDIF}
 
   // his sound
   if (TimeOut = BULLET_TIMEOUT - 25) and (Style <> BULLET_STYLE_SHOTGUN) then
     PlaySound(SFX_BULLETBY, BulletParts.Pos[Num]);
 
   // whiizz above head
-  if not Whizzed then
+  if not {$IFDEF SIM}FXWhizzed[Num]{$ELSE}Whizzed{$ENDIF} then
     if Style <> BULLET_STYLE_PUNCH then
       if CameraFollowSprite > 0 then
         if (BulletParts.Pos[Num].X > Spriteparts.Pos[CameraFollowSprite].X - 200) and
@@ -745,7 +754,7 @@ begin
            (BulletParts.Pos[Num].Y < Spriteparts.Pos[CameraFollowSprite].Y + 100) then
         begin
           PlaySound(SFX_BULLETBY2 + Random(4), BulletParts.Pos[Num]);
-          Whizzed := True;
+          {$IFDEF SIM}FXWhizzed[Num]{$ELSE}Whizzed{$ENDIF} := True;
         end;
 
   // fire for flaming arrow
@@ -767,13 +776,17 @@ begin
     if Random(2) = 0 then
       CreateSpark(BulletParts.Pos[Num], BulletParts.Velocity[Num], 2, Num, 5);
   end;
+  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
   {$ENDIF}
 
   // flame
   if Style = BULLET_STYLE_FLAME then
     Bulletparts.Forces[Num].Y := Bulletparts.Forces[Num].Y - 0.15;
 
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+  if SimFXAllowed then begin
+  {$ENDIF}
   // bleed
   if HitBody > 0 then
     if Random(5) = 0 then
@@ -782,6 +795,7 @@ begin
         Vector2(BulletParts.Velocity[Num].X * 0.5,
         BulletParts.Velocity[Num].Y * 0.5), 4, Owner, 90);
     end;
+  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
   {$ENDIF}
 end;
 
@@ -1181,6 +1195,12 @@ begin
              (Map.PolyType[w] <> POLY_TYPE_BACKGROUND_TRANSITION) then
             if Map.PointInPolyEdges(Pos.X, Pos.y, w) then
             begin
+              {$IF defined(SIM) or defined(ORACLE)}
+              if CombatDiagnostics.Enabled then
+                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+                  CombatDiagnostics.COLLISION_MAP,w,0,True,Pos.X,Pos.Y,
+                  Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),-1);
+              {$ENDIF}
               case Style of
                 BULLET_STYLE_PLAIN,
                 BULLET_STYLE_SHOTGUN,
@@ -1279,11 +1299,15 @@ begin
                   end;
                 BULLET_STYLE_FRAGNADE, BULLET_STYLE_FLAME:
                   begin
-                    {$IFNDEF SERVER}
+                    {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                    {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                    if SimFXAllowed then begin
+                    {$ENDIF}
                     // bounce sound
                     if Style = BULLET_STYLE_FRAGNADE then
                       if Vec2Length(BulletParts.Velocity[Num]) > 1.5 then
                         PlaySound(SFX_GRENADE_BOUNCE, SpriteParts.Pos[Num]);
+                    {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                     {$ENDIF}
 
                     Perp := Map.ClosestPerpendicular(w, BulletParts.Pos[Num], D,
@@ -1438,7 +1462,7 @@ var
   Speed: Single;
   WasDead: Boolean;
   NoCollision: Byte;
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
   ClothesShreadStyle: Byte;
   i: Integer;
   srv: Integer;
@@ -1553,6 +1577,12 @@ begin
 
             if dist > lasthitdist then
             begin
+              {$IF defined(SIM) or defined(ORACLE)}
+              if CombatDiagnostics.Enabled then
+                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+                  CombatDiagnostics.COLLISION_SPRITE,j,Where,False,
+                  Pos.X,Pos.Y,dist,lasthitdist);
+              {$ENDIF}
               Break;
             end;
           end;
@@ -1585,6 +1615,13 @@ begin
 
           if Sprite[j].CeaseFireCounter < 0 then
           begin
+            {$IF defined(SIM) or defined(ORACLE)}
+            CombatDiagnostics.RecordHit(MainTickCounter,Num,Owner,j,Where);
+            if CombatDiagnostics.Enabled then
+              CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+                CombatDiagnostics.COLLISION_SPRITE,j,Where,True,Pos.X,Pos.Y,
+                Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
+            {$ENDIF}
             WeaponIndex := GetWeaponIndex();
 
             // Collision respond
@@ -1612,7 +1649,10 @@ begin
                 begin
                   BulletParts.Pos[Num] := Pos;
 
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   // Blood spark
                   if (sv_friendlyfire.Value) or
                      Sprite[Owner].IsSolo() or
@@ -1670,6 +1710,7 @@ begin
                   end
                   else
                     PlaySound(SFX_VESTHIT, BulletParts.Pos[Num]);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   // Head, torso or leg hitbox modifier
@@ -1758,7 +1799,10 @@ begin
                     (Sprite[j].BonusStyle = BONUS_FLAMEGOD) then
                   else
                     Hit(HIT_TYPE_BLOOD);
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   // play hit sound
                   if Sprite[j].Vest < 1 then
                   begin
@@ -1768,6 +1812,7 @@ begin
                       PlaySound(SFX_DEAD_HIT, BulletParts.Pos[Num]);
                   end else
                     PlaySound(SFX_VESTHIT, BulletParts.Pos[Num]);
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   {$IFDEF SERVER}
@@ -1864,7 +1909,10 @@ begin
 
               BULLET_STYLE_THROWNKNIFE:
                 begin
-                  {$IFNDEF SERVER}
+                  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+                  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+                  if SimFXAllowed then begin
+                  {$ENDIF}
                   // Blood spark
                   if (sv_friendlyfire.Value) or
                      Sprite[Owner].IsSolo() or
@@ -1919,6 +1967,7 @@ begin
                     end else
                       PlaySound(SFX_VESTHIT, BulletParts.Pos[Num]);
                   end;
+                  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
                   {$ENDIF}
 
                   {$IFDEF SERVER}
@@ -2012,7 +2061,15 @@ begin
             a := Vec2Subtract(Pos, BulletParts.OldPos[Num]);
             dist := Vec2Length(a);
             if dist > lasthitdist then
+            begin
+              {$IF defined(SIM) or defined(ORACLE)}
+              if CombatDiagnostics.Enabled then
+                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+                  CombatDiagnostics.COLLISION_THING,j,Where,False,
+                  Pos.X,Pos.Y,dist,lasthitdist);
+              {$ENDIF}
               Break;
+            end;
           end;
 
           // Thing push cooldown from this bullet
@@ -2032,6 +2089,12 @@ begin
 
           if SkipCollision then
             Break;
+          {$IF defined(SIM) or defined(ORACLE)}
+          if CombatDiagnostics.Enabled then
+            CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+              CombatDiagnostics.COLLISION_THING,j,Where,True,Pos.X,Pos.Y,
+              Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
+          {$ENDIF}
 
           // TODO: has high performance impact? -> do alloc like std vector
           NewIndex := Length(ThingCollisions);
@@ -2065,7 +2128,7 @@ end;
 function TBullet.CheckColliderCollision(lasthitdist: Single): TVector2;
 var
   j: Integer;
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
   i: Integer;
   {$ENDIF}
   StartPoint, EndPoint, Pos, ColPos, a: TVector2;
@@ -2099,9 +2162,21 @@ begin
           dist := Vec2Length(a);
           if dist > lasthitdist then
           begin
+            {$IF defined(SIM) or defined(ORACLE)}
+            if CombatDiagnostics.Enabled then
+              CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+                CombatDiagnostics.COLLISION_COLLIDER,j,0,False,
+                Pos.X,Pos.Y,dist,lasthitdist);
+            {$ENDIF}
             Break;
           end;
         end;
+        {$IF defined(SIM) or defined(ORACLE)}
+        if CombatDiagnostics.Enabled then
+          CombatDiagnostics.RecordCollision(MainTickCounter,Num,
+            CombatDiagnostics.COLLISION_COLLIDER,j,0,True,Pos.X,Pos.Y,
+            Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
+        {$ENDIF}
 
         case Style of
           BULLET_STYLE_PLAIN,
@@ -2114,7 +2189,10 @@ begin
               BulletParts.Pos[Num] :=
                 Vec2Subtract(Pos, BulletParts.Velocity[Num]);
 
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               // dirt
               if r_maxsparks.Value > (MAX_SPARKS - 10) then
                 for i := 1 to 2 do
@@ -2124,6 +2202,7 @@ begin
                     a.y := cos(Random(100));
                     CreateSpark(Pos, a, 44 + Random(4), j, 120);
                   end;
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
 
               // create knife thing
@@ -2132,8 +2211,12 @@ begin
                 CreateThing(BulletParts.Pos[Num], Owner, OBJECT_COMBAT_KNIFE, 255);
               {$ENDIF}
 
-              {$IFNDEF SERVER}
+              {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+              {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+              if SimFXAllowed then begin
+              {$ENDIF}
               PlaySound(SFX_COLLIDERHIT, BulletParts.Pos[Num]);
+              {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
               {$ENDIF}
 
               Hit(HIT_TYPE_WALL);
@@ -2194,7 +2277,10 @@ begin
   case T of
     HIT_TYPE_WALL:  // wall hit
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         b := BulletParts.Velocity[Num];
         a := Vec2Add(BulletParts.Pos[Num], BulletParts.Velocity[Num]);
         Vec2Scale(b, b, -0.06);
@@ -2224,12 +2310,16 @@ begin
         begin
           PlaySound(SFX_RIC + Random(4), BulletParts.Pos[Num]);
         end;
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
       end;
 
     HIT_TYPE_BLOOD:  // body hit -blood
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         b := BulletParts.Velocity[Num];
         a := BulletParts.Pos[Num];
         Vec2Scale(b, b, 0.025);
@@ -2266,12 +2356,16 @@ begin
             b.y := cos(Random(100)) * 1.6;
             CreateSpark(a, b, 4, Owner, 55);
           end;
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
       end;
 
     HIT_TYPE_EXPLODE:  // 40mm grenade explode
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         a := Vector2(0.0, 0.0);
 
         if r_maxsparks.Value > (MAX_SPARKS - 10) then
@@ -2282,6 +2376,7 @@ begin
 
         CreateSpark(BulletParts.Pos[Num], a, 12, Owner, EXPLOSION_ANIMS * 3);
         PlaySound(SFX_M79_EXPLOSION, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         ExplosionHit(HIT_TYPE_EXPLODE, SpriteHit, Where);
@@ -2289,7 +2384,10 @@ begin
 
     HIT_TYPE_FRAGNADE:
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         a := Vector2(0.0, 0.0);
 
         if r_maxsparks.Value > (MAX_SPARKS - 10) then
@@ -2300,6 +2398,7 @@ begin
 
         CreateSpark(BulletParts.Pos[Num], a, 17, Owner, EXPLOSION_ANIMS * 3);
         PlaySound(SFX_GRENADE_EXPLOSION, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         ExplosionHit(HIT_TYPE_FRAGNADE, SpriteHit, Where);
@@ -2307,7 +2406,10 @@ begin
 
     HIT_TYPE_THING:
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         b := BulletParts.Velocity[Num];
         a := Vec2Add(BulletParts.Pos[Num], BulletParts.Velocity[Num]);
         Vec2Scale(b, b, -0.02);
@@ -2315,17 +2417,22 @@ begin
         CreateSpark(a, b, 1, Owner, 70);
 
         PlaySound(SFX_BODYFALL, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
       end;
 
     HIT_TYPE_CLUSTERNADE:
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         b.x := 0;
         b.y := 0;
         CreateSpark(BulletParts.Pos[Num], b, 29, Owner, 55);
 
         PlaySound(SFX_CLUSTERGRENADE, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         a := Vec2Subtract(BulletParts.Pos[Num], BulletParts.Velocity[Num]);
@@ -2343,10 +2450,14 @@ begin
 
     HIT_TYPE_CLUSTER:
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         a := Vector2(0.0, 0.0);
         CreateSpark(BulletParts.Pos[Num], a, 28, Owner, EXPLOSION_ANIMS * 3);
         PlaySound(SFX_CLUSTER_EXPLOSION, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         ExplosionHit(HIT_TYPE_CLUSTER, SpriteHit, Where);
@@ -2354,18 +2465,25 @@ begin
 
     HIT_TYPE_FLAK:
       begin
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         a := Vector2(0.0, 0.0);
         CreateSpark(BulletParts.Pos[Num], a, 29, Owner, 55);
         PlaySound(SFX_M2EXPLODE, BulletParts.Pos[Num]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         ExplosionHit(HIT_TYPE_FLAK, SpriteHit, Where);
       end;
 
-    {$IFNDEF SERVER}
+    {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+    {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+    {$ENDIF}
     HIT_TYPE_BODYHIT:
       begin
+        {$IFDEF SIM}if not SimFXAllowed then Exit;{$ENDIF}
         if r_maxsparks.Value < (MAX_SPARKS - 10) then
           Exit;
 
@@ -2399,6 +2517,7 @@ begin
 
     HIT_TYPE_RICOCHET:  // ricochet hit
       begin
+        {$IFDEF SIM}if not SimFXAllowed then Exit;{$ENDIF}
         a := Vec2Add(BulletParts.Pos[Num], BulletParts.Velocity[Num]);
 
         b.x := (-2.0 + Random(40) / 10);
@@ -2422,6 +2541,7 @@ begin
 
         PlaySound(SFX_RIC5 + Random(3), BulletParts.Pos[Num]);
       end;
+    {$IFDEF SIM}{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
       {$ENDIF}
   end;  // case
 end;
@@ -2440,7 +2560,7 @@ var
   s, ExplosionRadius, ExplosionRadius2, HitboxModifier: Single;
   NoCollision: Byte;
   s2: Single = 0.0;
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
   b: TVector2;
   n, rnd: Integer;
   {$ENDIF}
@@ -2525,9 +2645,13 @@ begin
       begin
         s := Sqrt(s);
 
-        {$IFNDEF SERVER}
+        {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+        {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+        if SimFXAllowed then begin
+        {$ENDIF}
         CreateSpark(SpriteParts.Pos[i], Vector2(0, -0.01), 5, Owner, 80);
         PlaySound(SFX_EXPLOSION_ERG, SpriteParts.Pos[i]);
+        {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
         {$ENDIF}
 
         // collision respond
@@ -2641,7 +2765,10 @@ begin
     end;
   end;
 
-  {$IFNDEF SERVER}
+  {$IF DEFINED(SIM) OR NOT DEFINED(SERVER)}
+  {$IFDEF SIM}{$MACRO ON}{$DEFINE Random:=FXRandom}{$DEFINE RandomRange:=FXRandomRange}
+  if SimFXAllowed then begin
+  {$ENDIF}
   // Grenade Effect
   if snd_effects_explosions.Value then
   begin
@@ -2744,6 +2871,7 @@ begin
       CreateSpark(a, b, 64, Owner, 35);
     end;
   end;
+  {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}
   {$ENDIF}
 end;
 

@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "map": "combat-flat",
+  "mapPath": "tests/fixtures/combat/maps/combat-flat.pms",
+  "mapDirectory": "/fixture-maps",
+  "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
+  "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
+  "seed": 123456789,
+  "ticks": 360,
+  "traceStages": "all",
+  "rules": {
+    "mode": "dm",
+    "rng": "original",
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "x": 0,
+      "y": -32,
+      "weapon": 2,
+      "secondaryWeapon": 0,
+      "health": 150,
+      "grenades": 3,
+      "control": "authoritative"
+    }
+  ],
+  "inputs": [],
+  "commands": [
+    {
+      "tick": 60,
+      "kind": "thing",
+      "style": 23,
+      "owner": 0,
+      "x": 0,
+      "y": -25,
+      "ammo": 255
+    }
+  ],
+  "metadata": {
+    "purpose": "thing-kit-23",
+    "source": "Test-only PMS v11; pinned weapons/animations/objects from simulation manifest.",
+    "controlRole": "authoritative: original BOT authority with Dummy=true disables AI; adapter restores original HUMAN held-trigger gating before the server cooldown step. Legacy fixtures default to unmodified HUMAN.",
+    "humanControlExpectation": "Pinned Control.pas:555-569 resets BurstCount when Fire is released; FireMode=2 holds the cooldown above zero after the first shot while Fire remains held. One trigger hold emits one firing action, not one projectile (Eagles/Spas emit multiple).",
+    "commandTiming": "Commands at tick N are applied after completing step N and before its recorded state, affecting step N+1.",
+    "evidenceStatus": "authored-not-captured",
+    "requiredObservations": [
+      {
+        "kind": "thing-style",
+        "style": 23
+      }
+    ],
+    "limitations": [
+      "Parachute and stationary gun creation is witnessed, but use requires a heldThing/fire transition; these optional probes do not claim kit-pickup coverage."
+    ]
+  }
+}

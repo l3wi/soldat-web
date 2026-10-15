@@ -14,6 +14,7 @@ for (const path of files) {
   const trace: string[] = [];
   const receipt = await runFixture({
     wasm, fixture: file.fixture, fixtureBytes: file.bytes, fixtureName: file.name, manifest,
+    rngPolicy: args.rng,
     runtime: `Node ${process.version} ${process.platform}/${process.arch}`,
     readContent: async name => new Uint8Array(await readFile(containedPath(args.content, name))),
     readFixtureAsset: async name => new Uint8Array(await readFile(containedPath(process.cwd(), name))),

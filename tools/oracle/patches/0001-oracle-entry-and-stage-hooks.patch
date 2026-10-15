@@ -79,3 +79,95 @@ diff --git a/server/Server.pas b/server/Server.pas
    // Disable FPU exceptions
    Set8087CW($133F);
    {$ENDIF}
+diff --git a/shared/mechanics/Bullets.pas b/shared/mechanics/Bullets.pas
+--- a/shared/mechanics/Bullets.pas
++++ b/shared/mechanics/Bullets.pas
+@@ -110,6 +110,9 @@
+   // Helper units
+   Calc,
+   TraceLog,
++  {$IFDEF ORACLE}
++  CombatDiagnostics,
++  {$ENDIF}
+   {$IFNDEF SERVER}
+     Util,
+   {$ENDIF}
+@@ -1182,4 +1185,10 @@
+             if Map.PointInPolyEdges(Pos.X, Pos.y, w) then
+             begin
++              {$IFDEF ORACLE}
++              if CombatDiagnostics.Enabled then
++                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++                  CombatDiagnostics.COLLISION_MAP,w,0,True,Pos.X,Pos.Y,
++                  Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),-1);
++              {$ENDIF}
+               case Style of
+                 BULLET_STYLE_PLAIN,
+@@ -1554,4 +1563,10 @@
+             if dist > lasthitdist then
+             begin
++              {$IFDEF ORACLE}
++              if CombatDiagnostics.Enabled then
++                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++                  CombatDiagnostics.COLLISION_SPRITE,j,Where,False,
++                  Pos.X,Pos.Y,dist,lasthitdist);
++              {$ENDIF}
+               Break;
+             end;
+@@ -1584,6 +1599,13 @@
+ 
+           if Sprite[j].CeaseFireCounter < 0 then
+           begin
++            {$IFDEF ORACLE}
++            CombatDiagnostics.RecordHit(MainTickCounter,Num,Owner,j,Where);
++            if CombatDiagnostics.Enabled then
++              CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++                CombatDiagnostics.COLLISION_SPRITE,j,Where,True,Pos.X,Pos.Y,
++                Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
++            {$ENDIF}
+             WeaponIndex := GetWeaponIndex();
+ 
+             // Collision respond
+@@ -2014,3 +2036,11 @@
+             if dist > lasthitdist then
++            begin
++              {$IFDEF ORACLE}
++              if CombatDiagnostics.Enabled then
++                CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++                  CombatDiagnostics.COLLISION_THING,j,Where,False,
++                  Pos.X,Pos.Y,dist,lasthitdist);
++              {$ENDIF}
+               Break;
++            end;
+           end;
+@@ -2033,4 +2063,10 @@
+           if SkipCollision then
+             Break;
++          {$IFDEF ORACLE}
++          if CombatDiagnostics.Enabled then
++            CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++              CombatDiagnostics.COLLISION_THING,j,Where,True,Pos.X,Pos.Y,
++              Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
++          {$ENDIF}
+ 
+           // TODO: has high performance impact? -> do alloc like std vector
+@@ -2100,7 +2136,19 @@
+           if dist > lasthitdist then
+           begin
++            {$IFDEF ORACLE}
++            if CombatDiagnostics.Enabled then
++              CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++                CombatDiagnostics.COLLISION_COLLIDER,j,0,False,
++                Pos.X,Pos.Y,dist,lasthitdist);
++            {$ENDIF}
+             Break;
+           end;
+         end;
++        {$IFDEF ORACLE}
++        if CombatDiagnostics.Enabled then
++          CombatDiagnostics.RecordCollision(MainTickCounter,Num,
++            CombatDiagnostics.COLLISION_COLLIDER,j,0,True,Pos.X,Pos.Y,
++            Vec2Length(Vec2Subtract(Pos,BulletParts.OldPos[Num])),lasthitdist);
++        {$ENDIF}
+ 
+         case Style of

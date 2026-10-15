@@ -4,14 +4,14 @@ import type { Fixture, FixtureReceipt } from "./fixture.ts";
 import type { SimManifest } from "./sim.ts";
 
 export interface RunnerArguments {
-  wasm: string; content: string; out: string; baseline?: string; corpus?: string; trace: boolean; fixtures: string[];
+  wasm: string; content: string; out: string; baseline?: string; corpus?: string; rng?: "original" | "keyed"; trace: boolean; fixtures: string[];
 }
 export function runnerArguments(args: string[]): RunnerArguments {
   const result: RunnerArguments = { wasm: "build-out/sim/sim.wasm", content: "dist/content", out: "build-out/sim/receipts/node", trace: false, fixtures: [] };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
     if (arg === "--trace") result.trace = true;
-    else if (["--wasm", "--content", "--out", "--baseline", "--corpus"].includes(arg)) {
+    else if (["--wasm", "--content", "--out", "--baseline", "--corpus", "--rng"].includes(arg)) {
       const value = args[++i];
       if (!value) throw new Error(`Missing value for ${arg}`);
       if (arg === "--wasm") result.wasm = value;
@@ -19,6 +19,10 @@ export function runnerArguments(args: string[]): RunnerArguments {
       if (arg === "--out") result.out = value;
       if (arg === "--baseline") result.baseline = value;
       if (arg === "--corpus") result.corpus = value;
+      if (arg === "--rng") {
+        if (value !== "original" && value !== "keyed") throw new Error("--rng must be original or keyed");
+        result.rng = value;
+      }
     } else if (arg.startsWith("--")) throw new Error(`Unknown option: ${arg}`);
     else result.fixtures.push(arg);
   }

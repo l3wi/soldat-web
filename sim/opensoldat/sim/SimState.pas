@@ -5,6 +5,10 @@ interface
 uses Net;
 type TSimInputHistory = array[1..MAX_PLAYERS] of Boolean;
 var SimWasJumping, SimWasRunningLeft: TSimInputHistory;
+var SimChosenPrimary,SimChosenSecondary:array[1..MAX_PLAYERS] of Byte;
+{ Every ABI entry point that can mutate gameplay or serialized content must
+  invalidate before doing any work, including paths that can fail partway. }
+procedure SimInvalidateState;
 procedure SimResetOriginalRNG(Seed: LongWord);
 function SimSaveState(OutBuffer: Pointer; Capacity: LongWord): LongInt;
 function SimLoadState(Buffer: Pointer; Length: LongWord): LongInt;
@@ -15,32 +19,35 @@ uses SysUtils, Math, Game, Parts, Anims, Sprites, Bullets, Things,
 const STATE_MAGIC = $31545353; MAX_STATE_BYTES = 32 * 1024 * 1024;
 procedure SimResetOriginalRNG(Seed: LongWord);
 begin
+  SimInvalidateState;
   ResetOriginalRNG(Seed);
 end;
 type
   EState = class(Exception);
+  EStateCapacity = class(EState);
   TCodec = object
     Data: PByte;
     Capacity, Offset: LongWord;
-    Reading, Apply, Hashing: Boolean;
-    Hash: QWord;
+    Reading, Apply: Boolean;
+    PoseStart, PoseEnd: array[1..MAX_SPRITES] of LongWord;
     EntityIndex: Integer;
-    function Number(Value: QWord; Width: Integer): QWord;
-    function Count(Value, Maximum: LongWord): LongWord;
-    function B(var Value: Boolean): Boolean;
-    function U(var Value: Byte; Maximum: Byte): Byte;
-    function I(var Value: LongInt; Minimum, Maximum: LongInt): LongInt;
-    function S(var Value: SmallInt; Minimum, Maximum: SmallInt): SmallInt;
+    function Number(Value: QWord; Width: Integer): QWord; inline;
+    procedure Bytes(Value: Pointer; Size: LongWord);
+    function Count(Value, Maximum: LongWord): LongWord; inline;
+    function B(var Value: Boolean): Boolean; inline;
+    function U(var Value: Byte; Maximum: Byte): Byte; inline;
+    function I(var Value: LongInt; Minimum, Maximum: LongInt): LongInt; inline;
+    function S(var Value: SmallInt; Minimum, Maximum: SmallInt): SmallInt; inline;
     procedure Owner(var Value: Byte);
     procedure WeaponNumber(var Value: Byte);
-    procedure C(var Value: Byte); overload;
-    procedure C(var Value: ShortInt); overload;
-    procedure C(var Value: Word); overload;
-    procedure C(var Value: SmallInt); overload;
-    procedure C(var Value: LongWord); overload;
-    procedure C(var Value: LongInt); overload;
-    procedure C(var Value: Boolean); overload;
-    procedure C(var Value: Single); overload;
+    procedure C(var Value: Byte); overload; inline;
+    procedure C(var Value: ShortInt); overload; inline;
+    procedure C(var Value: Word); overload; inline;
+    procedure C(var Value: SmallInt); overload; inline;
+    procedure C(var Value: LongWord); overload; inline;
+    procedure C(var Value: LongInt); overload; inline;
+    procedure C(var Value: Boolean); overload; inline;
+    procedure C(var Value: Single); overload; inline;
     procedure C(var Value: AnsiString); overload;
     procedure C(var Value: ShortString); overload;
     procedure V(var Value: TVector2);
@@ -60,28 +67,67 @@ type
 procedure Fail;
 begin raise EState.Create('Malformed simulation state'); end;
 function TCodec.Number(Value: QWord; Width: Integer): QWord;
-var J: Integer;
+var P: PByte;
+{$IFNDEF ENDIAN_LITTLE}
+  J: Integer;
+{$ENDIF}
 begin
-  if (Offset > MAX_STATE_BYTES - LongWord(Width)) then Fail;
+  if Offset > MAX_STATE_BYTES - LongWord(Width) then Fail;
+  if Reading or (Data <> nil) then
+  begin
+    if (Offset > Capacity) or (LongWord(Width) > Capacity - Offset) then
+    begin
+      if Reading then Fail;
+      raise EStateCapacity.Create('Simulation state buffer is full');
+    end;
+    P := @Data[Offset];
+  end
+  else P := nil;
+  Result := Value;
+  {$IFDEF ENDIAN_LITTLE}
+  { The wire format is explicitly little endian, not a native record dump.
+    Fixed-width unaligned loads/stores avoid a byte loop for every scalar. }
+  if Reading then
+    case Width of
+      1: Result := P^;
+      2: Result := PWord(P)^;
+      4: Result := PLongWord(P)^;
+      8: Result := PQWord(P)^;
+    else Fail;
+    end
+  else if P <> nil then
+    case Width of
+      1: P^ := Byte(Value);
+      2: PWord(P)^ := Word(Value);
+      4: PLongWord(P)^ := LongWord(Value);
+      8: PQWord(P)^ := Value;
+    else Fail;
+    end;
+  {$ELSE}
   if Reading then
   begin
-    if (Offset > Capacity) or (LongWord(Width) > Capacity - Offset) then Fail;
     Result := 0;
-    for J := 0 to Width - 1 do Result := Result or (QWord(Data[Offset+LongWord(J)]) shl (8*J));
+    for J := 0 to Width - 1 do Result := Result or (QWord(P[J]) shl (8*J));
   end
-  else
-  begin
-    Result := Value;
-    if Data <> nil then
-    begin
-      if (Offset > Capacity) or (LongWord(Width) > Capacity - Offset) then Fail;
-      for J := 0 to Width - 1 do Data[Offset+LongWord(J)] := Byte(Value shr (8*J));
-    end;
-  end;
-  if Hashing then
-    for J := 0 to Width - 1 do
-      Hash := (Hash xor Byte(Value shr (8*J))) * QWord($100000001B3);
+  else if P <> nil then
+    for J := 0 to Width - 1 do P[J] := Byte(Value shr (8*J));
+  {$ENDIF}
   Inc(Offset, Width);
+end;
+procedure TCodec.Bytes(Value: Pointer; Size: LongWord);
+begin
+  if (Size > MAX_STATE_BYTES) or (Offset > MAX_STATE_BYTES - Size) then Fail;
+  if (Offset > Capacity) or (Size > Capacity - Offset) then
+  begin
+    if Reading then Fail;
+    raise EStateCapacity.Create('Simulation state buffer is full');
+  end;
+  if Reading then
+  begin
+    if Apply and (Size <> 0) then Move(Data[Offset],Value^,Size);
+  end
+  else if Size <> 0 then Move(Value^,Data[Offset],Size);
+  Inc(Offset,Size);
 end;
 function TCodec.Count(Value, Maximum: LongWord): LongWord;
 begin Result := Number(Value, 4); if Result > Maximum then Fail; end;
@@ -119,31 +165,25 @@ begin B(Value); end;
 procedure TCodec.C(var Value: Single);
 var Bits: LongWord; X: Single;
 begin
-  Move(Value, Bits, 4); Bits := Number(Bits, 4); Move(Bits, X, 4);
-  if IsNan(X) or IsInfinite(X) then Fail;
-  if Reading and Apply then Value := X;
+  Move(Value, Bits, 4); Bits := Number(Bits, 4);
+  { The exponent test rejects exactly all NaNs and infinities, without RTL
+    floating-point helper calls for each serialized coordinate. }
+  if (Bits and $7F800000) = $7F800000 then Fail;
+  if Reading and Apply then begin Move(Bits, X, 4); Value := X; end;
 end;
 procedure TCodec.C(var Value: AnsiString);
-var N, J: LongWord; X: Byte;
+var N: LongWord;
 begin
   N := Count(Length(Value), 65535);
   if Reading and Apply then SetLength(Value, N);
-  for J := 1 to N do
-  begin
-    X := 0; if not Reading then X := Ord(Value[J]);
-    X := Number(X, 1); if Reading and Apply then Value[J] := AnsiChar(X);
-  end;
+  if N <> 0 then Bytes(Pointer(Value),N);
 end;
 procedure TCodec.C(var Value: ShortString);
-var N, J: LongWord; X: Byte;
+var N: LongWord;
 begin
   N := Count(Length(Value), 255);
   if Reading and Apply then SetLength(Value, N);
-  for J := 1 to N do
-  begin
-    X := 0; if not Reading then X := Ord(Value[J]);
-    X := Number(X, 1); if Reading and Apply then Value[J] := AnsiChar(X);
-  end;
+  if N <> 0 then Bytes(@Value[1],N);
 end;
 procedure TCodec.V(var Value: TVector2);
 begin C(Value.X); C(Value.Y); end;
@@ -184,16 +224,37 @@ begin
   Result := P.Constraints[J].Active or (P.Constraints[J].PartA <> 0) or
     (P.Constraints[J].PartB <> 0) or NonzeroSingle(P.Constraints[J].RestLength);
 end;
-var ZeroParticleBytes: array[0..NUM_PARTICLES*SizeOf(Constraint)-1] of Byte;
+function ZeroBytes(Data: PByte; Size: LongWord): Boolean;
+begin
+  { Inactive skeletons dominate snapshot scanning. Compare words directly
+    against zero rather than calling the byte-oriented RTL memory comparer. }
+  while Size >= 32 do
+  begin
+    if (PQWord(Data)^ or PQWord(@Data[8])^ or
+        PQWord(@Data[16])^ or PQWord(@Data[24])^) <> 0 then Exit(False);
+    Inc(Data,32); Dec(Size,32);
+  end;
+  while Size >= 8 do
+  begin
+    if PQWord(Data)^ <> 0 then Exit(False);
+    Inc(Data,8); Dec(Size,8);
+  end;
+  while Size <> 0 do
+  begin
+    if Data^ <> 0 then Exit(False);
+    Inc(Data); Dec(Size);
+  end;
+  Result := True;
+end;
 function EmptyParticleArrays(const P: ParticleSystem): Boolean; inline;
 begin
-  Result := CompareMem(@P.Active,@ZeroParticleBytes,SizeOf(P.Active)) and
-    CompareMem(@P.Pos,@ZeroParticleBytes,SizeOf(P.Pos)) and
-    CompareMem(@P.OldPos,@ZeroParticleBytes,SizeOf(P.OldPos)) and
-    CompareMem(@P.Velocity,@ZeroParticleBytes,SizeOf(P.Velocity)) and
-    CompareMem(@P.Forces,@ZeroParticleBytes,SizeOf(P.Forces)) and
-    CompareMem(@P.OneOverMass,@ZeroParticleBytes,SizeOf(P.OneOverMass)) and
-    CompareMem(@P.Constraints,@ZeroParticleBytes,SizeOf(P.Constraints));
+  Result := ZeroBytes(@P.Active,SizeOf(P.Active)) and
+    ZeroBytes(@P.Pos,SizeOf(P.Pos)) and
+    ZeroBytes(@P.OldPos,SizeOf(P.OldPos)) and
+    ZeroBytes(@P.Velocity,SizeOf(P.Velocity)) and
+    ZeroBytes(@P.Forces,SizeOf(P.Forces)) and
+    ZeroBytes(@P.OneOverMass,SizeOf(P.OneOverMass)) and
+    ZeroBytes(@P.Constraints,SizeOf(P.Constraints));
 end;
 procedure TCodec.Particle(var P: ParticleSystem);
 var J, K, A, Z, LastIndex: Integer; Entries: LongWord; ActiveConstraint: Boolean;
@@ -386,7 +447,7 @@ begin
   C(P.RealPing);
   C(P.ConnectionQuality);
   U(P.Team, 5);
-  U(P.ControlMethod, HUMAN);
+  U(P.ControlMethod, BOT);
   C(P.Chain);
   C(P.HeadCap);
   C(P.HairStyle);
@@ -574,11 +635,13 @@ begin
   for J := 1 to 2 do Polygon(X.Polys[J]);
 end;
 procedure TCodec.State;
-var J,K: Integer; N, Identity, Seed, RandomWord, RandomUnion: LongWord; Name: AnsiString; Content: QWord; WasHashing: Boolean;
+var J,K: Integer; N, Identity, Seed, RandomWord, RandomUnion: LongWord; Name: AnsiString; Content: QWord;
 begin
   if Number(STATE_MAGIC,4) <> STATE_MAGIC then Fail;
   if Number(SIM_ABI_VERSION,4) <> SIM_ABI_VERSION then Fail;
-  N := Number(Capacity,4); if Reading and (N <> Capacity) then Fail;
+  { Encode zero until the final length is known. Gameplay hashing has always
+    represented this transport-only header word as zero. }
+  N := Number(0,4); if Reading and (N <> Capacity) then Fail;
   Name := Map.MapInfo.Name;
   if Count(Length(Name),65535) <> LongWord(Length(Name)) then Fail;
   for J := 1 to Length(Name) do if Number(Ord(Name[J]),1) <> Ord(Name[J]) then Fail;
@@ -596,6 +659,13 @@ begin
     if Reading and Apply then RandomState[J] := RandomWord;
   end;
   if RandomUnion = 0 then Fail;
+  if Number(Ord(KeyedEnabled),1)<>Ord(KeyedEnabled) then Fail;
+  if Number(MatchSeed,8)<>MatchSeed then Fail;
+  if Number(sv_gamemode.Value,1)<>QWord(sv_gamemode.Value) then Fail;
+  Content:=Number(OtherCounter,8);if Reading and Apply then OtherCounter:=Content;
+  Content:=Number(AISeed,8);if Reading and Apply then AISeed:=Content;
+  for J:=0 to 32 do begin C(ShotCounters[J]);C(EventCounters[J]);end;
+  for J:=1 to MAX_PLAYERS do begin WeaponNumber(SimChosenPrimary[J]);WeaponNumber(SimChosenSecondary[J]);end;
   C(Ticks);
   C(TicksPerSecond);
   C(Frames);
@@ -725,9 +795,9 @@ begin
     C(NoClientUpdateTime[J]); C(MessagesASecNum[J]); C(FloodWarnings[J]); C(PingWarnings[J]);
     C(BulletTime[J]); C(GrenadeTime[J]); C(KnifeCan[J]);
     C(TKListKills[J]); C(BulletWarningCount[J]); C(CheatTag[J]);
-    WasHashing := Hashing; Hashing := False;
+    PoseStart[J] := Offset;
     for K := 1 to 24 do V(SimPreviousPose[J,K]);
-    Hashing := WasHashing;
+    PoseEnd[J] := Offset;
   end;
   for J := 1 to MAX_BULLETS do begin EntityIndex := J; Projectile(Bullet[J]); end;
   for J := 1 to MAX_THINGS do begin EntityIndex := J; ObjectThing(Thing[J]); end;
@@ -767,20 +837,87 @@ begin
   Result := Default(TCodec); Result.Data := Buffer; Result.Capacity := Size;
   Result.Reading := ReadMode; Result.Apply := ApplyMode;
 end;
-function SimSaveState(OutBuffer: Pointer; Capacity: LongWord): LongInt;
-var Codec: TCodec; Required: LongWord;
+const INITIAL_STATE_CAPACITY = 256 * 1024;
+var
+  EncodedState: array of Byte;
+  EncodedLength: LongWord;
+  EncodedHash: QWord;
+  EncodedValid: Boolean = False;
+procedure SimInvalidateState;
 begin
-  Codec := NewCodec(nil,0,False,False);
-  Codec.State; Required := Codec.Offset;
-  if (OutBuffer = nil) and (Capacity = 0) then Exit(Required);
+  EncodedValid := False;
+end;
+function HashBytes(Hash: QWord; Data: PByte; Size: LongWord): QWord;
+begin
+  { One tight traversal of encoded bytes; no scalar codec calls or shifts.
+    Unroll the dependency chain only to remove loop/addressing overhead. }
+  while Size >= 8 do
+  begin
+    Hash := (Hash xor Data[0]) * QWord($100000001B3);
+    Hash := (Hash xor Data[1]) * QWord($100000001B3);
+    Hash := (Hash xor Data[2]) * QWord($100000001B3);
+    Hash := (Hash xor Data[3]) * QWord($100000001B3);
+    Hash := (Hash xor Data[4]) * QWord($100000001B3);
+    Hash := (Hash xor Data[5]) * QWord($100000001B3);
+    Hash := (Hash xor Data[6]) * QWord($100000001B3);
+    Hash := (Hash xor Data[7]) * QWord($100000001B3);
+    Inc(Data,8); Dec(Size,8);
+  end;
+  while Size <> 0 do
+  begin
+    Hash := (Hash xor Data^) * QWord($100000001B3);
+    Inc(Data); Dec(Size);
+  end;
+  Result := Hash;
+end;
+procedure EncodeState;
+var Codec: TCodec; J: Integer; Start, NewCapacity: LongWord;
+begin
+  if EncodedValid then Exit;
+  if Length(EncodedState) = 0 then SetLength(EncodedState,INITIAL_STATE_CAPACITY);
+  repeat
+    Codec := NewCodec(@EncodedState[0],Length(EncodedState),False,False);
+    try
+      Codec.State;
+      Break;
+    except
+      on E: EStateCapacity do
+      begin
+        { Only growth allocates; ordinary save/hash calls reuse the buffer. }
+        NewCapacity := Length(EncodedState);
+        if NewCapacity = MAX_STATE_BYTES then Fail;
+        NewCapacity := Min(NewCapacity * 2,MAX_STATE_BYTES);
+        SetLength(EncodedState,NewCapacity);
+      end;
+    end;
+  until False;
+  EncodedLength := Codec.Offset;
+  EncodedHash := QWord($CBF29CE484222325);
+  Start := 0;
+  for J := 1 to MAX_SPRITES do
+  begin
+    EncodedHash := HashBytes(EncodedHash,@EncodedState[Start],Codec.PoseStart[J]-Start);
+    Start := Codec.PoseEnd[J];
+  end;
+  EncodedHash := HashBytes(EncodedHash,@EncodedState[Start],EncodedLength-Start);
+  { The copied snapshot retains the exact original transport length. Pose
+    bytes remain serialized and validated, but excluded from gameplay hash. }
+  Codec.Offset := 8; Codec.Number(EncodedLength,4);
+  EncodedValid := True;
+end;
+function SimSaveState(OutBuffer: Pointer; Capacity: LongWord): LongInt;
+begin
+  EncodeState;
+  if (OutBuffer = nil) and (Capacity = 0) then Exit(EncodedLength);
   if OutBuffer = nil then Exit(-1);
-  if Capacity < Required then Exit(-5);
-  Codec := NewCodec(OutBuffer,Required,False,False);
-  Codec.State; Result := Codec.Offset;
+  if Capacity < EncodedLength then Exit(-5);
+  Move(EncodedState[0],OutBuffer^,EncodedLength);
+  Result := EncodedLength;
 end;
 function SimLoadState(Buffer: Pointer; Length: LongWord): LongInt;
 var Codec: TCodec;
 begin
+  SimInvalidateState;
   if (Buffer = nil) or (Length < 12) or (Length > MAX_STATE_BYTES) then Exit(-6);
   if not SimAnimationContentValid then Exit(-6);
   Codec := NewCodec(Buffer,Length,True,False);
@@ -796,12 +933,8 @@ begin
   except on E: EState do Result := -6; end;
 end;
 function SimHashState: QWord;
-var Codec: TCodec;
 begin
-  { Snapshot byte length is a transport detail, not gameplay. Hash its header
-    word as zero so hashing needs only one traversal of canonical fields. }
-  Codec := NewCodec(nil,0,False,False);
-  Codec.Hashing := True; Codec.Hash := QWord($CBF29CE484222325);
-  Codec.State; Result := Codec.Hash;
+  EncodeState;
+  Result := EncodedHash;
 end;
 end.

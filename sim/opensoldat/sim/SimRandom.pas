@@ -12,6 +12,13 @@ var
   OldRandSeed: LongWord = $FFFFFFFF;
   RandomState: array[0..3] of LongWord =
     ($AFF181C0, $73B13BA2, $1340D3B4, $61204305);
+  KeyedEnabled: Boolean = False;
+  MatchSeed, OtherCounter, AISeed: QWord;
+  ShotCounters, EventCounters: array[0..32] of LongWord;
+
+procedure SetRandomPolicy(Keyed:Boolean;SeedLo,SeedHi:LongWord);
+procedure BeginRandomEvent(Entity,Domain:LongWord;Shot:Boolean=False);
+procedure EndRandomEvent;
 
 procedure ResetOriginalRNG(Seed: LongWord);
 function Random: Extended; overload;
@@ -30,6 +37,16 @@ implementation
   no RTL source text or private object layout is used. Integer arithmetic in
   this unit deliberately wraps, regardless of the caller's compiler options. }
 
+type TRandomContext=record State:QWord; end;
+var Contexts:array[0..15] of TRandomContext; ContextDepth:Integer;
+
+procedure SetRandomPolicy(Keyed:Boolean;SeedLo,SeedHi:LongWord);
+begin
+  KeyedEnabled:=Keyed; MatchSeed:=(QWord(SeedHi) shl 32) or SeedLo;
+  FillChar(ShotCounters,SizeOf(ShotCounters),0);
+  FillChar(EventCounters,SizeOf(EventCounters),0);
+  OtherCounter:=0; AISeed:=MatchSeed xor QWord($41495F5354524541); ContextDepth:=0;
+end;
 procedure ResetOriginalRNG(Seed: LongWord);
 begin
   { Restore startup state without drawing or eagerly expanding the seed.
@@ -50,6 +67,32 @@ begin
   Mixed := (Seed xor (Seed shr 30)) * QWord($BF58476D1CE4E5B9);
   Mixed := (Mixed xor (Mixed shr 27)) * QWord($94D049BB133111EB);
   Result := Mixed xor (Mixed shr 31);
+end;
+procedure BeginRandomEvent(Entity,Domain:LongWord;Shot:Boolean);
+var Counter:LongWord; Seed:QWord;
+begin
+  if not KeyedEnabled then Exit;
+  if Entity>32 then Entity:=0;
+  if ContextDepth=Length(Contexts) then RunError(202);
+  if Shot then begin Counter:=ShotCounters[Entity];Inc(ShotCounters[Entity]);end
+  else begin Counter:=EventCounters[Entity];Inc(EventCounters[Entity]);end;
+  Seed:=MatchSeed xor (QWord(Entity) shl 48) xor (QWord(Domain) shl 32) xor Counter;
+  Contexts[ContextDepth].State:=SplitMixWord(Seed);Inc(ContextDepth);
+end;
+procedure EndRandomEvent;
+begin
+  if not KeyedEnabled then Exit;
+  if ContextDepth=0 then RunError(202);
+  Dec(ContextDepth);
+end;
+function DrawKeyedWord:LongWord;
+var Value:QWord;
+begin
+  if ContextDepth=0 then begin
+    Value:=MatchSeed xor QWord($4F544845525F524E) xor OtherCounter;Inc(OtherCounter);
+    Value:=SplitMixWord(Value);
+  end else Value:=SplitMixWord(Contexts[ContextDepth-1].State);
+  Result:=LongWord(Value shr 32);
 end;
 
 procedure ExpandSeed;
@@ -79,6 +122,7 @@ function DrawWord: LongWord; inline;
 var
   Shifted: LongWord;
 begin
+  if KeyedEnabled then Exit(DrawKeyedWord);
   if LongWord(RandSeed) <> OldRandSeed then
     ExpandSeed;
 

@@ -1,8 +1,8 @@
 program SimNative;
 {$mode delphi}
 {$H+}
-uses Classes, SysUtils, Math, fpjson, jsonparser, Anims, Constants,
-  Game, Net, Parts, Sprites, Vector, Weapons, PhysFS, SimCore, SimRandom;
+uses cwstring, Classes, SysUtils, Math, fpjson, jsonparser, Anims, Constants,
+  Game, Net, Parts, Sprites, Vector, Weapons, PhysFS, SimCore, SimRandom, CombatDiagnostics;
 var
   Fixture: TJSONObject;
   TraceFile, ReceiptFile: Text;
@@ -85,6 +85,19 @@ begin
     if Selected[Slot] = nil then SetControl(Slot,nil,0)
     else SetControl(Slot,Selected[Slot].Objects['control'],Selected[Slot].Get('pressOrder',0));
 end;
+procedure InjectCommands(Tick: Integer);
+var Commands: TJSONArray; Cmd: TJSONObject; J: Integer; Payload: AnsiString;
+begin
+  if Fixture.Find('commands') = nil then Exit;
+  Commands := Fixture.Arrays['commands'];
+  for J := 0 to Commands.Count-1 do
+  begin
+    Cmd := TJSONObject(Commands[J]);
+    if Cmd.Integers['tick'] <> Tick then Continue;
+    Payload := Cmd.AsJSON;
+    Check(sim_command(Tick,PAnsiChar(Payload),Length(Payload)),'fixture command');
+  end;
+end;
 procedure Receipt;
 var Required, Count, J: Integer; Hex: string;
 const Digits: string = '0123456789abcdef';
@@ -101,10 +114,13 @@ begin
     LowerCase(IntToHex(sim_hash_state,16)),'","events":"',Hex,'"}');
 end;
 procedure TraceStage(const Stage: string; Entity: Integer);
-begin CurrentTick := MainTickCounter; OracleDump(Stage,Entity); end;
+begin
+  CurrentTick := MainTickCounter;
+  if Stage <> 'tick' then OracleDump(Stage,Entity);
+end;
 procedure Run;
 var Source: TFileStream; Rules, MapName, Command, ReceiptPath, MapPath: AnsiString;
-  Players: TJSONArray; Spec, Cmd, Header: TJSONObject; J, TickCount: Integer;
+  Players: TJSONArray; Spec, Cmd, Header, RuleSpec: TJSONObject; J, K, TickCount: Integer;
   Seed: Int64;
 begin
   if (ParamCount < 3) or (ParamCount > 4) then
@@ -116,6 +132,18 @@ begin
   if TickCount < 1 then raise Exception.Create('Fixture ticks must be positive');
   MountDirectory(ParamStr(3),'');
   MapName := Fixture.Strings['map']; Rules := '{}'; Seed := Fixture.Int64s['seed'];
+  RuleSpec := TJSONObject.Create;
+  try
+    if Fixture.Find('rules') <> nil then
+      for K := 0 to Fixture.Objects['rules'].Count-1 do
+        RuleSpec.Add(Fixture.Objects['rules'].Names[K],Fixture.Objects['rules'].Items[K].Clone);
+    if GetEnvironmentVariable('SIM_RNG_POLICY') <> '' then
+    begin
+      RuleSpec.Delete('rng');
+      RuleSpec.Add('rng',GetEnvironmentVariable('SIM_RNG_POLICY'));
+    end;
+    Rules := RuleSpec.AsJSON;
+  finally RuleSpec.Free; end;
   MapPath := Fixture.Get('mapPath','');
   if (MapPath <> '') and (Fixture.Find('mapDirectory') <> nil) then
   begin
@@ -136,9 +164,17 @@ begin
       if Spec.Find('y') <> nil then Cmd.Add('y',Spec.Floats['y']);
       if Spec.Find('health') <> nil then Cmd.Add('health',Spec.Floats['health']);
       if Spec.Find('heldFlag') <> nil then Cmd.Add('heldFlag',Spec.Integers['heldFlag']);
+      for K := 0 to Spec.Count-1 do
+        if (Spec.Names[K] = 'weapon') or (Spec.Names[K] = 'secondaryWeapon') or
+           (Spec.Names[K] = 'ammo') or (Spec.Names[K] = 'grenades') or
+           (Spec.Names[K] = 'vest') or (Spec.Names[K] = 'control') then Cmd.Add(Spec.Names[K],Spec.Items[K].Clone);
+      if (Spec.Find('control') = nil) and
+         (GetEnvironmentVariable('SIM_CONTROL_POLICY') = 'authoritative') then
+        Cmd.Add('control','authoritative');
       Command := Cmd.AsJSON; Check(sim_command(0,PAnsiChar(Command),Length(Command)),'join');
     finally Cmd.Free; end;
   end;
+  InjectCommands(0);
   AssignFile(TraceFile,ParamStr(2)); Rewrite(TraceFile); TraceOpen := True;
   ReceiptPath := GetEnvironmentVariable('SIM_RECEIPT_OUT');
   if ReceiptPath <> '' then begin AssignFile(ReceiptFile,ReceiptPath); Rewrite(ReceiptFile); ReceiptOpen := True; end;
@@ -151,7 +187,10 @@ begin
   Emit(Header); CurrentTick := 0; OracleDump('initial',0); Receipt;
   SimTraceHook := TraceStage;
   for J := 1 to TickCount do
-  begin CurrentTick := J; InjectInputs; Check(sim_step(0),'step'); Receipt; end;
+  begin
+    CurrentTick := J; InjectInputs; Check(sim_step(0),'step');
+    InjectCommands(J); OracleDump('tick',0); Receipt;
+  end;
   SimTraceHook := nil;
   CloseFile(TraceFile); TraceOpen := False;
   if ReceiptOpen then begin CloseFile(ReceiptFile); ReceiptOpen := False; end;
