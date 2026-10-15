@@ -36,9 +36,10 @@ Purpose: turn the four largest unknowns (WASM toolchain, oracle traces, Phaser m
 
 ### 0.1 Repository and pins — S
 - Init git, Bun workspaces, layout per SPEC §7; `reference/` gitignored.
-- Fork `opensoldat/opensoldat` → `sim/opensoldat` submodule at `bf43a43`, branch `sim-extract`. Remove `shared/libs/KrakenSDK` from the branch.
+- Vendor `opensoldat/opensoldat` @`bf43a43` into `sim/opensoldat` in the first commit, excluding `shared/libs/KrakenSDK`; sim changes are reviewed as diffs against that commit. (A GitHub fork can be created later for upstreaming.)
 - Record pins (SPEC §3) in `pins.json`; CI fails if any differs.
 - Linux CI runner with Docker.
+- Local toolchain is native macOS arm64 (`sim/build/setup-toolchain-macos.sh` → gitignored `sim/build/.toolchain`, user decision after the Docker VM filled); the Docker image `soldat-web/fpc:bcd7288` is the Linux/CI recipe and hosts the oracle. T1 comparisons (oracle vs `sim-native`) run in that image so compiler and host match.
 
 ### 0.2 WASM toolchain spike — M — gate **G0.2**
 - Dockerfile building FPC trunk `bcd72886…` for `wasm32-wasip1` and native (linux amd64 + arm64), following `humanova/soldat-web/tools/setup-fpc.sh`; drop the Clang/linker patch unless required.
@@ -70,7 +71,7 @@ Purpose: turn the four largest unknowns (WASM toolchain, oracle traces, Phaser m
 
 ## Phase 1 — Sim extraction: movement — XL — gate **G1**
 
-Work on `sim/opensoldat` branch `sim-extract`; every commit keeps T1 green for the corpus fixtures it covers.
+Work in `sim/opensoldat`; every commit keeps T1 green for the corpus fixtures it covers.
 
 1. Build skeleton: `SIM` define, new `SimMain` library unit, ABI exports from SPEC §4.1 (stubs return errors until implemented, never fake success).
 2. VFS shim replacing PhysFS for `MapFile`, `Anims`, `Parts`, `SharedConfig`.

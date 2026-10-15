@@ -180,7 +180,7 @@ All6 parsed with valid endpoint references. Load scales and gostek gravity1.06, 
 
 ### Gostek graphics, mod.ini, images, and transparency
 
-There is no separate general-purpose `gostek-graphics` file format in this checkout. Structural definitions live in `reference/opensoldat/client/GostekGraphics.inc` (138 definitions, indices0..137): sprite ID/image, point anchors p1/p2, center cx/cy, default visibility, flipped image/team variants, flex, color category, alpha category. Examples `:18-24`; structure/loading in `GostekGraphics.pas:68-111`.
+There is no separate general-purpose `gostek-graphics` file format in this checkout. Structural definitions live in `reference/opensoldat/client/GostekGraphics.inc` (131 definitions, indices 0..130; the file has 138 lines): sprite ID/image, point anchors p1/p2, center cx/cy, default visibility, flipped image/team variants, flex, color category, alpha category. Examples `:18-24`; structure/loading in `GostekGraphics.pas:68-111`.
 
 `shared/mod.ini` has `[SCALE]` and `[GOSTEK]` sections. `[GOSTEK]` overrides only `<ID>_CenterX` and `_CenterY`; missing/unparseable numbers retain code defaults (`GostekGraphics.pas:114-127`), not point bindings/flex/color categories. Root GOSTEK values are merged with current mod's keys (`reference/opensoldat/client/GameRendering.pas:182-201`). `[SCALE]` lookup: normalized lowercase slash-separated full image path → containing-directory key → `DefaultScale` → numeric fallback1. Root, current-mod and custom-interface scale tables are separate (`GameRendering.pas:204-267`). Base defaultscale is **4.5**, cursor override10 and title images1 (`reference/base/shared/mod.ini:1-5`); using source pixels as world units without this information changes character scale.
 
@@ -314,7 +314,7 @@ No browser audio decode/playback matrix was executed in this assignment; current
 | Maps are a conventional engine tilemap/physics asset | **Refuted** | Triangles with BGRA/UV, edge physics normals, 26 types, sectors, spawns, colliders, waypoints. |
 | Geometry and UV preservation are enough | **Refuted** | 27,825 color-gradient triangles; vertex alpha; normal-magnitude bounce; layers/background transitions; jet conversion. |
 | Existing images can mostly load directly | **Nuanced** | 814 actual PNGs; BMP green key; 16 extension mismatches; 2,070 PNG overrides; default scale 4.5. |
-| Character animation means playing a spritesheet | **Refuted** | POA 20-point poses + PO 24-point physical gostek + 138 code sprite definitions + aim/blend/runtime flags. |
+| Character animation means playing a spritesheet | **Refuted** | POA 20-point poses + PO 24-point physical gostek + 131 code sprite definitions + aim/blend/runtime flags. |
 | Original animations include timing/loop data | **Refuted** | Source assigns IDs, Speed, Loop after plain position load. |
 | Sounds may need conversion | **Confirmed, narrower than expected** | 163 PCM, 1 MS ADPCM; 3 tracker modules. No loose Ogg. |
 | `.smod` requires custom compression technology | **Refuted** | Standard ZIP deflate level 5; PhysFS virtual path semantics still need implementation. |

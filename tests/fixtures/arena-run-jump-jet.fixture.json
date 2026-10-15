@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "map": "Arena",
+  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "seed": 123456789,
+  "ticks": 600,
+  "players": [
+    { "team": 0, "spawnpoint": 1 }
+  ],
+  "inputs": [
+    { "player": 1, "start": 1, "ticks": 60, "control": { "MouseAimX": 400, "MouseAimY": 0, "MouseDist": 400 } },
+    { "player": 1, "start": 61, "ticks": 120, "control": { "Right": true, "MouseAimX": 400, "MouseAimY": 0, "MouseDist": 400 } },
+    { "player": 1, "start": 181, "ticks": 20, "control": { "Up": true, "MouseAimX": 400, "MouseAimY": 0, "MouseDist": 400 } },
+    { "player": 1, "start": 201, "ticks": 230, "control": { "Jetpack": true, "MouseAimX": 400, "MouseAimY": 0, "MouseDist": 400 } },
+    { "player": 1, "start": 431, "ticks": 170, "control": { "MouseAimX": 400, "MouseAimY": 0, "MouseDist": 400 } }
+  ]
+}

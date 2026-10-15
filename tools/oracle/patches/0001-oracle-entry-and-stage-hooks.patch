@@ -1,0 +1,81 @@
+diff --git a/server/opensoldatserver.lpr b/server/opensoldatserver.lpr
+--- a/server/opensoldatserver.lpr
++++ b/server/opensoldatserver.lpr
+@@ -21,7 +21,7 @@
+   {$IFDEF AUTOUPDATER}
+     AutoUpdater,
+   {$ENDIF}
+-  Main in 'Main.pas';
++  OracleHarness;
+ 
+ 
+ {$IFDEF MSWINDOWS}
+@@ -49,5 +49,5 @@
+   {$ENDIF}
+   DefaultSystemCodePage := CP_UTF8;
+ 
+-  RunServer;
++  RunOracle;
+ end.
+diff --git a/server/ServerLoop.pas b/server/ServerLoop.pas
+--- a/server/ServerLoop.pas
++++ b/server/ServerLoop.pas
+@@ -20,4 +20,5 @@
+ uses
++  OracleHarness,
+   // System units
+   Classes,
+   SysUtils,
+@@ -359,21 +360,28 @@
+       if Sprite[j].Active then
+         if Sprite[j].IsNotSpectator() then
+           SpriteParts.DoEulerTimeStepFor(j);  // integrate sprite particles
++    OracleDump('sprite-parts', 0);
+ 
+     for j := Low(Sprite) to High(Sprite) do
+       if Sprite[j].Active then
++      begin
+         Sprite[j].Update;  // update sprite
++        OracleDump('sprite', j);
++      end;
+ 
+     // Bullets update
+     for j := 1 to MAX_BULLETS do
+       if Bullet[j].Active then
+         Bullet[j].Update;
++    OracleDump('bullets', 0);
+ 
+     BulletParts.DoEulerTimeStep;
++    OracleDump('bullet-parts', 0);
+ 
+     // update Things
+     for j := 1 to MAX_THINGS do
+       if Thing[j].Active then
+         Thing[j].Update;
++    OracleDump('things', 0);
+ 
+     // Bonuses spawn
+diff --git a/shared/network/Net.pas b/shared/network/Net.pas
+--- a/shared/network/Net.pas
++++ b/shared/network/Net.pas
+@@ -1600,5 +1600,8 @@
+ begin
+   Result := False;
++  {$IFDEF ORACLE}
++  Exit; // Offline harness: no transport is constructed or used.
++  {$ENDIF}
+ 
+   if Size < SizeOf(TMsgHeader) then
+     Exit; // truncated packet
+diff --git a/server/Server.pas b/server/Server.pas
+--- a/server/Server.pas
++++ b/server/Server.pas
+@@ -577,7 +577,7 @@
+   WriteLn('');
+   WriteLn(StringOfChar('-', 79));
+ 
+-  {$IFNDEF CPUARM}
++  {$IF defined(CPUI386) or defined(CPUX86_64)}
+   // Disable FPU exceptions
+   Set8087CW($133F);
+   {$ENDIF}

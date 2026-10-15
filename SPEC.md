@@ -74,7 +74,7 @@ What the original chat assumed, and what research established. "Consequence" is 
 flowchart LR
   subgraph Build
     BASE[opensoldat/base @pin] --> IMP[content importer<br/>Bun/TS]
-    OS[opensoldat fork<br/>branch sim-extract] --> FPC[FPC trunk<br/>wasm32 + native]
+    OS[sim/opensoldat<br/>vendored @pin] --> FPC[FPC trunk<br/>wasm32 + native]
     FPC --> WASM[sim.wasm]
     FPC --> NAT[sim-native + oracle]
     IMP --> BUNDLE[content bundles<br/>hash-addressed]
@@ -99,7 +99,7 @@ flowchart LR
 
 ### 4.1 Simulation core (`sim.wasm`)
 
-**Source.** A fork of `opensoldat/opensoldat` at the pinned commit, branch `sim-extract`, so every change is a reviewable diff against upstream. Units in scope: `Vector, Calc, Parts, Anims, PolyMap, MapFile, Waypoints, Weapons, SharedConfig (weapon INI subset), Game (state subset), Sprites, Control, Bullets, Things, AI, Sparks`.
+**Source.** `opensoldat/opensoldat` at the pinned commit, vendored into `sim/opensoldat` (KrakenSDK excluded) by the repository's first commit, so every change is a reviewable diff against that commit. Units in scope: `Vector, Calc, Parts, Anims, PolyMap, MapFile, Waypoints, Weapons, SharedConfig (weapon INI subset), Game (state subset), Sprites, Control, Bullets, Things, AI, Sparks`.
 
 **Role.** Compiled once with a single role-neutral define (`SIM`). Gameplay semantics follow the **server-role** branches. Every client-role branch that changes gameplay (self-bink, recoil-to-cursor, client jet-fuel 1→0 adjustment, client-only bullet history collision, push-tick scheduling) is recorded in `docs/role-divergence-ledger.md` with an explicit decision. Network, audio, menu, SDL, script and Steam calls are removed or replaced by event emission.
 
@@ -134,7 +134,7 @@ flowchart LR
 - Input: pinned base checkout (and, later, user-supplied local `.smod`/`.pms`).
 - TS readers for PMS v11, POA, PO, `mod.ini`, `weapons.ini`, ZIP; byte layouts per `docs/research/FileFormats.md` §1. Strict bounds/finite checks; accept and preserve trailing bytes.
 - Path resolution exactly as `GameRendering.pas:337-354`: lowercase + `/` canonical ID, PNG preferred over requested extension, case-insensitive match; image type from signature, not extension.
-- Images: exact green key (0,255,0,255) only on single-frame non-terrain images, then premultiply; NPOT preserved; per-asset scale from `mod.ini` `[SCALE]` (default 4.5); `GostekGraphics.inc` 138-entry table exported as data with `[GOSTEK]` center overrides.
+- Images: exact green key (0,255,0,255) only on single-frame non-terrain images; derivatives stored straight-alpha and premultiplied exactly once at GPU upload; NPOT preserved; per-asset scale from `mod.ini` `[SCALE]` (default 4.5); `GostekGraphics.inc` 131-entry table (IDs 0–130; the file is 138 lines) exported as data with `[GOSTEK]` center overrides.
 - Audio: PCM WAV passthrough; `jump.wav` → PCM.
 - Output: immutable hash-addressed objects + per-map manifest (`map hash, terrain, scenery, sim content set`) + a **sim content set** (raw PMS, POA, PO, weapons.ini) with one combined hash that client and server must match before join.
 - Provenance per file: source repo/commit/path, SHA-256, license id, credit, transformations.
@@ -234,7 +234,7 @@ Original `AI.pas` runs inside the server's sim instance (`AI_ENABLED`), using PM
 soldat-web/
   reference/            pinned upstream clones (read-only, never shipped)
   sim/
-    opensoldat/         git submodule: fork, branch sim-extract
+    opensoldat/         vendored upstream @pin; all sim edits are diffs against the vendor commit
     build/              Dockerfile (pinned FPC trunk), build scripts → sim.wasm, sim-native
   tools/oracle/         upstream + harness patch, trace capture CLI
   packages/
