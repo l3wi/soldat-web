@@ -193,7 +193,10 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
   const [reload, setReload] = useState(0);
   const [selectedMap, setSelectedMap] = useState('Arena');
   const [mapQuery, setMapQuery] = useState('');
-  const [runningMap, setRunningMap] = useState<string | null>(null);
+  const [runningMap, setRunningMap] = useState<string | null>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.has('server') ? params.get('map') || 'Arena' : null;
+  });
   const [page, setPage] = useState<'play' | 'settings' | 'credits'>('play');
   const [modal, setModal] = useState<'settings' | 'credits' | null>(null);
   const [status, setStatus] = useState('');
@@ -290,10 +293,11 @@ export default function App() {
   const [settings, setSettings] = useState(loadSettings);
   const [route] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return { capture: params.has('capture'), qualification: params.has('g2'), map: params.get('map') || 'Airpirates' };
+    return { capture: params.has('capture'), qualification: params.has('g2'), combat: params.has('combat'), map: params.get('map') || 'Airpirates' };
   });
   // Capture bypasses all menus, dialogs, status overlays and catalog requests.
   if (route.capture) return <GameSurface capture map={route.map} settings={settings} />;
   if (route.qualification) return <GameSurface capture map={route.map} settings={settings} />;
+  if (route.combat) return <GameSurface capture map={route.map} settings={settings} />;
   return <ClientShell settings={settings} setSettings={setSettings} />;
 }

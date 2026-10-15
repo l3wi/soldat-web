@@ -301,7 +301,7 @@ export class SoldatMap {
     gl.enable(gl.BLEND);
     gl.blendEquation(gl.FUNC_ADD);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-    gl.clearColor(clear[0]! / 255, clear[1]! / 255, clear[2]! / 255, 1);
+    gl.clearColor(clear[0]! / 255, clear[1]! / 255, clear[2]! / 255, (clear[3] ?? 255) / 255);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);

@@ -1,6 +1,6 @@
 import { loadSim, requireStatus, sha256, type SimHost, type SimManifest } from "@soldat-web/sim-host";
 
-export async function loadSandbox(map: string, signal: AbortSignal): Promise<SimHost> {
+export async function loadSandbox(map: string, signal: AbortSignal, combat = false): Promise<SimHost> {
   const response = await fetch("/sim.wasm", { signal });
   if (!response.ok || response.headers.get("content-type")?.includes("text/html")) throw new Error("simulation unavailable: build build-out/sim/sim.wasm with the Phase-1 toolchain");
   const host = await loadSim(await response.arrayBuffer());
@@ -25,9 +25,10 @@ export async function loadSandbox(map: string, signal: AbortSignal): Promise<Sim
       if (bytes.length !== entry.bytes || await sha256(bytes) !== entry.sha256) throw new Error(`Simulation content identity mismatch: ${id}`);
       requireStatus(host.putFile(id, bytes), `sim_vfs_put(${id})`);
     }
-    requireStatus(host.init({}, 0, 0, 0), "sim_init");
+    requireStatus(host.init(combat ? { mode: "ctf", traceCombat: true } : {}, 0, 0, 0), "sim_init");
     requireStatus(host.loadMap(map), "sim_load_map");
     requireStatus(host.command(0, { kind: "join", slot: 1, team: 1, control: "authoritative" }), "sim_command(join)");
+    if (combat) requireStatus(host.command(0, { kind: "join", slot: 2, team: 2, control: "authoritative" }), "sim_command(join target)");
     return host;
   } catch (error) { host.dispose(); throw error; }
 }

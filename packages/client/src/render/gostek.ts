@@ -1,6 +1,12 @@
 import type { ImageAsset, Quad } from "./types";
 import { RENDER_LAYOUT, SPRITE_FLAGS } from "@soldat-web/sim-host";
 import type { WorldView } from "../world";
+import { weaponVisibility } from "./gostek-visibility";
+import { combatRound } from "./combat";
+
+function rgb(target: number[], color: number): void {
+  target[0] = (color >>> 16) & 255; target[1] = (color >>> 8) & 255; target[2] = color & 255;
+}
 
 export interface GostekPart {
   index: number;
@@ -36,6 +42,7 @@ interface PartResources {
 interface InstanceCache {
   pose: { x: number; y: number }[];
   quads: Quad[];
+  visible: Uint8Array;
 }
 
 /** Native part transforms driven exclusively by interpolated simulation points. */
@@ -49,6 +56,8 @@ export class GostekRenderer {
   private readonly head: GostekPart;
   private readonly dreadFirst: number;
   private readonly dreadLast: number;
+  private readonly helmetImage: number;
+  private readonly hatImage: number;
 
   constructor(data: GostekData) {
     // Preserve source painter order, including every mutually exclusive weapon,
@@ -111,6 +120,8 @@ export class GostekRenderer {
     if (!head || !first || !last)
       throw new Error("Missing gostek head/dreadlock definitions");
     this.head = head;
+    this.helmetImage = data.parts.find(p => p.symbol === "GOSTEK_HELMET")!.image;
+    this.hatImage = data.parts.find(p => p.symbol === "GOSTEK_HAT")!.image;
     this.dreadFirst = first.index;
     this.dreadLast = last.index;
     // Byte RGBA, still straight: the shared shader premultiplies color once.
@@ -143,10 +154,11 @@ export class GostekRenderer {
     output.length = 0;
     for (let slot = 0; slot < world.sprites.length; slot++) {
       const instance = world.sprites[slot]!;
-      if (!instance.active) continue;
+      if (!instance.active || instance.style !== 1 || instance.demoPlayer || !instance.named || instance.team === 5 ||
+        (world.ceaseFireTime !== undefined && instance.ceaseFireCounter > world.ceaseFireTime - 5)) continue;
       let cache = this.instances[slot];
       if (!cache) {
-        cache = { pose: Array.from({ length: RENDER_LAYOUT.skeletonPoints + 1 }, () => ({ x: 0, y: 0 })), quads: [] };
+        cache = { pose: Array.from({ length: RENDER_LAYOUT.skeletonPoints + 1 }, () => ({ x: 0, y: 0 })), quads: [], visible: new Uint8Array(131) };
         this.instances[slot] = cache;
       }
       const pose = cache.pose;
@@ -158,18 +170,35 @@ export class GostekRenderer {
       const direction = instance.direction;
       const team = instance.team === 2 || instance.team === 4 ? 1 : 0;
       const colors = this.colors[team]!;
+      rgb(colors[1]!, instance.shirtColor); rgb(colors[2]!, instance.pantsColor);
+      rgb(colors[3]!, instance.skinColor); rgb(colors[4]!, instance.hairColor);
+      colors[5]![0] = colors[5]![1] = colors[5]![2] = instance.hasCigar === 5 ? 97 : 255;
       const dead = (instance.flags & SPRITE_FLAGS.dead) !== 0;
-      const blood = instance.health > 90 ? 0 : Math.max(0, Math.min(255, 200 - Math.round(instance.health)));
+      const blood = instance.health > 90 ? 0 : Math.max(0, Math.min(255, 200 - combatRound(instance.health)));
       const h1 = pose[this.head.p1],
         h2 = pose[this.head.p2];
       const headRotation = Math.atan2(h2.y - h1.y, h2.x - h1.x) - Math.PI / 2;
       const headCos = Math.cos(headRotation),
         headSin = Math.sin(headRotation);
       let count = 0;
+      const visibility = cache.visible;
+      for (const { part } of this.resources) visibility[part.index] = Number(part.visible || (part.alpha === 1 && blood > 0));
+      weaponVisibility(instance, visibility);
+      if (instance.primaryIndex !== 15 && instance.primaryIndex !== 16) {
+        const grabbed = (instance.bodyId === 28 || instance.bodyId === 33) && instance.bodyFrame > 4;
+        if (instance.wearHelmet === 1) {
+          if (instance.headCap === this.helmetImage) visibility[grabbed ? 28 : 46] = 1;
+          if (instance.headCap === this.hatImage) visibility[grabbed ? 29 : 47] = 1;
+        }
+        if (grabbed || instance.wearHelmet !== 1 || instance.hairStyle === 3) {
+          if (instance.hairStyle === 1) for (let index = 49; index <= 54; index++) visibility[index] = 1;
+          else if (instance.hairStyle === 2) visibility[55] = 1;
+          else if (instance.hairStyle === 3) visibility[45] = 1;
+          else if (instance.hairStyle === 4) visibility[56] = 1;
+        }
+      }
       for (const { part, variants } of this.resources) {
-        // Cosmetics retain native base visibility, never the spike's invented
-        // chain/hair/cigar loadout; poses and teams come from simulation.
-        let visible = part.visible || (part.alpha === 1 && blood > 0);
+        let visible = visibility[part.index] !== 0;
         if (dead && (part.symbol === "GOSTEK_HEAD" || part.symbol === "GOSTEK_HEAD_DMG")) visible = false;
         if (part.symbol === "GOSTEK_HEAD_DEAD" || part.symbol === "GOSTEK_HEAD_DEAD_DMG") visible = dead;
         if (!visible || part.image === 0) continue;
@@ -233,7 +262,7 @@ export class GostekRenderer {
         quad.color[0] = color[0];
         quad.color[1] = color[1];
         quad.color[2] = color[2];
-        quad.color[3] = part.alpha === 1 ? blood : part.alpha === 2 ? 191 : 255;
+        quad.color[3] = part.alpha === 1 ? blood : part.alpha === 2 ? Math.trunc(0.75 * instance.alpha) : instance.alpha;
         output.push(quad);
       }
     }
