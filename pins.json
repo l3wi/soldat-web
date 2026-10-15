@@ -1,0 +1,19 @@
+{
+  "opensoldat": {
+    "repo": "https://github.com/opensoldat/opensoldat.git",
+    "commit": "bf43a43bdd7a069e02c906768807f66e621b2888",
+    "vendoredAt": "sim/opensoldat",
+    "vendorExcludes": ["shared/libs/KrakenSDK"]
+  },
+  "base": {
+    "repo": "https://github.com/opensoldat/base.git",
+    "commit": "5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4"
+  },
+  "fpc": {
+    "repo": "https://gitlab.com/freepascal.org/fpc/source.git",
+    "commit": "bcd728860dcd953cb6f3bbda788eab07b0d16c85",
+    "recipe": "https://github.com/humanova/soldat-web/blob/31bb3d5cb0eaa2eefd20b205b646feb8ba9c92fd/tools/setup-fpc.sh"
+  },
+  "phaser": "4.2.1",
+  "node": "24"
+}
