@@ -156,7 +156,7 @@ flowchart LR
 
 - Match worker: monotonic accumulator, fixed 1/60 s steps, max 4 catch-up ticks per wake, overload recorded; never variable dt.
 - Messages: explicit versioned little-endian binary codec. Asset delivery via CDN, never over the game socket.
-- Client→server: input frame every tick `{seq, tick, input}` + previous 2 frames (redundancy). Server buffers per player, bounded lead (≤2 ticks future), repeats last input on gap, rejects stale one-shot actions.
+- Client→server: input frame every tick `{seq, tick, input}` + previous 2 frames (redundancy). Server buffers per player and accepts inputs up to 8 ticks (133 ms) ahead of its current tick — early inputs are only queued, consumed at their tick, and buy no simulation time; the client targets a small positive buffer (adaptive jitter margin ≤ 6 ticks, leaving 2 for clock error). Server repeats last input on gap and rejects stale one-shot actions.
 - Server→client: snapshot 30 Hz `{server tick, last consumed input seq, state}`; state = `sim_save_state` blob **delta-encoded against the last acknowledged baseline**; reliable events (kills, captures, pickups, chat, score) with IDs, exactly-once at the application layer.
 - Prediction: on snapshot, `sim_load_state(server)`, replay unacknowledged local inputs (remote/bot inputs held at last known) with `REPLAY`; ring of 128 frames; overflow ⇒ full resync.
 - Remote soldiers render from interpolated authoritative snapshots (start 50 ms, adapt 33–100 ms); local soldier renders from prediction; corrections smoothed visually only.
