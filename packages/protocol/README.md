@@ -22,7 +22,7 @@ One WebSocket binary message contains exactly one packet. There is no stream con
 | 4 | u32 | Payload byte length, excluding this 8-byte header |
 | 8 | bytes | Message-specific payload |
 
-Only `state` and `ticks` use channel 1. Every other type uses channel 0; a mismatch is invalid. Both channels are ordered and reliable on WSS. Global packet limit is `32 MiB + 512` bytes. The tighter per-type payload limits below also apply.
+Only `state` and `ticks` use channel 1. Every other type uses channel 0; a mismatch is invalid. Both channels are ordered and reliable on WSS. The server→client decoder packet limit remains `32 MiB + 512` bytes. Server WebSocket ingress instead uses `MAX_CLIENT_PACKET_BYTES` (**2,048 bytes**), derived from the largest legal client payload plus the eight-byte header, rounded up to 1 KiB. The tighter per-type payload limits below also apply.
 
 | ID | Type | Direction | Maximum payload bytes |
 | ---: | --- | --- | ---: |
@@ -46,6 +46,7 @@ Only `state` and `ticks` use channel 1. Every other type uses channel 0; a misma
 | 18 | lobby-leave | client → server | 0 |
 | 19 | lobby-state | server → client | 8,192 |
 | 20 | lobby-error | server → client | 258 |
+| 21 | lobby-kick | host → server | 34 |
 
 The direction column describes application policy, not a different wire encoding. The authoritative server rejects messages inappropriate to its admission/session state.
 
@@ -295,7 +296,7 @@ The HTTPS origin corresponding to the game WSS endpoint serves JSON endpoints. A
 
 Quickplay selects the available public match with the lowest human-plus-reservation load, otherwise starts a separate worker/WASM with a rotating bot-capable stock DM map. The response roster includes pending reservations. `wsUrl` includes a random, single-use admission ticket valid for 30 seconds. Connect there using the ordinary binary `hello`; there is no new simulation admission message. Unconsumed reservations expire and cannot exhaust capacity permanently.
 
-The six-character lobby code is uppercase alphanumeric. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Use the canonical lobby `wsUrl` returned by create/lookup; do not derive it from the browser's HTTP origin, which may be a development proxy. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
+The eight-character lobby code uses random Crockford base32 (40 bits; alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`). Input and lookups are case-insensitive; old six-character links fail clearly. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Use the canonical lobby `wsUrl` returned by create/lookup; do not derive it from the browser's HTTP origin, which may be a development proxy. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
 
 ## Lobby binary payload reference
 
@@ -307,11 +308,12 @@ Every lobby message uses reliableControl and the existing eight-byte binary head
 | `lobby-update` | u8 presence mask (mode=1, map=2, targetPlayers=4; 1..7), then present mode, map string (1..128), targetPlayers |
 | `lobby-ready` | ready boolean |
 | `lobby-start`, `lobby-leave` | empty |
+| `lobby-kick` | guest id string (1..32 bytes) |
 | `lobby-error` | reason string (1..256) |
-| `lobby-state` | selfId string (1..32), code string (6), mode, map string (1..128), targetPlayers, u8 roster length (0..32), roster entries, started boolean, then matchId string (1..64) and personalized matchWsUrl string (1..1024) only when started |
+| `lobby-state` | selfId string (1..32), code string (8), mode, map string (1..128), targetPlayers, u8 roster length (0..32), roster entries, started boolean, then matchId string (1..64) and personalized matchWsUrl string (1..1024) only when started |
 | roster entry | id string (1..32), nickname string (1..48), ready boolean, host boolean |
 
-Only the host may update mode/map/target or start. Send compatible mode/map changes together. Setup changes reset guest readiness; the host is always ready. Start requires all current guests ready. The server locks setup during worker creation, broadcasts the started state, and late joins receive a ticket to the same match, replacing a bot. Leaving closes that member's lobby session; closing an unstarted host session closes its lobby rather than transferring the capability to a stranger. Once started, the match survives host departure.
+Only the host may update mode/map/target, start, or kick a guest. Kicking closes the guest with an explicit reason and blocks its source IP from that lobby for ten minutes. Send compatible mode/map changes together. Setup changes reset guest readiness; the host is always ready. Unchanged setup/readiness does not broadcast. Start requires all current guests ready. The server locks setup during worker creation, broadcasts the started state, and late joins receive a ticket to the same match, replacing a bot. Leaving closes that member's lobby session; closing an unstarted host session closes its lobby rather than transferring the capability to a stranger. Once started, the match survives host departure.
 
-Lobby traffic has a 12-message burst and four messages/second refill per socket. API creation has an eight-request burst per source IP and one request/10 seconds refill; rejected POSTs consume that budget too. Match workers, lobbies, roster lengths, pending admissions, request bodies and packet sizes are bounded. Default idle cleanup is five minutes with no humans or reservations; empty lobbies also expire. Population targets count humans plus original bots, never exceed 32, and preserve CTF team balance on replacement/refill.
+Lobby traffic has a 12-message burst and four messages/second refill per socket. Broadcasts coalesce to at most ten per second, encoding common state once and personalizing only member ID/ticket. API creation has an eight-request burst per source and one request/10 seconds refill; rejected POSTs consume that budget too. Default ownership quotas are two hosted lobbies, two private matches, and four outstanding quickplay reservations per source. At least 25% of match slots (rounded up, minimum one) are reserved for public quickplay. Unstarted lobbies expire after thirty minutes; matches with no humans or live reservations close after sixty seconds. Sources use direct socket addresses, with IPv6 grouped by /64. Global creation/failed-lookup limits, pending admissions, TCP/WebSocket counts and outbound buffering are bounded; see the [server configuration reference](../server/README.md#configuration-reference) for all configurable defaults. Population targets count humans plus original bots, never exceed 32, and preserve CTF team balance on replacement/refill.
 
