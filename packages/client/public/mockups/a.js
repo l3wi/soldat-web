@@ -134,7 +134,7 @@ function content() {
         <div class="actions">${action('Back', 'menu', true)}</div>`;
     case 'credits':
       return `<h2>Credits</h2>
-        <ul class="credit-list"><li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li><li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li><li>Play typeface: Play contributors, SIL Open Font License 1.1.</li><li>Art and captures: CC BY 4.0, cropped or tinted.</li></ul>
+        <ul class="credit-list"><li>A port of the original OpenSoldat game logic, compiled to WebAssembly and verified bit-for-bit against the original server. Art and sound re-encoded for the web (lossless WebP, Opus).</li><li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li><li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li><li>Play typeface: Play contributors, SIL Open Font License 1.1.</li><li>Art and captures: CC BY 4.0, cropped or tinted.</li></ul>
         <nav class="menu" aria-label="License documents"><a class="small" href="./assets/base-license.txt" target="_blank" rel="noopener">CC BY 4.0 license</a><a class="small" href="./assets/base-credits.txt" target="_blank" rel="noopener">Contributor credits</a><a class="small" href="./assets/play-OFL.txt" target="_blank" rel="noopener">Play font license</a></nav>
         <div class="actions">${action('Back', 'menu', true)}</div>`;
   }
