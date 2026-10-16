@@ -293,3 +293,32 @@ test("eight-player 12-tick rewind processes a real 224-projectile fourteen-style
   }
   await writeFile(resolve(out, "loaded-worst-window.json"), JSON.stringify({ type: "loaded-lagcomp-worst-window", wasmSha256: FROZEN_WASM_SHA256, runtime: process.version, players: 8, replayWindowTicks: 12, samples: rows, replayMs: distribution(timings), scope: "Actual original projectile objects, all fourteen styles, diagnostic trusted fixture; not network-admissible projectile injection or proof all player guns fired" }, null, 2));
 });
+
+test("overlapping delayed shots rebuild from a retained coherent anchor", async () => {
+  const timely = await timeline(4, 8), late = await timeline(4, 8);
+  try {
+    for (const value of [timely, late]) warmSeparatedPlayers(value, 600);
+    const first = { seq: timely.sequence + 1, tick: 600, viewTick: 596, input: encodeInput({ Fire: true, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 }) };
+    const second = { seq: timely.sequence + 3, tick: 606, viewTick: 602, input: encodeInput({ ThrowNade: true, MouseAimX: 350, MouseAimY: -100, MouseDist: 500 }) };
+    timely.match.receive({ type: "input", slot: 1, frames: [first] }, timely.now);
+    stepTo(timely, 601);
+    timely.match.receive({ type: "input", slot: 1, frames: [{ seq: first.seq + 1, tick: 601, viewTick: 597, input: encodeInput({}) }] }, timely.now);
+    stepTo(timely, 606);
+    timely.match.receive({ type: "input", slot: 1, frames: [second] }, timely.now);
+    stepTo(timely, 607);
+    timely.match.receive({ type: "input", slot: 1, frames: [{ seq: second.seq + 1, tick: 607, viewTick: 603, input: encodeInput({}) }] }, timely.now);
+    stepTo(timely, 618);
+    stepTo(late, 612);
+    late.match.receive({ type: "input", slot: 1, frames: [first] }, late.now);
+    stepTo(late, 618);
+    // Tick 606 was invalidated by the first rewind. Restoring its stale
+    // pre-shot state would erase the first shot; nearest-anchor replay cannot.
+    late.match.receive({ type: "input", slot: 1, frames: [second] }, late.now);
+    assert.equal(late.match.takeLagMetrics().replayTicks, 30);
+    stepTo(timely, 620); stepTo(late, 620);
+    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+    // Let all invalidated boundaries age out of the retained history.
+    stepTo(timely, 660); stepTo(late, 660);
+    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+  } finally { timely.match.dispose(); late.match.dispose(); }
+});

@@ -42,7 +42,7 @@ try {
         simEncodeMs = []; tickLatenessMs = [];
         nextMetrics = match!.tick + 60;
       }
-      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds));
+      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint())));
     } catch (error) { fail(error); }
   };
   port.on("message", (message: WorkerRequest) => {
@@ -55,5 +55,5 @@ try {
   });
   port.on("close", stop);
   port.postMessage({ type: "ready" } satisfies WorkerResponse);
-  timer = setTimeout(wake, clock.delayMilliseconds);
+  timer = setTimeout(wake, clock.delayMilliseconds(process.hrtime.bigint()));
 } catch (error) { fail(new Error(`Match start failed: ${error instanceof Error ? error.message : String(error)}`)); }

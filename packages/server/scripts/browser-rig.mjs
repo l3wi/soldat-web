@@ -6,10 +6,10 @@ import { arenaControl } from "./workload.ts";
 
 const root = fileURLToPath(new URL("../../../", import.meta.url));
 
-/** Run inside ego-browser nodejs; pass its taskSpace helper explicitly.
+/** Run with an ego-browser taskSpace or an explicitly owned task/page adapter.
  * Example: await (await import("file:///.../browser-rig.mjs")).runBrowserRig({taskSpace, clientUrl:"http://127.0.0.1:5195",out:"build-out/net-g4/browser-browser",browserPlayers:2});
  */
-export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, browserPlayers = 2, seconds = 120, impaired = false, combat = false, capturePixels = false, spaceId, task: existingTask, finishTask = true }) {
+export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, browserPlayers = 2, seconds = 120, impaired = false, combat = false, capturePixels = false, spaceId, task: existingTask, finishTask = true, signal }) {
   out = resolve(root, out); await mkdir(out, { recursive: true });
   const task = existingTask ?? await taskSpace(spaceId ?? "Soldat Phase 4 real networking qualification");
   console.log(JSON.stringify({ type: "browser-space", spaceId: task.spaceId }));
@@ -19,10 +19,13 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
   const listening = new Promise((resolveReady, reject) => { listeningResolve = resolveReady; listeningReject = reject; });
   const exited = new Promise((resolveExit, reject) => {
     child.once("error", reject);
-    child.once("exit", (code, signal) => { if (code === 0) resolveExit(); else reject(new Error(`Real WSS rig exited ${code}/${signal}: ${stderr}`)); });
+    child.once("close", (code, signal) => { if (code === 0) resolveExit(); else reject(new Error(`Real WSS rig exited ${code}/${signal}: ${stderr}`)); });
   });
   // Keep rejection handled until teardown awaits the child.
   exited.catch(error => listeningReject(error));
+  const interrupt = () => child.kill("SIGTERM");
+  signal?.addEventListener("abort", interrupt, { once: true });
+  if (signal?.aborted) interrupt();
   child.stdout.on("data", chunk => {
     stdout += chunk.toString(); remainder += chunk.toString();
     const lines = remainder.split("\n"); remainder = lines.pop() ?? "";
@@ -36,6 +39,7 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
   const pageScripts = [];
   let completed = false;
   try {
+    signal?.throwIfAborted();
     let listenTimeout;
     const server = await Promise.race([listening, new Promise((_, reject) => { listenTimeout = setTimeout(() => reject(new Error("WSS rig did not listen")), 90_000); })]).finally(() => clearTimeout(listenTimeout));
     for (let i = 0; i < browserPlayers; i++) {
@@ -92,6 +96,7 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
     const end = performance.now() + (seconds + 2) * 1000;
     while (performance.now() < end) {
       for (const page of pages) {
+        signal?.throwIfAborted();
         const batch = await page.evaluate(() => ({ samples: window.__netG4Samples.splice(0), events: window.__netG4Events.splice(0), errors: window.__netG4Errors.splice(0) }));
         samples.push(...batch.samples); events.push(...batch.events); errors.push(...batch.errors);
       }
@@ -112,7 +117,7 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
         } catch (error) { captureErrors.push({ player: i + 1, error: String(error), note: "Screenshot unavailable; raw real-client metrics/events preserved independently" }); }
       }
       await writeFile(resolve(out, `browser-${i + 1}-dom.txt`), String(await page.snapshot()));
-      await writeFile(resolve(out, `browser-${i + 1}-environment.json`), JSON.stringify({ visibility: result.visibility, userAgent: result.userAgent, renders: result.renders, rendersAtStart: result.rendersAtStart, elapsedMs: result.elapsedMs, observedRendersPerSecond: (result.renders - result.rendersAtStart) * 1000 / result.elapsedMs, note: "Actual ordinary online scene render counter; includes warmup, not a physical display-refresh claim. Pixel capture optional because CDP screenshots time out in this Ego session." }));
+      await writeFile(resolve(out, `browser-${i + 1}-environment.json`), JSON.stringify({ visibility: result.visibility, userAgent: result.userAgent, renders: result.renders, rendersAtStart: result.rendersAtStart, elapsedMs: result.elapsedMs, observedRendersPerSecond: (result.renders - result.rendersAtStart) * 1000 / result.elapsedMs, note: "Actual ordinary online scene render counter measured from rendersAtStart; not a physical display-refresh claim. Pixel capture is optional; capture failures are retained separately." }));
     }
     await writeFile(resolve(out, "browser-results.json"), JSON.stringify({ samples, finals, events, errors, captureErrors, humanPlay: false }));
     await exited;
@@ -122,8 +127,15 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
     await writeFile(resolve(out, "browser-failure.json"), JSON.stringify({ error: String(error), samples, finals, events, errors, captureErrors, humanPlay: false }));
     throw error;
   } finally {
-    if (!completed) { child.kill("SIGTERM"); await exited.catch(() => {}); }
-    for (const { page, identifier } of pageScripts) await page.cdp("Page.removeScriptToEvaluateOnNewDocument", { identifier });
+    signal?.removeEventListener("abort", interrupt);
+    if (!completed) {
+      child.kill("SIGTERM");
+      const killTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
+      try { await exited.catch(() => {}); } finally { clearTimeout(killTimer); }
+    }
+    const cleanup = await Promise.allSettled(pageScripts.map(({ page, identifier }) => page.cdp("Page.removeScriptToEvaluateOnNewDocument", { identifier })));
+    const cleanupErrors = cleanup.flatMap((result, index) => result.status === "rejected" ? [{ page: pageScripts[index].page.label, error: String(result.reason) }] : []);
+    if (cleanupErrors.length) await writeFile(resolve(out, "browser-cleanup-errors.json"), JSON.stringify(cleanupErrors));
     await writeFile(resolve(out, "runner-stdout.log"), stdout);
     await writeFile(resolve(out, "runner-stderr.log"), stderr);
     if (completed && finishTask) await task.finish({ keep: [] });

@@ -125,3 +125,34 @@ test("real snapshots retain an acknowledged baseline beyond eight arrivals and c
     assert.equal(sent.filter(message => message.type === "snapshotAck").length, 14);
   } finally { session.dispose(); authoritative.dispose(); }
 });
+
+test("fresh snapshots cannot hide an exhausted unconsumed sequence window", async () => {
+  const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
+  const sent: Message[] = []; let now = 0;
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send: message => sent.push(message) });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative" }), "join");
+    session.receive(snapshot(authoritative, save(authoritative), 1, 0));
+    for (let tick = 1; tick <= INPUT_HISTORY + 2; tick++) {
+      requireStatus(authoritative.step(), "step");
+      now = tick * 1000 / 60;
+      // A real server keeps advancing and publishing valid snapshots even if
+      // every input is rejected. No consumption ACK advances in this case.
+      session.receive(snapshot(authoritative, save(authoritative), tick + 1, tick));
+      session.advance(() => encodeInput({ Right: true }));
+      if (session.metrics.resyncs) break;
+    }
+    assert.equal(session.metrics.resyncs, 1);
+    assert.equal(session.metrics.status, "resynchronizing");
+    assert.equal(sent.filter(message => message.type === "resync").length, 1);
+    assert.equal(session.metrics.pendingInputs, 0);
+    session.advance(() => encodeInput({}));
+    assert.equal(sent.filter(message => message.type === "resync").length, 1);
+    const priorInputs = sent.filter(message => message.type === "input").length;
+    session.receive(snapshot(authoritative, save(authoritative), session.metrics.snapshotId + 1, session.metrics.serverTick));
+    now += 17;
+    session.advance(() => encodeInput({ Right: true }));
+    assert.equal(session.metrics.resyncs, 1);
+    assert.ok(sent.filter(message => message.type === "input").length > priorInputs);
+  } finally { session.dispose(); authoritative.dispose(); }
+});

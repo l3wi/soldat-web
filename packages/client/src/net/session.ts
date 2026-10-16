@@ -45,6 +45,7 @@ export class OnlineSession {
   private readonly poses: Pose[] = [];
   private remote: { slot: number; input: Uint8Array }[] = [];
   private seq = 0;
+  private resyncSequence = 0;
   private lastEvent = 0;
   private lastSnapshotAt = 0;
   private lastPresentAt = 0;
@@ -107,6 +108,7 @@ export class OnlineSession {
       this.options.send({ type: "resync", baselineId });
     }
     this.waiting = true; this.metrics.status = "resynchronizing";
+    this.resyncSequence = this.seq;
     this.ring.fill(undefined); this.recent.length = 0; this.metrics.pendingInputs = 0;
   }
   private snapshot(message: Snapshot): void {
@@ -199,6 +201,10 @@ export class OnlineSession {
       this.lastPingAt = at; this.ping = BigInt(Math.floor(at * 1000)); this.options.send({ type: "ping", timestamp: this.ping });
     }
     if (this.waiting) return;
+    // Snapshots can keep arriving while every input is rejected (for example,
+    // an initial TCP backlog can exhaust the bounded sequence jump). Tick-
+    // indexed ring retirement alone cannot detect this sequence deadlock.
+    if (this.seq - Math.max(m.lastConsumedInputSeq, this.resyncSequence) >= INPUT_HISTORY) { this.resync(); return; }
     m.snapshotAgeMs = at - this.lastSnapshotAt;
     if (m.snapshotAgeMs > INPUT_HISTORY * STEP_MS) { this.resync(); return; }
     this.present();

@@ -18,7 +18,7 @@ interface Player {
   lastRewind: number;
 }
 interface History {
-  state: Uint8Array;
+  state: Uint8Array | undefined;
   inputs: Map<number, Uint8Array>;
   weapons: Map<number, number>;
 }
@@ -188,28 +188,37 @@ export class AuthoritativeMatch {
     // View is bounded independently of shot tick: interpolation is 2..6 ticks,
     // plus outbound prediction lead. No client-provided RTT increases allowance.
     if (frame.viewTick > this.tick + 2 || frame.tick - frame.viewTick > Math.min(18, Math.ceil(player.rttMs * 0.06) + 8)) { this.rejectedShots++; return false; }
+    let restoreTick = frame.tick;
+    while (restoreTick >= this.tick - HISTORY_TICKS && !this.history.get(restoreTick)?.state) restoreTick--;
+    const anchor = this.history.get(restoreTick)?.state;
+    if (!anchor) throw new Error("Missing retained rewind state");
     const start = performance.now();
     const corrected = previous.slice();
     const view = new DataView(corrected.buffer);
     view.setUint16(0, view.getUint16(0, true) | (bits & 80), true);
     corrected.set(frame.input.subarray(2, 8), 2);
     entry.inputs.set(slot, corrected);
-    requireStatus(this.host.loadState(entry.state), "sim_load_state(rewind)");
-    for (let tick = frame.tick; tick < this.tick; tick++) {
+    requireStatus(this.host.loadState(anchor), "sim_load_state(rewind)");
+    for (let tick = restoreTick; tick < this.tick; tick++) {
       const historical = this.history.get(tick);
       if (!historical) throw new Error("Incomplete rewind history");
-      historical.state = this.save();
+      // Only the insertion boundary needs a fresh saved anchor. Later states
+      // are invalidated, not serialized/hash-copied on every replayed tick.
+      // A subsequent overlapping shot replays from the nearest valid anchor.
+      if (tick === frame.tick && !historical.state) historical.state = this.save();
+      else if (tick > frame.tick) historical.state = undefined;
       const render = this.host.renderView();
       if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
       for (const owner of historical.inputs.keys()) historical.weapons.set(owner, render.sprite(owner - 1).weapon);
       for (const [owner, input] of historical.inputs) this.apply(owner, tick, input);
       requireStatus(this.host.step(1), "sim_step(rewind)");
-      this.pendingEvents.set(tick + 1, this.events());
+      if (tick + 1 > this.tick - REWIND_TICKS) this.pendingEvents.set(tick + 1, this.events());
+      else this.events(); // Already committed prefix: drain, never confirm twice.
     }
     const latest = this.history.get(this.tick - 1)!;
     for (const [owner, input] of latest.inputs) this.lastInputs.set(owner, input);
     this.lastRewindTick = this.tick; player.lastRewind = this.tick;
-    this.replayTicks += age; this.replayMs.push(performance.now() - start);
+    this.replayTicks += this.tick - restoreTick; this.replayMs.push(performance.now() - start);
     return true;
   }
 

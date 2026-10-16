@@ -29,7 +29,12 @@ export class FixedStepAccumulator {
     return count;
   }
 
-  get delayMilliseconds(): number {
-    return Number(SECOND - this.pending) / TICK_RATE / 1_000_000;
+  delayMilliseconds(now: bigint): number {
+    if (now < this.previous) throw new RangeError("Monotonic clock moved backwards");
+    // Work performed after advance() consumes the remaining tick interval too.
+    // Sleeping the old remainder would add the previous tick's CPU cost to
+    // every deadline even when the worker has ample time to run at 60 Hz.
+    const remaining = SECOND - this.pending - (now - this.previous) * BigInt(TICK_RATE);
+    return Math.max(0, Number(remaining) / TICK_RATE / 1_000_000);
   }
 }

@@ -9,7 +9,7 @@ import { distribution } from "./workload.ts";
 import type { OnlineMetrics } from "../../client/src/net/session.ts";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
 
-export interface RigOptions { players: number; seconds: number; out: string; impaired: boolean; combat: boolean; browserPlayers: number; port: number; gatewayPort: number; profile?: PacketProfile; stackedCombat?: boolean }
+export interface RigOptions { players: number; seconds: number; out: string; impaired: boolean; combat: boolean; browserPlayers: number; port: number; gatewayPort: number; profile?: PacketProfile; stackedCombat?: boolean; pickupCombat?: boolean }
 export interface ClientSample { type: string; player: number; at?: number; measurementElapsedMs?: number; metrics?: OnlineMetrics; bytesSent?: number; bytesReceived?: number; inputsSent?: number; visibility?: string; renders?: number; error?: string; duplicate?: boolean; id?: number; tick?: number; kind?: number }
 interface ClientSeries {
   corrections: number[]; receiptAge: number[]; estimatedAge: number[]; rtt: number[];
@@ -67,7 +67,7 @@ export async function runRig(options: RigOptions) {
   try {
     const ready: Promise<void>[] = [];
     for (let player = options.browserPlayers + 1; player <= options.players; player++) {
-      const worker = new Worker(new URL("./headless-worker.ts", import.meta.url), { workerData: { url, wasmPath: rig.match.wasmPath, contentRoot: rig.match.contentRoot, manifest: rig.manifest, player, combat: options.combat, stackedCombat: options.stackedCombat ?? false } });
+      const worker = new Worker(new URL("./headless-worker.ts", import.meta.url), { workerData: { url, wasmPath: rig.match.wasmPath, contentRoot: rig.match.contentRoot, manifest: rig.manifest, player, combat: options.combat, stackedCombat: options.stackedCombat ?? false, pickupCombat: options.pickupCombat ?? false } });
       workers.push(worker);
       worker.on("message", collect);
       worker.on("error", error => { errors.push(error.stack ?? error.message); raw.record({ type: "worker-error", player, error: error.stack ?? error.message }); });
@@ -196,7 +196,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const values = new Map<string, string>();
   for (let i = 2; i < process.argv.length; i++) {
     const name = process.argv[i]!;
-    if (["--impaired", "--combat", "--stacked-combat"].includes(name)) values.set(name, "true");
+    if (["--impaired", "--combat", "--stacked-combat", "--pickup-combat"].includes(name)) values.set(name, "true");
     else values.set(name, process.argv[++i] ?? "");
   }
   const profile: PacketProfile = values.has("--profile")
@@ -209,6 +209,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     profile.burst = { startPercent: profile.lossPercent * endPercent / (100 - profile.lossPercent), endPercent, lossInBurstPercent: 100, lossOutsidePercent: 0 };
   }
   if (values.has("--outage-ms")) profile.outage = { durationMs: Number(values.get("--outage-ms")), atSeconds: Number(values.get("--outage-at-seconds") ?? 10) };
-  const options: RigOptions = { players: Number(values.get("--players") ?? 2), seconds: Number(values.get("--seconds") ?? 60), out: resolve(values.get("--out") ?? "build-out/net-g4/lan-2"), impaired: values.has("--impaired") || values.has("--profile"), combat: values.has("--combat") || values.has("--stacked-combat"), stackedCombat: values.has("--stacked-combat"), browserPlayers: Number(values.get("--browser-players") ?? 0), port: Number(values.get("--port") ?? 9443), gatewayPort: Number(values.get("--gateway-port") ?? 9444), profile };
+  const options: RigOptions = { players: Number(values.get("--players") ?? 2), seconds: Number(values.get("--seconds") ?? 60), out: resolve(values.get("--out") ?? "build-out/net-g4/lan-2"), impaired: values.has("--impaired") || values.has("--profile"), combat: values.has("--combat") || values.has("--stacked-combat") || values.has("--pickup-combat"), stackedCombat: values.has("--stacked-combat"), pickupCombat: values.has("--pickup-combat"), browserPlayers: Number(values.get("--browser-players") ?? 0), port: Number(values.get("--port") ?? 9443), gatewayPort: Number(values.get("--gateway-port") ?? 9444), profile };
   await runRig(options);
 }

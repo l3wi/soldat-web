@@ -3,11 +3,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { WebSocket } from "ws";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message } from "@soldat-web/protocol";
-import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION, type SimManifest } from "@soldat-web/sim-host";
+import { encodeInput, loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION, type SimManifest } from "@soldat-web/sim-host";
 import { OnlineSession } from "../../client/src/net/session.ts";
 import { arenaInput } from "./workload.ts";
 
-export interface HeadlessWorkerOptions { url: string; wasmPath: string; contentRoot: string; manifest: SimManifest; player: number; combat: boolean; stackedCombat: boolean }
+export interface HeadlessWorkerOptions { url: string; wasmPath: string; contentRoot: string; manifest: SimManifest; player: number; combat: boolean; stackedCombat: boolean; pickupCombat: boolean }
 const options = workerData as HeadlessWorkerOptions;
 if (!parentPort) throw new Error("Headless client must run in its own worker thread");
 const port = parentPort;
@@ -27,6 +27,28 @@ let session: OnlineSession | undefined;
 let timer: NodeJS.Timeout | undefined;
 const socket = new WebSocket(options.url, { rejectUnauthorized: false, perMessageDeflate: false });
 const send = (message: Message) => { const bytes = encodeMessage(message); bytesSent += bytes.length; if (message.type === "input") inputsSent++; socket.send(bytes); };
+// An intent-only pickup exercise: drop the actual equipped weapon, then chase
+// a real original Thing using published prediction coordinates. No trusted
+// spawn/health/ammo/position commands or fabricated gameplay events are used.
+const sampleInput = () => {
+  const tick = session!.predictionWorld.tick;
+  if (!options.pickupCombat) return arenaInput(tick, options.player, options.combat, options.stackedCombat);
+  const render = prediction.renderView();
+  if (typeof render === "number") throw new Error("Pickup controller has no render view");
+  const local = render.sprite(session!.metrics.slot - 1);
+  const phase = tick % 1200;
+  if (phase < 600) return encodeInput({ Fire: phase >= 90, MouseAimX: -409, MouseAimY: -75, MouseDist: 500 });
+  if (phase >= 650 && phase < 680 && local.weapon !== 255) return encodeInput({ ThrowWeapon: true, MouseAimX: Math.round(local.posX + 100), MouseAimY: Math.round(local.posY), MouseDist: 100 });
+  let nearest: { x: number; y: number; distance: number } | undefined;
+  if (local.weapon === 255) for (let index = 0; index < render.thingCount; index++) {
+    const thing = render.thing(index);
+    if (thing.style < 4 || thing.style > 14 || thing.holdingSprite) continue;
+    const distance = Math.hypot(thing.posX - local.posX, thing.posY - local.posY);
+    if (!nearest || distance < nearest.distance) nearest = { x: thing.posX, y: thing.posY, distance };
+  }
+  const dx = nearest ? nearest.x - local.posX : 0, dy = nearest ? nearest.y - local.posY : 0;
+  return encodeInput({ Left: dx < -2, Right: dx > 2, Up: dy < -15, Jetpack: dy < -50 && Math.abs(dx) < 80, MouseAimX: Math.round(local.posX + 100), MouseAimY: Math.round(local.posY), MouseDist: 100 });
+};
 const fail = (error: unknown) => {
   port.postMessage({ type: "failure", player: options.player, error: error instanceof Error ? error.stack : String(error) });
   stopped = true; clearInterval(timer); socket.terminate(); session?.dispose();
@@ -58,7 +80,7 @@ socket.on("message", data => {
       });
       timer = setInterval(() => {
         try {
-          session!.advance(() => arenaInput(session!.predictionWorld.tick, options.player, options.combat, options.stackedCombat));
+          session!.advance(sampleInput);
           session!.present();
           if (performance.now() - lastAgeSample >= 250) {
             lastAgeSample = performance.now();
