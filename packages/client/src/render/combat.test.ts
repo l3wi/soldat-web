@@ -42,7 +42,7 @@ test('all native bullet styles, interpolation, alpha, pivots and borrowed output
     assert.equal(output.length,counts[style],`TBullet.Render style ${style}`);
     if(style===1) {
       assert.equal(output[0].x,32);assert.equal(output[0].y,30);
-      assert.equal(output[0].scaleX,12/13);assert.equal(output[0].rotation,-Math.PI);
+      assert.equal(output[0].scaleX,12/13);assert.equal(output[0].rotation,Math.PI);
       assert.equal(output[0].color[3],141);assert.equal(output[1].color[3],55);
       const first=output[0];assert.equal(renderer.bullets(.5,view()),output);assert.equal(output[0],first);
     }
@@ -57,6 +57,22 @@ test('all native bullet styles, interpolation, alpha, pivots and borrowed output
   renderer.bullets(.5,view());assert.ok([...renderer.unavailable].some(message=>message.includes('PingAdd')));
   renderer.paused=true;d.setInt32(b+f.pingAdd,0,true);
   assert.equal(renderer.bullets(0,view())[0].x,44,'paused native interpolation is current state');
+});
+
+test('bullet trails extend behind the projectile along -velocity for every direction',()=> {
+  const {d,renderer,id,view}=fixture(),b=RENDER_LAYOUT.bulletsOffset+8,f={...RENDER_LAYOUT.movingEntity,...RENDER_LAYOUT.bullet};
+  d.setUint32(RENDER_LAYOUT.bulletsOffset,1,true);
+  d.setUint32(b+f.style,1,true);d.setUint32(b+f.active,1,true);
+  d.setUint32(b+f.imageStyle,id('GFX_WEAPONS_AK74_BULLET'),true);
+  d.setInt32(b+f.timeout,20,true);d.setInt32(b+f.timeoutPrev,20,true);
+  d.setFloat32(b+f.hitMultiply,1,true);d.setFloat32(b+f.hitMultiplyPrev,1,true);
+  for(const [vx,vy] of [[10,0],[-10,0],[8,-6],[8,6],[-8,-6],[-8,6],[0,10],[0,-10]]) {
+    for(const [field,value] of [[f.posX,0],[f.posY,0],[f.oldPosX,0],[f.oldPosY,0],[f.velocityX,vx],[f.velocityPrevX,vx],[f.velocityY,vy],[f.velocityPrevY,vy]] as const)d.setFloat32(b+field,value,true);
+    const trail=renderer.bullets(1,view())[1]!;
+    // Quad local +X (texture width) maps to (cos r, sin r) in world space (GfxMat3Transform).
+    const ux=Math.cos(trail.rotation),uy=Math.sin(trail.rotation),len=Math.hypot(vx,vy);
+    assert.ok(Math.abs(ux+vx/len)<1e-6&&Math.abs(uy+vy/len)<1e-6,`trail for velocity (${vx},${vy}) points (${ux.toFixed(3)},${uy.toFixed(3)})`);
+  }
 });
 
 test('every thing style, creation-facing textures, blink, heat and parachute branches',()=> {

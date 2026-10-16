@@ -69,7 +69,8 @@ export class EffectsRenderer {
     if (!quad) { quad = { asset, x, y, width: asset.width/asset.scale, height: asset.height/asset.scale, scaleX: 1, scaleY: 1, pivotX: 0, pivotY: 0, rotation: 0, color: [255,255,255,255] }; this.cache[index] = quad; }
     if (quad.asset !== asset) { quad.asset=asset; quad.width=asset.width/asset.scale; quad.height=asset.height/asset.scale; }
     quad.x=x; quad.y=y;
-    quad.scaleX=sx; quad.scaleY=sy; quad.rotation=rotation;
+    // `rotation` is the native GfxDrawSprite `r` argument; GfxDrawSprite passes -r to GfxSpriteVertices (Gfx.pas:1508).
+    quad.scaleX=sx; quad.scaleY=sy; quad.rotation=-rotation;
     quad.color[0]=(tint>>>16)&255; quad.color[1]=(tint>>>8)&255; quad.color[2]=tint&255; quad.color[3]=Math.max(0,Math.min(255,Math.trunc(alpha)));
     this.output.push(quad);
   }

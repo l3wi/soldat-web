@@ -115,7 +115,8 @@ export class CombatRenderer {
       q={asset,x:0,y:0,width:0,height:0,scaleX:1,scaleY:1,pivotX:0,pivotY:0,rotation:0,color:[255,255,255,255],mapPivot:true};cache[n]=q;
     }
     q.asset=asset;q.width=asset.width/asset.scale;q.height=asset.height/asset.scale;
-    q.x=x;q.y=y;q.scaleX=sx;q.scaleY=sy;q.rotation=rotation;q.pivotX=cx;q.pivotY=cy;
+    // `rotation` is the native GfxDrawSprite `r` argument; GfxDrawSprite passes -r to GfxSpriteVertices (Gfx.pas:1508,1524).
+    q.x=x;q.y=y;q.scaleX=sx;q.scaleY=sy;q.rotation=-rotation;q.pivotX=cx;q.pivotY=cy;
     q.color[0]=(tint>>>16)&255;q.color[1]=(tint>>>8)&255;q.color[2]=tint&255;q.color[3]=Math.max(0,Math.min(255,Math.trunc(alpha)));
     output.push(q);
   }
