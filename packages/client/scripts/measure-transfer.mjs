@@ -26,7 +26,7 @@ function category(url) {
   return 'HTML / CSS / other';
 }
 const report = { url: base, method: 'Chrome CDP Network.loadingFinished.encodedDataLength (wire bytes incl. response headers); dataReceived.dataLength (decoded body)', cache: 'fresh private context; normal HTTP cache enabled throughout, including reload', browser: '', rows: [], errors: [], completed: false };
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--mute-audio'] });
 await mkdir(dirname(out), { recursive: true });
 try {
   report.browser = await browser.version();

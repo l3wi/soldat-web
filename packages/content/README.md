@@ -120,6 +120,16 @@ Verification procedure:
 3. Compare each loop's `verification.source` and `verification.opus`: normalized `boundaryJump` (absolute first-to-last sample difference), `firstWindowRms` and `lastWindowRms` (five-millisecond windows, bounded by sample count), `adjacentDeltaRms` (whole-sample neighboring-difference RMS), and `boundaryJumpChange` (encoded minus source). These statistics expose changes; they are not a perceptual acceptance threshold. Investigate a materially enlarged discontinuity rather than silently crossfading it.
 4. For perceptual sign-off, separately audition repeated derivatives in the target browsers, including the first wrap and sustained playback. Importer statistics do **not** claim audible listening or prove transparent lossy compression. No duration/seam measurements are claimed until an import has actually run.
 
+Measured fresh import, 2026-10-16: **1,066 WebP frames** passed complete decoded-RGBA comparison. Maximum absolute Opus container-duration deviation across all sounds was **20.550 µs**, below one 48-kHz sample (20.834 µs). The three native loops retained the following durations and normalized boundary discontinuities:
+
+| Loop | Duration deviation | Source boundary jump | Opus boundary jump |
+| --- | ---: | ---: | ---: |
+| Jetpack (`rocketz.wav`) | +12.046 µs | 0.077988 | 0.014415 |
+| Flamer (`flamer.wav`) | +14.177 µs | 0.243531 | 0.111340 |
+| Chainsaw (`chainsaw-r.wav`) | +15.023 µs | 0.117176 | 0.101356 |
+
+All three measured boundary jumps decreased; no crossfade or loop-length padding was introduced. This is objective seam/duration evidence, not a human listening verdict. The generated manifest retains the complete endpoint-window RMS statistics. Original and new `sim/manifest.json` and all loose raw simulation files compared byte-identically; combined simulation identity remained `5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64`.
+
 
 ## Reader boundaries and limits
 

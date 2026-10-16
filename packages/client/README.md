@@ -18,6 +18,7 @@ Development serves `/content/` from `dist/content/` by default, or the repositor
 
 ```sh
 bun run --cwd packages/client check
+bun run --cwd packages/client test
 bun run --cwd packages/client build
 bun run --cwd packages/client verify
 # With the dev server running, actual installed Chrome headless:
@@ -28,6 +29,8 @@ node packages/client/scripts/qualify.mjs
 # All 99 maps through the actual selector, init/join/step/render path:
 bun run --cwd packages/client capture --maps
 ```
+
+The client test command isolates each file's global object because audio/content tests intentionally replace `fetch` and exercise session-long module caches. Every test file still runs; isolation prevents one fixture's cached index from contaminating another.
 
 ## Production hosting and download comparison
 
@@ -73,13 +76,44 @@ CLIENT_URL=http://127.0.0.1:5197 TRANSFER_OUT=build-out/client-transfer-before.j
 CLIENT_URL=http://127.0.0.1:5196 TRANSFER_OUT=build-out/client-transfer-after.json \
   node packages/client/scripts/measure-transfer.mjs
 # Decode every emitted Opus object in the installed browser, separately:
-CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=chrome AUDIO_OUT=build-out/audio-chrome.json \
+CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=chrome AUDIO_OUT=build-out/audio-chrome \
   node packages/client/scripts/verify-opus.mjs
-CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=firefox AUDIO_OUT=build-out/audio-firefox.json \
+CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=firefox AUDIO_OUT=build-out/audio-firefox \
   node packages/client/scripts/verify-opus.mjs
 ```
 
 The transfer script records wire and decoded bytes over Arena with four bots, Ash with four bots, then a reload to Arena with four bots. Browser timings and byte savings must come from the resulting receipts; these commands alone are not verification evidence.
+
+### Measured production transfers (2026-10-16)
+
+Chrome **155.0.8059.80**, fresh private headless profiles, the same static preview and Brotli/header policy on both builds. Cache remained enabled through each three-stage sequence. Each match used four bots, enabled real Web Audio, and ran 300 simulation ticks after audio unlock. Values below are **transferred bytes**, including response headers, from CDP `Network.loadingFinished.encodedDataLength`; zero means no wire transfer, not absence of an in-memory resource. The uncompressed development-server observation is not mixed into this compressed-production comparison.
+
+| Category | Arena before | Arena after | Ash before | Ash after | Reload before | Reload after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| JavaScript | 441,509 | 444,348 | 0 | 0 | 0 | 0 |
+| JSON | 984,847 | 140,607 | 221,588 | 29,876 | 984,847 | 140,607 |
+| WASM | 623,390 | 623,391 | 623,390 | 0 | 623,390 | 0 |
+| Simulation content | 1,413,292 | 493,501 | 1,374,948 | 487,767 | 1,413,292 | 493,501 |
+| Core images | 3,939,858 | 2,438,622 | 0 | 0 | 0 | 0 |
+| Map images | 777,011 | 464,163 | 1,433,005 | 917,339 | 0 | 0 |
+| Audio | 6,035,907 | 523,057 | 0 | 12,828 | 0 | 0 |
+| Font / core data | 171,358 | 171,358 | 0 | 0 | 0 | 0 |
+| HTML / CSS / other | 3,385 | 3,429 | 0 | 0 | 625 | 669 |
+| **Total** | **14,390,557** | **5,302,476** | **3,652,931** | **1,447,810** | **3,022,154** | **634,777** |
+
+First match decreased **63.15%**, Ash **60.37%**, and reload-to-Arena **79.00%**. The sequence transferred 21,065,642 → 7,385,063 bytes. Splitting vendor chunks adds a small first-load overhead but permits independent long-lived caching. The new first match made one simulation-pack request rather than 77 loose-file requests; the Ash match made no WASM request, and page reload reused the hash-named WASM from HTTP cache. Name-based JSON/packs intentionally revalidate rather than receiving unsafe immutable caching. On-demand sound requests vary with actual gameplay; the measured first match loaded 80 samples instead of the baseline's 162 playable sample IDs, and Ash loaded three additional sounds.
+
+Raw receipts: `build-out/download-size/before.json` and `after.json`, with every request, category, encoding, decoded-body size, and runtime diagnostics. Both sequences completed with no browser/HTTP errors and zero dropped ticks.
+
+### Verification of the measured build
+
+- Client TypeScript check, 58 isolated client/hosting tests, the shared compiled-module test, client invariant harness, and production build passed. Phaser retains its normal large-vendor-chunk warning.
+- Content tests passed: 54 tests, 30,481 assertions, including a second fresh full import and exact per-file pack checks. The new importer independently verified all 1,066 WebP frames' decoded RGBA bytes.
+- Map capture passed: Airpirates versus the retained Phaser reference **0%** differing pixels; all six native comparisons passed, worst **0.014757%** (Airpirates), below the 1% limit. Three game remount/audio/respawn cycles passed without browser errors.
+- Combat capture passed all **33 rows** on the unchanged `210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1` WASM (ABI4); worst native gallery difference was **0.444770%** for the full HUD. The harness now imports the shared ABI constant rather than retaining an obsolete ABI3 expectation.
+- Installed Chrome 155 and Firefox **115.0** each decoded **164/164 Opus objects** using `decodeAudioData`. All three native loop samples ran through two actual Web Audio loop wraps in both browsers. Maximum browser-decoded duration deviation was **20.550 µs**, matching the container measurements. Firefox 115 evaluation uses an explicit BiDi browsing context because its legacy CDP Runtime can lose the default context on navigation. Browser launchers are muted (`--mute-audio` / Firefox `media.volume_scale="0.0"`); playback checks use clocks/counters, not audible speaker output. Objective source/encoded seam statistics are in the content README; no human listening verdict is claimed.
+
+Receipts: `tests/fixtures/render/client-results.json`, `build-out/client-g3/combat-results.json`, and `build-out/download-size/audio-{chrome-final,firefox-bidi}/opus-results.json`. The preserved baseline tree and frozen simulation files were not replaced.
 
 ## Runtime reference
 

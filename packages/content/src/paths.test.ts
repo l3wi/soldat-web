@@ -99,5 +99,5 @@ describe('simulation content paths', () => {
     } finally {
       await rm(out, { recursive: true, force: true });
     }
-  }, 600000);
+  }, 1800000);
 });

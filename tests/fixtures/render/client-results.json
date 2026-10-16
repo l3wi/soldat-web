@@ -1,5 +1,5 @@
 {
-  "wasmSha256": "a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88",
+  "wasmSha256": "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1",
   "browser": "155.0.8059.80",
   "runtime": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
   "width": 1280,
@@ -13,8 +13,8 @@
     "differing": 0,
     "pixels": 921600,
     "percent": 0,
-    "maxDelta": 1,
-    "meanChannelDelta": 0.00002197265625,
+    "maxDelta": 2,
+    "meanChannelDelta": 0.009972059461805556,
     "pass": true
   },
   "nativeParity": {
@@ -24,11 +24,11 @@
       "width": 1280,
       "height": 720,
       "threshold": 8,
-      "differing": 138,
+      "differing": 136,
       "pixels": 921600,
-      "percent": 0.014973958333333332,
+      "percent": 0.014756944444444444,
       "maxDelta": 57,
-      "meanChannelDelta": 0.0045529513888888885,
+      "meanChannelDelta": 0.014397786458333334,
       "pass": true
     },
     "Aero": {
@@ -41,7 +41,7 @@
       "pixels": 921600,
       "percent": 0.002387152777777778,
       "maxDelta": 38,
-      "meanChannelDelta": 0.0005794270833333334,
+      "meanChannelDelta": 0.0020496961805555555,
       "pass": true
     },
     "DesertWind": {
@@ -54,7 +54,7 @@
       "pixels": 921600,
       "percent": 0.004340277777777778,
       "maxDelta": 63,
-      "meanChannelDelta": 0.0008086480034722222,
+      "meanChannelDelta": 0.002119411892361111,
       "pass": true
     },
     "Jungle": {
@@ -67,7 +67,7 @@
       "pixels": 921600,
       "percent": 0.011176215277777778,
       "maxDelta": 41,
-      "meanChannelDelta": 0.0017621527777777778,
+      "meanChannelDelta": 0.0021980794270833335,
       "pass": true
     },
     "inf_Biologic": {
@@ -80,7 +80,7 @@
       "pixels": 921600,
       "percent": 0.003146701388888889,
       "maxDelta": 17,
-      "meanChannelDelta": 0.00087646484375,
+      "meanChannelDelta": 0.003118218315972222,
       "pass": true
     },
     "ctf_Death": {
@@ -89,11 +89,11 @@
       "width": 1280,
       "height": 720,
       "threshold": 8,
-      "differing": 40,
+      "differing": 42,
       "pixels": 921600,
-      "percent": 0.004340277777777778,
-      "maxDelta": 16,
-      "meanChannelDelta": 0.0017678493923611112,
+      "percent": 0.004557291666666667,
+      "maxDelta": 17,
+      "meanChannelDelta": 0.003117947048611111,
       "pass": true
     }
   },
@@ -106,41 +106,41 @@
     {
       "ready": true,
       "map": "Airpirates",
-      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
-      "tick": 30,
-      "fraction": 0.9959999999999879,
-      "droppedTicks": 0,
-      "renders": 38,
-      "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 62,
-      "playedSounds": 2,
-      "sparks": 0
-    },
-    {
-      "ready": true,
-      "map": "Airpirates",
-      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
+      "simulation": "DM practice; 4 bots; cosmetics active; positional SFX ready",
       "tick": 24,
       "fraction": 0,
       "droppedTicks": 0,
-      "renders": 29,
+      "renders": 26,
       "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 50,
-      "playedSounds": 2,
-      "sparks": 0
+      "soundEvents": 274,
+      "playedSounds": 5,
+      "sparks": 5
     },
     {
       "ready": true,
       "map": "Airpirates",
-      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
-      "tick": 24,
-      "fraction": 0.9899999999999933,
+      "simulation": "DM practice; 4 bots; cosmetics active; positional SFX ready",
+      "tick": 17,
+      "fraction": 0.004000000000004036,
       "droppedTicks": 0,
-      "renders": 29,
+      "renders": 16,
       "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 50,
-      "playedSounds": 2,
-      "sparks": 0
+      "soundEvents": 181,
+      "playedSounds": 1,
+      "sparks": 5
+    },
+    {
+      "ready": true,
+      "map": "Airpirates",
+      "simulation": "DM practice; 4 bots; cosmetics active; positional SFX ready",
+      "tick": 17,
+      "fraction": 0.9980799999999997,
+      "droppedTicks": 0,
+      "renders": 17,
+      "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
+      "soundEvents": 175,
+      "playedSounds": 1,
+      "sparks": 5
     }
   ],
   "remountCycles": 3,

@@ -95,6 +95,11 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     return new Response(httpFailures.has(sample) ? null : new Uint32Array([sample]), { status: httpFailures.has(sample) ? 503 : 200 });
   }) as typeof fetch;
   t.after(() => { globalThis.fetch = originalFetch; });
+  // Bun supports node:test's cleanup hook but not nested t.test calls. Keep the
+  // stateful lifecycle sequence in one test and retain each scenario's context.
+  const step = async (name: string, run: () => Promise<void>) => {
+    try { await run(); } catch (error) { throw new Error(name, { cause: error }); }
+  };
   function fixture() {
     const sounds: FakeSound[] = [], failures: Error[] = [], cached = new Map<string, AudioBuffer>();
     const context = {
@@ -122,7 +127,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
   assert.equal(requests.length, 56); assert.equal(decodes.length, 56);
   assert.equal(second.cached.get('sfx/rocketz.wav'), first.cached.get('sfx/rocketz.wav'));
 
-  await t.test('repeated pending loops share one decode and stop cannot resurrect them', async () => {
+  await step('repeated pending loops share one decode and stop cannot resurrect them', async () => {
     const pending = deferred<AudioBuffer>(); holds.set(56, pending);
     for (let tick = 0; tick < 8; tick++) first.audio.drain(event(56, 10, 0, 1));
     const concurrent = fixture(); await concurrent.audio.unlock();
@@ -140,7 +145,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     first.audio.drain(event(56, 10, 1)); assert.equal(first.sounds[0]!.isPlaying, false);
   });
 
-  await t.test('same-channel replacement invalidates the older decoded buffer continuation', async () => {
+  await step('same-channel replacement invalidates the older decoded buffer continuation', async () => {
     const old = deferred<AudioBuffer>(), replacement = deferred<AudioBuffer>();
     holds.set(133, old); holds.set(135, replacement);
     first.audio.drain(event(133, 11, 0, 1)); await settle();
@@ -152,7 +157,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.equal(first.sounds[1]!.key, 'sfx/law.wav'); assert.equal(first.sounds[1]!.loop, false);
   });
 
-  await t.test('lazy default voices reserve channels, copy events and preserve latest position/loop', async () => {
+  await step('lazy default voices reserve channels, copy events and preserve latest position/loop', async () => {
     const pending = deferred<AudioBuffer>(); holds.set(48, pending);
     const bytes = event(48); first.audio.drain(bytes);
     first.audio.drain(event(48, -1, 0, 2));
@@ -169,7 +174,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.ok(Math.abs(voices[1]!.volume - 0.8) < 1e-6);
   });
 
-  await t.test('pending pause/resume and volume controls survive decode without early playback', async () => {
+  await step('pending pause/resume and volume controls survive decode without early playback', async () => {
     const pending = deferred<AudioBuffer>(); holds.set(137, pending);
     first.audio.drain(event(137, 12, 0, 1)); first.audio.drain(event(137, 12, 3));
     first.audio.drain(event(137, 12, 2, 0, 0, 0, 0.25));
@@ -181,7 +186,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.ok(Math.abs(sound.volume - 0.25 * attenuation(Math.hypot(100, 50))) < 1e-6);
   });
 
-  await t.test('stop followed by a new same-sample request keeps only the new event state', async () => {
+  await step('stop followed by a new same-sample request keeps only the new event state', async () => {
     const pending = deferred<AudioBuffer>(); holds.set(147, pending);
     first.audio.drain(event(147, 14, 0, 1));
     first.audio.drain(event(147, 14, 1));
@@ -195,7 +200,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.equal(requests.filter(id => id === 147).length, 1);
   });
 
-  await t.test('destroy invalidates pending voices but retains decoded session buffers', async () => {
+  await step('destroy invalidates pending voices but retains decoded session buffers', async () => {
     const pending = deferred<AudioBuffer>(); holds.set(57, pending);
     second.audio.drain(event(57, 8, 0, 1)); await settle(); second.audio.destroy();
     pending.resolve({} as AudioBuffer); await settle();
@@ -205,7 +210,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.equal(decodes.filter(id => id === 57).length, 1); next.audio.destroy();
   });
 
-  await t.test('lazy HTTP/decode failures surface sample names without playing or unhandled rejection', async () => {
+  await step('lazy HTTP/decode failures surface sample names without playing or unhandled rejection', async () => {
     httpFailures.add(58);
     first.audio.drain(event(58, 15)); await settle();
     assert.match(first.failures.at(-1)!.message, /killberserk\.wav: HTTP 503/);
@@ -216,7 +221,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     assert.ok(!first.sounds.some(sound => sound.key === 'sfx/killberserk.wav' || sound.key === 'sfx/burn.wav'));
   });
 
-  await t.test('changed loadouts preload additively and concurrent preparation deduplicates samples', async () => {
+  await step('changed loadouts preload additively and concurrent preparation deduplicates samples', async () => {
     await Promise.all([first.audio.prepare({ bots: 4 }), first.audio.prepare({ bots: 4 })]);
     for (const sample of soundPreloadSamples({ bots: 4 })) {
       assert.equal(requests.filter(id => id === sample).length, 1, SOUND_SAMPLES[sample]);
@@ -227,7 +232,7 @@ test('per-sample Opus cache, delayed voice validity and scene lifecycle', async 
     first.audio.destroy(); assert.ok(first.sounds.every(sound => sound.destroyed));
   });
 
-  await t.test('preload failures reject preparation and missing Web Audio rejects clearly', async () => {
+  await step('preload failures reject preparation and missing Web Audio rejects clearly', async () => {
     const broken = fixture();
     await assert.rejects(broken.audio.prepare({ loadout: { weapon: 14, secondaryWeapon: 0 } }), /burn\.wav: Opus decode rejected/);
     broken.audio.destroy();
