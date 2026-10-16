@@ -367,6 +367,10 @@ begin
     end;
     if (Kind = 'join') and Sprite[S].Active then Exit(SIM_INVALID);
     if (Kind = 'spawn') and not Sprite[S].Active then Exit(SIM_INVALID);
+    if (Kind='spawn') and SimBotOwned[S] then begin
+      Sprite[S].Respawn;
+      SimResetRender;Exit(SIM_OK);
+    end;
     if not JsonInteger(Obj,'spawn',1,Spawn) or (Spawn < 1) or (Spawn > MAX_SPAWNPOINTS) then Exit(SIM_INVALID);
     if not Map.Spawnpoints[Spawn].Active then Exit(SIM_MISSING);
     Position.X := Map.Spawnpoints[Spawn].X; Position.Y := Map.Spawnpoints[Spawn].Y;
@@ -421,6 +425,7 @@ begin
         if Obj.Find('secondaryWeapon')=nil then SimChosenSecondary[S]:=Sprite[S].SecondaryWeapon.Num;
       end;
       Sprite[S].Dummy:=True;Sprite[S].Brain.Use:=255;Sprite[S].Brain.FavWeapon:=SimChosenPrimary[S];
+      Sprite[S].Brain.Camper:=0;
       if Kind='spawn' then begin
         Sprite[S].ApplyWeaponByNum(SimChosenPrimary[S],1);Sprite[S].ApplyWeaponByNum(SimChosenSecondary[S],2);
       end;

@@ -33,7 +33,6 @@ async function match(map, mode) {
   const started = performance.now(), entry = manifest.files[`maps/${map.toLowerCase()}.pms`];
   const source = JSON.parse(await readFile(join(options.content,catalog.maps[map].path),'utf8'));
   if(source.mapSha256!==entry.sha256) throw new Error('Map catalog identity mismatch');
-  const spawn = source.spawnpoints.findIndex(point => point.active) + 1;
   const tracks = Array.from({ length: 8 }, () => ({ waypoint: -1, unchangedTicks: 0, longestTicks: 0, stalledEpisodes: 0, waypointChanges: 0, aliveTicks: 0, combatTicks: 0 }));
   const result = { map, mode, mapSha256: entry.sha256, hasAlphaFlagSpawn: source.spawnpoints.some(point => point.active && point.team === 5), hasBravoFlagSpawn: source.spawnpoints.some(point => point.active && point.team === 6), ticks: 0, status: 'pass', crashes: 0, tracks };
   let host, eventBuffer = 0;
@@ -42,7 +41,7 @@ async function match(map, mode) {
     await loadSimContent(host, manifest, path => readFile(join(options.content, path)));
     requireStatus(host.init({ mode, rng: options.rng, ai: true, botDifficulty: 100 }, identity.seed), 'init');
     requireStatus(host.loadMap(map), 'map');
-    for (let index = 0; index < 8; index++) requireStatus(host.command(0, { kind: 'join', slot: index + 1, team: mode === 'ctf' ? index % 2 + 1 : 0, spawn, control: 'bot', bot: profiles[index] }), 'bot join');
+    for (let index = 0; index < 8; index++) requireStatus(host.command(0, { kind: 'join', slot: index + 1, team: mode === 'ctf' ? index % 2 + 1 : 0, control: 'bot', bot: profiles[index] }), 'bot join');
     eventBuffer = host.exports.sim_alloc(1048576);
     if (!eventBuffer) throw new Error('Event scratch allocation failed');
     let memory, data;

@@ -156,6 +156,27 @@ try {
   for(let offset=0;offset<replay.length;offset+=20+replayView.getUint32(offset+16,true)) assert.notEqual(replayView.getUint32(offset,true),SIM_PRESENTATION_EVENTS.BINK,'replay bink suppression');
   result.bink={hitAmounts:amounts,replaySuppressed:true,gameplayHashIdentical:true};result.limbo={secondaryApplied:true,primaryApplied:true,closedRejected:true};
 } finally {binkHost.dispose();}
+const botHosts=await Promise.all([loadSim(wasm),loadSim(wasm)]);
+try {
+  for(let index=0;index<botHosts.length;index++){
+    await loadSimContent(botHosts[index],manifest,readContent);
+    requireStatus(botHosts[index].init({ai:index===0,rng:'keyed'},123456789),'bot snapshot init');
+    requireStatus(botHosts[index].loadMap('Arena'),'bot snapshot map');
+  }
+  const bot=botHosts[0];
+  requireStatus(bot.command(0,{kind:'join',slot:1,control:'bot',bot:'Admiral'}),'profile bot join');
+  assert.notEqual(bot.renderView().sprite(0).weapon,255,'original startup arms bot');
+  const name=bot.renderView().sprite(0).playerName;
+  requireStatus(bot.command(0,{kind:'spawn',slot:1}),'explicit profile bot respawn');
+  assert.notEqual(bot.renderView().sprite(0).weapon,255,'explicit respawn retains profile weapon choice');
+  assert.equal(bot.renderView().sprite(0).playerName,name);
+  let waypoint=false;
+  for(let tick=0;tick<120;tick++){requireStatus(bot.step(),'bot decisions');bot.events();waypoint ||= bot.renderView().sprite(0).currentWaypoint>0;}
+  assert.equal(waypoint,true,'explicit respawn must not convert AI to Dummy');
+  const state=bot.saveState();requireStatus(botHosts[1].loadState(state),'AI-on snapshot into AI-off prediction');
+  assert.equal(botHosts[1].hash(),bot.hash());
+  result.botSnapshot={explicitRespawnRetainsAI:true,waypointObserved:waypoint,aiOffLoadIdentical:true};
+} finally {for(const host of botHosts)host.dispose();}
 await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(outputPath, JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify(result));
