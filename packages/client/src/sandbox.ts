@@ -1,6 +1,6 @@
 import { loadSim, requireStatus, sha256, type SimHost, type SimManifest } from "@soldat-web/sim-host";
 
-export async function loadSandbox(map: string, signal: AbortSignal, combat = false): Promise<SimHost> {
+export async function loadSandbox(map: string, signal: AbortSignal, combat = false, loadout?: { weapon: number; secondaryWeapon: number }): Promise<SimHost> {
   const response = await fetch("/sim.wasm", { signal });
   if (!response.ok || response.headers.get("content-type")?.includes("text/html")) throw new Error("simulation unavailable: build build-out/sim/sim.wasm with the Phase-1 toolchain");
   const host = await loadSim(await response.arrayBuffer());
@@ -27,7 +27,8 @@ export async function loadSandbox(map: string, signal: AbortSignal, combat = fal
     }
     requireStatus(host.init(combat ? { mode: "ctf", traceCombat: true } : {}, 0, 0, 0), "sim_init");
     requireStatus(host.loadMap(map), "sim_load_map");
-    requireStatus(host.command(0, { kind: "join", slot: 1, team: 1, control: "authoritative" }), "sim_command(join)");
+    // Spawn armed with the limbo selection (original players pick in limbo before playing); combat qualification keeps its fixed setup.
+    requireStatus(host.command(0, { kind: "join", slot: 1, team: 1, control: "authoritative", ...(!combat && loadout ? loadout : {}) }), "sim_command(join)");
     if (combat) requireStatus(host.command(0, { kind: "join", slot: 2, team: 2, control: "authoritative" }), "sim_command(join target)");
     return host;
   } catch (error) { host.dispose(); throw error; }

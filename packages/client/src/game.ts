@@ -101,7 +101,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       if (!capture) hud = await CombatHud.create(container, content.core, {
         startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
         onInputCapture: () => input.reset(),
-        weaponChoiceNotice: serverUrl ? "Online loadout is fixed at admission" : "Choices apply on next respawn",
+        weaponChoiceNotice: serverUrl ? "Online loadout is fixed at admission" : "Choices apply on next respawn (use Respawn to switch now)",
         onWeaponChoice(primary, secondary) {
           if (serverUrl) throw new Error("Online weapon changes need an in-match protocol message");
           if (!host || !world) throw new Error("Simulation unavailable");
@@ -282,7 +282,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (cancelled) return;
             diagnostics.simulation = `online unavailable: ${String(error)}`; onStatus(diagnostics.simulation);
           });
-          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture)).then(async loaded => {
+          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout)).then(async loaded => {
             if (cancelled) { loaded.dispose(); return; }
             host = loaded;
             inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");

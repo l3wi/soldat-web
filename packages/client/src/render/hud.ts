@@ -439,6 +439,8 @@ export class CombatHud {
 
   get inputActive(): boolean { return !this.form.hidden; }
   get gameplayCaptured(): boolean { return this.inputActive || this.limbo.active; }
+  /** Current limbo primary/secondary original weapon numbers, used as the join loadout. */
+  get loadout(): { weapon: number; secondaryWeapon: number } { return { weapon: this.limbo.primary, secondaryWeapon: this.limbo.secondary }; }
 
   /** Explicit sandbox spawn commands can replace a living soldier in one tick. */
   spawned(): void { if (this.options.weaponsMenu) this.limbo.spawn(); }
