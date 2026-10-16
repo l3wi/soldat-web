@@ -14,7 +14,10 @@
     "ctf-ash-four-bot-ctf.fixture.json",
     "ctf-laos-human-and-bot.fixture.json",
     "ctf-laos-four-bot-dm.fixture.json",
-    "ctf-laos-four-bot-ctf.fixture.json"
+    "ctf-laos-four-bot-ctf.fixture.json",
+    "ctf-b2b-human-and-bot.fixture.json",
+    "ctf-b2b-four-bot-dm.fixture.json",
+    "ctf-b2b-four-bot-ctf.fixture.json"
   ],
   "maps": [
     {
@@ -34,6 +37,12 @@
       "sha256": "72a98a6c338f14b5f25c14123dea6c6a2c3d9c458fd5b591d903f6a1f649d273",
       "activeWaypoints": 376,
       "connectedWaypoints": 369
+    },
+    {
+      "name": "ctf_B2b",
+      "sha256": "8ba1b3ea0fcecc63af3a78b280813a78b624a1e056399678a05d0c772e42feb5",
+      "activeWaypoints": 262,
+      "connectedWaypoints": 254
     }
   ],
   "profiles": {

@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "map": "ctf_B2b",
+  "mapSha256": "8ba1b3ea0fcecc63af3a78b280813a78b624a1e056399678a05d0c772e42feb5",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
+  "seed": 123456789,
+  "ticks": 1500,
+  "traceStages": "tick",
+  "botDirectory": "/sim-content/bots",
+  "rules": {
+    "mode": "dm",
+    "rng": "original",
+    "ai": true,
+    "botDifficulty": 100,
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 2,
+      "control": "bot",
+      "bot": "Billy"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 2,
+      "control": "bot",
+      "bot": "Commando"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 2,
+      "control": "bot",
+      "bot": "Dutch"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 2,
+      "control": "bot",
+      "bot": "John"
+    }
+  ],
+  "inputs": [],
+  "commands": [],
+  "metadata": {
+    "purpose": "four-bot-dm: original stock bot profiles and unmodified waypoint AI on ctf_B2b",
+    "source": "reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest",
+    "botJoin": "team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots",
+    "controls": "Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.",
+    "weaponMenu": "Bots choose weapons through original profiles/AI, never injected menu commands.",
+    "chat": false,
+    "activeWaypoints": 262,
+    "connectedWaypoints": 254,
+    "profileSha256": {
+      "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435",
+      "bots/commando.bot": "e679f457c7415a80e7cf281e1652df3ca3f3d47acd70c1d233071fddb757864f",
+      "bots/dutch.bot": "d0b3812b60a5b383e34a69a8681427e521d2675cd49611f0efd9eac1c62e00ef",
+      "bots/john.bot": "2b174b62318b4892c1f573e20ca1dbee2597ad0796e6aa807e7a70776ebd28f0"
+    },
+    "requiredObservations": [
+      "complete-ticks",
+      "bot-roster",
+      "bot-movement",
+      "bot-waypoint",
+      "bot-controls"
+    ],
+    "limitations": [
+      "Authoring is not capture evidence. Combat, deaths, respawns, flag interactions and scores are reported only if observed; none are presumed."
+    ]
+  }
+}

@@ -192,7 +192,7 @@ begin
   Result := SIM_OK;
 end;
 function sim_load_map(Name: Pointer; NameLength: LongWord): LongInt;
-var S: AnsiString; Info: TMapInfo; J: Integer;
+var S: AnsiString; Info: TMapInfo; J,K: Integer;
 begin
   if not Initialized then Exit(SIM_NOT_INITIALIZED);
   SimInvalidateState;
@@ -202,6 +202,11 @@ begin
   if not Map.LoadMap(Info) then Exit(SIM_MALFORMED);
   StartHealth := DEFAULT_HEALTH;
   LoadWeapons('weapons');
+  { Original Server.StartServer weapon bookkeeping, before any bot Respawn. }
+  WeaponsInGame:=0;
+  for J:=1 to MAIN_WEAPONS do if WeaponActive[J]=1 then Inc(WeaponsInGame);
+  for J:=1 to MAX_SPRITES do
+    for K:=1 to PRIMARY_WEAPONS do WeaponSel[J,K]:=WeaponActive[K];
   MapChangeCounter := -60; BulletTimeTimer := -1; TimeLimitCounter := 360000;
   for J := 1 to MAX_PLAYERS do Sprite[J].Player := DummyPlayer;
   MapLoaded := True; SimResetRender;
@@ -403,7 +408,6 @@ begin
     SimLimboAvailable[S]:=True;
     if Kind='join' then SimBotOwned[S]:=IsBot;
     if IsBot then begin
-      for J:=1 to PRIMARY_WEAPONS do WeaponSel[S,J]:=WeaponActive[J];
       if not LoadBotConfig(Profile,Sprite[S]) then begin Sprite[S].Kill;Exit(SIM_MALFORMED);end;
       Sprite[S].Respawn;
       Sprite[S].Player.ChatWarnings:=0;Sprite[S].Player.GrabsPerSecond:=0;

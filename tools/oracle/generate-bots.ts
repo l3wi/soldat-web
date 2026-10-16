@@ -23,7 +23,7 @@ for (const profile of profiles) {
 await mkdir(directory, { recursive: true });
 const names: string[] = [];
 const maps: { name: string; sha256: string; activeWaypoints: number; connectedWaypoints: number }[] = [];
-for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos']) {
+for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b']) {
   const id = `maps/${name.toLowerCase()}.pms`, entry = manifest.files[id];
   if (!entry) throw new Error(`Missing stock map: ${id}`);
   const original = await readFile(`reference/base/shared/maps/${name}.pms`);

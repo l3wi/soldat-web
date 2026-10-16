@@ -4,7 +4,6 @@ import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadSim, loadSimContent, requireStatus } from '../../packages/sim-host/src/sim.ts';
 import { RENDER_LAYOUT, SPRITE_FLAGS } from '../../packages/sim-host/src/render.ts';
-import { parsePms } from '../../packages/content/src/readers.ts';
 
 const options = { wasm: 'build-out/sim/sim.wasm', content: 'dist/content', out: 'build-out/sim/g5/robustness.json', minutes: '5', maps: '', rng: 'keyed' };
 for (let i = 2; i < process.argv.length; i += 2) {
@@ -32,7 +31,8 @@ try {
 await mkdir(resolve(options.out, '..'), { recursive: true });
 async function match(map, mode) {
   const started = performance.now(), entry = manifest.files[`maps/${map.toLowerCase()}.pms`];
-  const source = parsePms(await readFile(join(options.content, entry.path)));
+  const source = JSON.parse(await readFile(join(options.content,catalog.maps[map].path),'utf8'));
+  if(source.mapSha256!==entry.sha256) throw new Error('Map catalog identity mismatch');
   const spawn = source.spawnpoints.findIndex(point => point.active) + 1;
   const tracks = Array.from({ length: 8 }, () => ({ waypoint: -1, unchangedTicks: 0, longestTicks: 0, stalledEpisodes: 0, waypointChanges: 0, aliveTicks: 0, combatTicks: 0 }));
   const result = { map, mode, mapSha256: entry.sha256, hasAlphaFlagSpawn: source.spawnpoints.some(point => point.active && point.team === 5), hasBravoFlagSpawn: source.spawnpoints.some(point => point.active && point.team === 6), ticks: 0, status: 'pass', crashes: 0, tracks };

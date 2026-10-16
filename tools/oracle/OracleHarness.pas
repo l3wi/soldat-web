@@ -310,6 +310,13 @@ begin
   if not Map.LoadMap(Info) then raise Exception.Create('Map load failed');
   StartHealth := DEFAULT_HEALTH;
   LoadWeapons('weapons');
+  // Original Server.StartServer:1182-1192, before player/bot admission.
+  WeaponsInGame := 0;
+  for I := 1 to MAIN_WEAPONS do
+    if WeaponActive[I] = 1 then Inc(WeaponsInGame);
+  for I := 1 to MAX_SPRITES do
+    for WeaponIndex := 1 to PRIMARY_WEAPONS do
+      WeaponSel[I][WeaponIndex] := WeaponActive[WeaponIndex];
   MapChangeCounter := -60;
   BulletTimeTimer := -1;
   TimeLimitCounter := 360000;
@@ -356,9 +363,6 @@ begin
       BotDirectory := IncludeTrailingPathDelimiter(Fixture.Get('botDirectory','/sim-content/bots'));
       if not LoadBotConfig(BotDirectory + Profile + '.bot',Sprite[Slot]) then
         raise Exception.Create('Bot profile load failed: ' + Profile);
-      // Server.StartServer initializes primary selections before AddBotPlayer.
-      for WeaponIndex := 1 to PRIMARY_WEAPONS do
-        WeaponSel[Slot][WeaponIndex] := WeaponActive[WeaponIndex];
       Sprite[Slot].Respawn;
       Sprite[Slot].Player.ControlMethod := BOT;
       Sprite[Slot].Player.ChatWarnings := 0;

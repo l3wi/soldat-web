@@ -268,17 +268,16 @@ bun packages/sim-host/src/fixture-serve.ts \
   --out build-out/sim/receipts/browser
 ```
 
-The focused ABI 3 decode check uses real combat fixtures and supports a scratch artifact without replacing the production WASM:
+The focused ABI 4 decode/menu/bink check uses real combat fixtures and the frozen production artifact:
 
 ```sh
-SIM_OUT="$PWD/build-out/sim-abi3" bash sim/build/build-sim.sh all
-node sim/build/check-render.mjs build-out/sim-abi3/sim.wasm \
-  build-out/sim-abi3/render-check.json
+node sim/build/check-render.mjs build-out/sim/sim.wasm \
+  build-out/sim/g5/final/render-check.json
 ```
 
-It checks the appended TypeScript decoder fields against published bytes on combat fixtures, render-call hash invariance, both creation-facing variants after cross-instance state load, live header getters, and canonical gameplay-event equivalence between live and replayed steps. Full movement/combat qualification remains separate.
+It checks the appended TypeScript decoder fields against published bytes, render-call hash invariance, both creation-facing variants after cross-instance state load, live header getters, canonical gameplay-event equivalence, original Barrett hit-bink input/replay suppression, and secondary/primary/closed-menu application. Full movement/combat/bot qualification remains separate.
 
-The server listens on `http://127.0.0.1:4174/` (`PORT` overrides). Open that URL in actual Chrome, Firefox and Safari. Keep the page alive until it reports `complete`; mere successful navigation is not a result. Each browser reports its actual user agent and posts each full receipt. `/results` returns Node `baselines` and browser `results`, including accepted comparisons and failures. Hash/event mismatches include machine-readable earliest `tick`, `field`, `expected` and `actual` values. Accepted receipts are stored with a serial prefix, preserving independent browser runs. The server requires Node baseline receipts and rejects any identity, hash, event or checkpoint mismatch; it does not substitute a browser engine or declare success from a static page.
+The server listens on `http://127.0.0.1:4174/` (`PORT` overrides). Open that URL in each required actual engine. Keep the page alive until it reports `complete`; mere successful navigation is not a result. Each browser reports its actual user agent and posts each full receipt. `/results` returns Node `baselines` and browser `results`; `/status` returns only expected count and comparison results, avoiding repeated copies of large baselines during orchestration. Hash/event mismatches include machine-readable earliest `tick`, `field`, `expected` and `actual` values. Accepted receipts are stored with a serial prefix, preserving independent browser runs. The server rejects any identity, hash, event or checkpoint mismatch; it never substitutes engines. Safari omission is an explicit qualification boundary, not a Safari pass.
 
 Both lanes instantiate fresh copies of the same WASM and mount verified raw content. The baseline is uninterrupted. The restored lane saves and reloads every 50 ticks (including a final tick divisible by 50), immediately checks hash preservation and compares every continuation tick against baseline. Receipts contain tick zero through the final tick, both per-tick `{tick,hash,events}` arrays (events are lowercase byte hex), checkpoint byte lengths/SHA-256 and before/after hashes, exact fixture-byte and WASM SHA-256, map/content identities, seed, runtime and ABI version. Events drain before each checkpoint. `identical` must be true; a mismatch throws instead of producing a pass receipt.
 
@@ -293,3 +292,18 @@ node sim/build/compare-traces.mjs --target --ticks-only \
 ```
 
 Use the actual native output path from the integrated corpus run. The comparator owns T2 numeric thresholds and exact discrete-field comparison; T3 receipts require identical hashes, with no numeric tolerance. G0.2 scripts `src/node.ts`, `src/browser.ts` and `src/serve.ts` remain the separate particle-spike entry points.
+
+The same runners accept the bot corpus. Serial resource-bounded qualification and robustness commands:
+
+```sh
+node sim/build/run-combat.mjs --corpus tests/fixtures/bots/corpus.json \
+  --tier t1 --rng original --out build-out/sim/g5/final/bots
+node sim/build/run-combat.mjs --corpus tests/fixtures/bots/corpus.json \
+  --tier t2 --rng both --out build-out/sim/g5/final/bots
+# Complete native/Node lanes for all three corpora before browsers.
+node sim/build/run-browser-matrix.mjs --engine Chrome
+node sim/build/run-browser-matrix.mjs --engine Firefox
+node --expose-gc sim/build/check-bots.mjs --minutes 5
+```
+
+The browser matrix uses one owned headless process at a time, fresh private profiles and exact Node receipt comparisons. Its default corpus set is movement/combat/bots and default policy set is original/keyed. The robustness runner discovers every stock `botCapable` map, runs eight original bots in DM and CTF, drains events without FX or wall-clock pacing, and records crashes, scores and every alive bot's unchanged-waypoint streak. More than 600 consecutive ticks is flagged; authored camping and combat can legitimately trigger that diagnostic and are not silently relabeled as path progress. `--maps Arena,ctf_Ash,ctf_Laos --minutes 30` selects longer probes; omitted runs have no inferred result. All result identities bind the WASM and combined content hash.

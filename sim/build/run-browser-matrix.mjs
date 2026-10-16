@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { resolve, join } from 'node:path';
@@ -32,6 +32,8 @@ for (const corpus of options.corpora.split(',')) for (const policy of policies) 
   const profile = await mkdtemp(join(output, `private-${options.engine.toLowerCase()}-`));
   const port = Number(options.port) + serial++, url = `http://127.0.0.1:${port}/`;
   const log = createWriteStream(join(destination, 'process.log'));
+  const pressure=spawnSync('memory_pressure',{stdio:'inherit'});
+  if(pressure.status!==0) throw new Error('Unable to inspect memory pressure before browser');
   let server, browser;
   const started = performance.now();
   try {
