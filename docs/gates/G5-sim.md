@@ -2,7 +2,7 @@
 
 ## Gate status
 
-**REQUALIFICATION IN PROGRESS.** The frozen ABI-4 artifact passes oracle/T1 **168/168**, T2 **336/336** across both RNG policies, and Node save/load **336/336**. Browser, presentation and robustness matrices remain pending; earlier ABI-3 G3 receipts and superseded ABI-4 client receipts do not qualify those remaining lanes.
+**PASS for the requested installed-runtime correctness matrix; robustness measurements include nonzero stall flags.** The frozen ABI-4 artifact passes oracle/T1 **168/168**, T2 **336/336**, Node save/load **336/336**, Chrome **336/336** and Firefox **336/336** across both RNG policies. Presentation checks pass and all **194/194** five-minute stock-map/mode runs complete without crashes. The measured **281 bot-run stall flags / 433 episodes** are not a zero-stuck-bot claim. Safari is excluded by user decision; installed Firefox 115.0 does not satisfy a current/previous-major Firefox qualification. No earlier artifact's receipt is reused.
 
 ## Frozen artifact and content
 
@@ -40,11 +40,11 @@ The bot corpus has **18 captured, repeated-byte-identical oracle fixtures**: 14 
 | Authoritative-control movement comparison | **98 / 98 movement/pose identical**; strict full trace 95/98, only ledger C08 inventory differences |
 | T2 original + keyed | **336 / 336 bit-exact**, plus byte-identical hash/event sidecars; 168 per policy |
 | Node T3 original + keyed, save/load every 50 ticks | **336 / 336**, 168 per policy |
-| Chrome T3 original + keyed | 0 / 336 |
-| Firefox T3 original + keyed | 0 / 336 |
+| Chrome 155 T3 original + keyed | **336 / 336 accepted**, zero hash/event/checkpoint mismatches |
+| Firefox 115.0 T3 original + keyed | **336 / 336 accepted**, zero hash/event/checkpoint mismatches |
 | Presentation/render/menu/bink checks | **PASS**: 3 weather lanes; 722 render publications; 180 replay comparisons; limbo, bink and bot snapshot checks |
 | Five-minute robustness, eight bots, DM + CTF | **194 / 194 complete**, zero crashes; 281 bot-run stall flags / 433 episodes |
-| Optional thirty-minute probes, Arena/Ash/Laos, DM + CTF | 0 / 6 |
+| Optional thirty-minute probes, Arena/Ash/Laos, DM + CTF | **6 / 6 complete**, zero crashes; 24 bot-run stall flags / 41 episodes |
 
 Safari is excluded by the user's decision, not passed. Five-minute robustness covers all 97 bot-capable stock maps; ctf_Aftermath and ctf_Amnesia have no bot paths and are excluded. Every alive bot's unchanged-current-waypoint streak is measured; more than 600 consecutive ticks flags a stall, including potentially legitimate combat/camping. Mode-inappropriate stock maps are still exercised. All 29 unprefixed DM maps and 19 `htf_` maps lack one or both CTF flag spawns; their CTF runs are stress coverage, not proof of a playable CTF map. The other 49 maps have both flag spawns. Exact spawn booleans and per-bot score/path histories are retained in the robustness JSON.
 
@@ -67,13 +67,13 @@ Integration rejected superseded artifacts after finding two source-initializatio
 
 The first full bot capture attempt passed 16 short fixtures, but both Arena 10,000-tick fixtures exited 217 in original `Server.NextMap`: fixture-world after tick 5,019 and original-world after tick 5,606. Resolving the existing executable's stack through an unstripped relink of the same objects identified `NextMap <- SortPlayers <- Die <- HealthHit <- CheckSpriteCollision <- UpdateFrame`. `SortPlayers` invokes `NextMap` at the original kill limit. Original startup allocates `MapsList` before gameplay; the independent harness had bypassed that allocation, leaving `MapsList.Count` to dereference nil. The extracted simulation already allocated the list in `Server` initialization. The harness now allocates and frees its own list; no simulation mechanics, frozen artifact, fixture inputs or observation predicates changed. Failed attempts do not count as golden evidence.
 
-Both harness and extracted simulation intentionally have an **empty map-rotation list for the admitted single-map match**, not a one-entry rotation/restart list. Original `NextMap` with an empty list reports “Can't load maps from mapslist”; it does not invoke `PrepareMapChange`, set a map-change countdown, reset scores, restart the map or emit a successful map-transition notification. Gameplay continues on the current map. The 10,000-tick T1 fixtures must therefore cover the first kill-limit call and the remaining ticks; a passing comparison is not evidence of a successful rotation/restart, which remains outside this ABI.
+Both harness and extracted simulation intentionally have an **empty map-rotation list for the admitted single-map match**, not a one-entry rotation/restart list. Original `NextMap` with an empty list reports “Can't load maps from mapslist”; it does not invoke `PrepareMapChange`, set a map-change countdown, reset scores, restart the map or emit a successful map-transition notification. Gameplay continues on the current map. The passing 10,000-tick T1 fixtures cover the first kill-limit call and all remaining ticks; that comparison is not evidence of a successful rotation/restart, which remains outside this ABI.
 
 ## Completed deterministic tiers
 
 `build-out/sim/g5/final/execution.json` records zero-exit captures, movement/combat/bot T1 and all three T2/Node corpus stages. The authoritative-control command exits 1 for the three deliberate C08 secondary-inventory differences; its explicit `movementAndPoseIdentical:98` acceptance passes. Full results are `movement-t1/results.json`, `movement-authoritative/results.json` (including exhaustive differences in each failed fixture's `comparison.stdout`), and `{movement,combat,bots}/results-{t1,t2}.json` under that directory (movement T1 uses `movement-t1/`). T1 bot fixtures include both complete 10,000-tick Arena runs, each comparing 10,002 records / 10,001 states with zero float differences: the original-world call at tick 5,607 and fixture-world call at tick 5,020 and all subsequent ticks through 10,000 are covered, not shortened away before the kill limit.
 
-The original serial runner was deliberately stopped as its first Chrome lane opened, to obey coordinator browser-slot arbitration and mandatory audio muting. No incomplete browser lane is counted. Remaining stages resume with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence is not discarded or rerun just because browser scheduling was interrupted.
+The original serial runner was deliberately stopped as its first Chrome lane opened, to obey coordinator browser-slot arbitration and mandatory audio muting. No incomplete browser lane is counted. Remaining stages resumed with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence was not discarded or rerun just because browser scheduling was interrupted.
 
 ## Presentation checks
 
@@ -192,3 +192,40 @@ In the table, paired columns are **DM/CTF**. “Stalled” counts distinct bot i
 ## Browser harness upload correction
 
 The first muted Chrome matrix accepted all 196 movement and 104 combat receipts, then failed in the first bot lane with `TypeError: Failed to fetch` rather than a simulation mismatch. The two long eight-bot Node receipt files are 33,797,024 and 33,950,261 bytes; each exceeds the receipt server's previous 32 MiB (33,554,432-byte) request ceiling. The harness ceiling is now 64 MiB, with all fixture/artifact identity, per-tick hash/event, restored-lane and checkpoint comparisons unchanged. The failed browser stage is retained in `final/logs/browser-chrome.log` and is not counted as completed bot evidence; only the bot lanes require recollection. This changes no frozen simulation code, fixture or predicate.
+
+## Browser completion and reproduction after scheduling hold
+
+Both installed engines accepted every required receipt: per engine/policy, movement 98, combat 52 and bots 18. Node, Chrome and Firefox therefore each cover **168 fixtures per policy / 336 total**, including save/load every 50 ticks. The acceptance validates exact WASM/fixture/map/content/ABI/policy identities, every baseline/restored hash and event byte, and every checkpoint state digest. No missing receipt or mismatch is relabeled as passed. Summaries are `final/browser-{chrome,firefox}.json`; all six corpus/policy lane summaries and individual receipts are under `final/{movement,combat,bots}/{original,keyed}/browser/{Chrome,Firefox}/`. The final independent validators are `{movement,combat,bots}/results-t3.json`, each with `status:"pass"` and empty `missing` arrays for both policies.
+
+The browser-hold resumption used the documented equivalents below, one heavy job/private browser at a time, with `memory_pressure` checked before each stage and WASM identity rechecked. Chrome uses `--mute-audio`; Firefox's temporary profile sets `media.volume_scale="0.0"`. Profiles and owned browser/server children close after each lane. Full-stock Node robustness ran during the coordinator-directed non-browser hold; optional long probes ran after browser acceptance.
+
+```sh
+node sim/build/run-browser-matrix.mjs --engine Chrome --out build-out/sim/g5/final
+# After raising the harness upload limit, recollect only the failed bot lanes:
+node sim/build/run-browser-matrix.mjs --engine Chrome --corpora bots --out build-out/sim/g5/final
+node sim/build/run-browser-matrix.mjs --engine Firefox --out build-out/sim/g5/final
+# Run separately for movement, combat, bots:
+node sim/build/run-combat.mjs --corpus tests/fixtures/movement/corpus.json \
+  --tier t3 --rng both --engines Chrome,Firefox --out build-out/sim/g5/final/movement
+```
+
+## Optional thirty-minute probes
+
+Command: `node --expose-gc sim/build/check-bots.mjs --minutes 30 --maps Arena,ctf_Ash,ctf_Laos --out build-out/sim/g5/final/robustness-30min.json`. Same frozen WASM/content, eight original-profile bots, AI on, original world, keyed RNG and seed as the five-minute matrix. All **6/6** complete **108,000 ticks each**, **0 crashes**, **24 bot-run stall flags / 41 episodes**, wall 116.14 seconds. Arena CTF still has no authored CTF flag spawns.
+
+| Map | Mode | Ticks | Crashes | Stalled bots | Episodes | Longest unchanged waypoint (ticks) | K:D | CTF A:B |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Arena | DM | 108,000 | 0 | 3 | 3 | 802 | 1044:1058 | — |
+| Arena | CTF | 108,000 | 0 | 3 | 3 | 625 | 776:793 | 0:0 |
+| ctf_Ash | DM | 108,000 | 0 | 5 | 10 | 897 | 1062:1089 | — |
+| ctf_Ash | CTF | 108,000 | 0 | 8 | 16 | 1,964 | 634:642 | 9:5 |
+| ctf_Laos | DM | 108,000 | 0 | 4 | 5 | 1,265 | 910:930 | — |
+| ctf_Laos | CTF | 108,000 | 0 | 1 | 4 | 760 | 525:530 | 7:11 |
+
+## Final receipt, defects and resource discipline
+
+`build-out/sim/g5/final/qualification.json` binds all final artifact hashes, exact completed-tier counts, execution stages, supplemental presentation commands, measured robustness totals, omitted Safari and Firefox-version/stall limitations. The expected authoritative-control exit 1 and superseded Chrome upload failure are retained with their explicit dispositions; neither is silently changed to exit 0. Final cross-runtime validators pass both policies for all three corpora.
+
+**No demonstrated simulation defect was found, and the frozen WASM was never rebuilt or changed during qualification.** Two independent harness defects were corrected: oracle startup's missing `MapsList` allocation and the browser receipt upload ceiling. Neither changed fixtures, predicates, original AI or simulation mechanics. Nonzero waypoint-stall measurements remain disclosed and are not asserted to be proven benign.
+
+Heavy G5 steps were serialized, with memory checked before each. Browser ownership was coordinated with other workers; only private profiles/processes were controlled, and resumed browsers were muted. Docker outputs/HOME/TMPDIR remained host-bound; no Docker objects were pruned and the user's server/browser sessions were not stopped. Raw scratch traces, the diagnostic unstripped oracle link, the interrupted browser profile and temporary stage-resumption script were removed after results/hashes were recorded. Oracle goldens, pickup sidecars, tick-hash/event sidecars, final receipts and logs remain as evidence.
