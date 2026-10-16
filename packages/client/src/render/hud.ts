@@ -17,7 +17,7 @@ export interface HudOptions {
   onInputCapture?: (captured: boolean) => void;
   weaponsMenu?: boolean;
   pointer?: { pointerX: number; pointerY: number };
-  onWeaponChoice?: (primary: number, secondary: number) => void;
+  onWeaponChoice?: (primary: number, secondary: number, selection: "primary" | "secondary") => void;
   weaponChoiceNotice?: string;
   /** One-based native WeaponActive / per-player WeaponSel, when supplied. */
   weaponActive?: readonly number[];
@@ -68,6 +68,8 @@ export interface HudPresentation {
   fireInterval?: number;
   fireIntervalCount?: number;
   tertiaryWeapon?: number;
+  /** Client-owned original HitSprayCounter, never a gameplay-state mutation. */
+  hitSprayCounter?: number;
   ping?: number;
   killEvents?: readonly HudKillEvent[];
   /** True only when the producer actually supplies the death-event stream. */
@@ -172,7 +174,7 @@ export function hudPresentationFromRender(
     player.flags = data.getUint32(base + s.playerFlags, true);
     player.shirtColor = data.getUint32(base + s.shirtColor, true);
     player.dead = (flags & SPRITE_FLAGS.dead) !== 0;
-    player.bot = data.getUint32(base + s.controlMethod, true) === 2;
+    player.bot = (flags & SPRITE_FLAGS.bot) !== 0;
     const length = data.getUint32(base + s.playerNameLength, true);
     if (length > RENDER_LAYOUT.playerNameBytes) throw new Error("Unsupported HUD player name length");
     const name = cache.names[i]!;
@@ -544,7 +546,7 @@ export class CombatHud {
       if (asset) {
         const gun = WEAPONS[me.weapon];
         const movement = gun ? this.options.weapons[gun[1]]?.movementacc ?? 0 : 0;
-        const scale = menuCursor ? 1 : cursorScale(cursorMoveAccuracy(me, movement));
+        const scale = menuCursor ? 1 : cursorScale(cursorMoveAccuracy(me, movement), state.hitSprayCounter ?? 0);
         // Native cursor sprites are output-pixel sized, unlike the scaled interface.
         const width = asset.width * scale / (this.width / this.logicalWidth);
         const height = asset.height * scale / (this.height / 480);
@@ -587,11 +589,11 @@ export class CombatHud {
     const weapon = LIMBO_WEAPONS[index]!;
     try {
       if (!this.options.onWeaponChoice) throw new Error("Weapon selection unavailable");
-      this.options.onWeaponChoice(index < 10 ? weapon.num : this.limbo.primary, index >= 10 ? weapon.num : this.limbo.secondary);
+      this.options.onWeaponChoice(index < 10 ? weapon.num : this.limbo.primary, index >= 10 ? weapon.num : this.limbo.secondary, index < 10 ? "primary" : "secondary");
       this.limbo.choose(index);
       if (index >= 10 && !LIMBO_WEAPONS.some((_, i) => i < 10 && limboWeaponEnabled(i, this.options.weaponActive, this.options.weaponSelection)))
         this.limbo.active = false;
-      this.chatNotice = "Weapon choice saved — applies on next respawn";
+      this.chatNotice = "Weapon choice selected";
     } catch (error) {
       this.chatNotice = error instanceof Error ? error.message : String(error);
     }

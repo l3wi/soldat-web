@@ -13,7 +13,7 @@ const MAX_JITTER_MARGIN_TICKS = 6;
 const RTT_WINDOW = 32;
 /** Holding a remote control must never repeat a grenade/switch/reload/etc edge. */
 export function heldInput(input: Uint8Array): Uint8Array {
-  const held = input.slice(); held[0] = held[0]! & 0x3f; held[1] = 0; return held;
+  const held = new Uint8Array(input); held[0] = held[0]! & 0x3f; held[1] = 0; return held;
 }
 export interface OnlineMetrics {
   status: string; slot: number; serverTick: number; predictedTick: number; viewTick: number;
@@ -52,6 +52,8 @@ export interface OnlineOptions {
   onCorrection?: (diagnostic: Readonly<CorrectionDiagnostic>) => void;
   /** Borrowed event records, presentation kinds only; never emitted on REPLAY. */
   onPresentation?: (bytes: Uint8Array) => void;
+  /** Complete borrowed live-step batch, once per forward tick; never REPLAY. */
+  onLiveStep?: (tick: number, bytes: Uint8Array) => void;
 }
 interface Pose { tick: number; sprites: WorldSprite[] }
 function copySprite(sprite: WorldSprite): WorldSprite {
@@ -299,6 +301,7 @@ export class OnlineSession {
       // replay-suppressed. Never expose speculative gameplay as authoritative.
       const bytes = requireStatus(this.options.prediction.exports.sim_events(this.eventPtr, this.eventCapacity), "sim_events(prediction drain)");
       if (bytes > this.eventCapacity) throw new Error("Prediction event capacity exceeded");
+      this.options.onLiveStep?.(this.predictionWorld.tick, new Uint8Array(this.options.prediction.exports.memory.buffer, this.eventPtr, bytes));
       if (bytes && this.options.onPresentation) {
         const data = new Uint8Array(this.options.prediction.exports.memory.buffer, this.eventPtr, bytes);
         const view = new DataView(data.buffer, data.byteOffset, data.byteLength);

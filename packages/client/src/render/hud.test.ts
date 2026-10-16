@@ -5,6 +5,7 @@ import { RENDER_ABI_VERSION, RENDER_LAYOUT, SPRITE_FLAGS, readRenderView } from 
 import { CombatHud, hudPresentationFromRender, type HudPresentation } from "./hud";
 import { resizeCamera } from "../camera";
 import type { ImageAsset } from "./types";
+import { LimboMenu } from "./limbo";
 
 // Canvas command/ABI fixtures only: not simulation qualification or raster proof.
 const manifest = JSON.parse(readFileSync(new URL("../../../../dist/content/manifest.json", import.meta.url), "utf8")) as {
@@ -192,7 +193,7 @@ test("genuine KillBullet codes select grenade icons and source console row spaci
   assert.equal(draws.length, 0, "unknown native kill code must not invent a weapon icon");
 });
 
-test("ABI3 projection reuses records, preserves native score order and refreshes mutable globals/names", () => {
+test("ABI4 projection reuses records, distinguishes AI from authoritative humans and preserves native scores", () => {
   const { data, raw } = renderFixture();
   const s = RENDER_LAYOUT.sprite;
   const names = ["Alpha", "Bravo", "Charlie"];
@@ -200,9 +201,9 @@ test("ABI3 projection reuses records, preserves native score order and refreshes
   for (let slot = 0; slot < 3; slot++) {
     const base = RENDER_LAYOUT.headerBytes + slot * RENDER_LAYOUT.spriteBytes;
     data.setUint32(base + s.slot, slot + 1, true);
-    data.setUint32(base + s.flags, SPRITE_FLAGS.active, true);
+    data.setUint32(base + s.flags, SPRITE_FLAGS.active | (slot === 2 ? SPRITE_FLAGS.bot : 0), true);
     data.setUint32(base + s.team, slot + 1, true);
-    data.setUint32(base + s.controlMethod, slot === 2 ? 2 : 1, true);
+    data.setUint32(base + s.controlMethod, 2, true); // Both true AI and input-authoritative humans use original BOT role.
     data.setInt32(base + s.kills, slot === 0 ? 2 : 9, true);
     data.setInt32(base + s.deaths, slot === 1 ? 8 : 1, true);
     data.setUint32(base + s.playerFlags, slot === 0 ? 1 : 0, true);
@@ -228,6 +229,8 @@ test("ABI3 projection reuses records, preserves native score order and refreshes
   });
   assert.deepEqual(state.players!.map(player => player.name), ["Alpha", "Charlie", "Bravo"]);
   assert.equal(state.players![1]!.bot, true);
+  assert.equal(state.players![0]!.bot, false);
+  assert.equal(state.players![2]!.bot, false);
   assert.equal(state.vest, 25);
   assert.equal(state.ammoCapacity, 30);
   assert.equal(state.reloadTime, 150);
@@ -252,4 +255,19 @@ test("ABI3 projection reuses records, preserves native score order and refreshes
   assert.equal(refreshed.rasterOnly, undefined);
   assert.equal(refreshed.fireIntervalReal, undefined);
   assert.equal(refreshed.reloadReal, undefined);
+});
+
+test("limbo secondary selection stays open and carries explicit apply intent before primary", () => {
+  const choices: unknown[][] = [];
+  const limbo = new LimboMenu();
+  limbo.observe(false, 4, 0);
+  const hud = Object.assign(Object.create(CombatHud.prototype), {
+    limbo, lastTick: 10, form: { hidden: true },
+    options: { onWeaponChoice: (...choice: unknown[]) => choices.push(choice) },
+  }) as { chooseWeapon(index: number): void };
+  hud.chooseWeapon(11);
+  assert.equal(limbo.active, true);
+  hud.chooseWeapon(6);
+  assert.equal(limbo.active, false);
+  assert.deepEqual(choices, [[4, 11, "secondary"], [7, 11, "primary"]]);
 });

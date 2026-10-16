@@ -5,6 +5,7 @@ import { createCamera, resizeCamera, updateCamera, setZoom } from "./camera";
 import { ClientClock } from "./clock";
 import { InputSampler } from "./input";
 import { loadSandbox } from "./sandbox";
+import { DEFAULT_SANDBOX, type SandboxOptions } from "./sandbox-options";
 import type { Settings } from "./settings";
 import { SimWorldView } from "./world";
 import { loadGostek, type GostekRenderer } from "./render/gostek";
@@ -19,6 +20,7 @@ import { loadCombat, type CombatRenderer } from "./render/combat";
 import { CombatHud, hudPresentationFromRender, type HudContent } from "./render/hud";
 import { createCombatGallery, type CombatGallery } from "./render/combat-gallery";
 import { CombatEvents } from "./combat-events";
+import { CursorBink } from "./render/bink";
 
 let lifecycle = Promise.resolve();
 let audio: Audio | undefined;
@@ -36,6 +38,11 @@ export interface ClientDiagnostics {
   soundEvents: number; playedSounds: number; sparks: number;
 }
 declare global { interface Window { __soldatClient?: ClientDiagnostics } }
+interface PracticeSnapshot {
+  tick: number; hash: string; bink: number; bullets: number; scores: number[];
+  players: { slot: number; name: string; team: number; flags: number; x: number; y: number; kills: number; deaths: number; fired: number; weapon: number; secondaryWeapon: number }[];
+}
+declare global { interface Window { __soldatPractice?: () => PracticeSnapshot } }
 export interface CombatHook {
   command(command: SimCommand): void;
   input(slot: number, bytes: number[] | null): void;
@@ -55,7 +62,7 @@ declare global { interface Window { __soldatCombat?: CombatHook } }
 
 /** Serialized React mount/unmount lifecycle: Phaser destruction is asynchronous,
  * so a new game never races the previous game's canvas/audio/resource teardown. */
-export function mountGame(container: HTMLElement, mapName: string, settings: Settings, onStatus: (status: string) => void): () => void {
+export function mountGame(container: HTMLElement, mapName: string, settings: Settings, onStatus: (status: string) => void, sandbox: SandboxOptions = DEFAULT_SANDBOX): () => void {
   let cancelled = false;
   const abort = new AbortController();
   const qualification = new URLSearchParams(location.search).has("g2");
@@ -101,11 +108,18 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       if (!capture) hud = await CombatHud.create(container, content.core, {
         startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
         onInputCapture: () => input.reset(),
-        weaponChoiceNotice: serverUrl ? "Online loadout is fixed at admission" : "Choices apply on next respawn (use Respawn to switch now)",
-        onWeaponChoice(primary, secondary) {
-          if (serverUrl) throw new Error("Online weapon changes need an in-match protocol message");
+        weaponChoiceNotice: "Choose now after spawning; otherwise applies next respawn",
+        onWeaponChoice(primary, secondary, selection) {
+          if (serverUrl) {
+            if (!online) throw new Error("Online connection unavailable");
+            online.weaponChoice(primary, secondary, selection);
+            return;
+          }
           if (!host || !world) throw new Error("Simulation unavailable");
           requireStatus(host.command(world.tick, { kind: "weapon-choice", slot: 1, weapon: primary, secondaryWeapon: secondary }), "sim_command(weapon-choice)");
+          const applied = host.command(world.tick, { kind: "weapon-apply", slot: 1, weapon: primary, secondaryWeapon: secondary, selection });
+          if (applied !== SimStatus.UNSUPPORTED) requireStatus(applied, "sim_command(weapon-apply)");
+          world.sync();
         },
       });
       let world: SimWorldView | undefined, render: SoldatMap | undefined;
@@ -120,6 +134,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       const combatSlots = [1, 2] as const;
       const neutral = new Uint8Array(12);
       const combatEvents = new CombatEvents();
+      const bink = new CursorBink();
       const step = () => {
         presentationTick++;
         if (!host || !world) {
@@ -155,6 +170,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
         if (!eventBytes || eventBytes.buffer !== host.exports.memory.buffer) eventBytes = new Uint8Array(host.exports.memory.buffer, eventPtr, EVENT_CAPACITY);
         audio?.drain(eventBytes, written);
         combatEvents.drain(eventBytes, written, world.renderView);
+        bink.liveStep(world.tick, eventBytes.subarray(0, written), 1);
         diagnostics.soundEvents = audio?.soundEvents ?? 0; diagnostics.playedSounds = audio?.playedSounds ?? 0;
         if (playback) { playback.commands(world.tick); world.sync(); playback.recordTick(world.tick); }
         diagnostics.tick = world.tick;
@@ -197,7 +213,9 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (!gallery) { render!.draw(geometry.edges[1]); render!.draw(geometry.polys[1]); drawProps(2); }
             if (view && world && gallery?.mode !== "objects") {
               const slot = online?.session.metrics.slot ?? 1;
-              hud?.update(gallery?.world ?? world, slot, hudPresentationFromRender(view, slot, gallery?.hud ?? combatEvents.presentation));
+              const presentation = hudPresentationFromRender(view, slot, gallery?.hud ?? combatEvents.presentation);
+              if (!gallery) presentation.hitSprayCounter = bink.counter;
+              hud?.update(gallery?.world ?? world, slot, presentation);
             } else hud?.clear();
             diagnostics.ready = true; diagnostics.renders++;
           };
@@ -265,6 +283,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
           if (serverUrl) void audio.prepare().then(() => connectOnline({
             url: serverUrl, map: map.name, container, signal: abort.signal, onStatus,
             onPresentation(bytes) { audio?.drain(bytes, bytes.length); },
+            onLiveStep(tick, bytes, slot) { bink.liveStep(tick, bytes, slot); },
             onEvent(event) {
               const bytes = new Uint8Array(event.header.length + event.payload.length);
               bytes.set(event.header); bytes.set(event.payload, event.header.length);
@@ -282,7 +301,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (cancelled) return;
             diagnostics.simulation = `online unavailable: ${String(error)}`; onStatus(diagnostics.simulation);
           });
-          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout)).then(async loaded => {
+          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox)).then(async loaded => {
             if (cancelled) { loaded.dispose(); return; }
             host = loaded;
             inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
@@ -290,6 +309,16 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (!inputPtr || !eventPtr) throw new Error("Simulation buffer allocation failed");
             world = new SimWorldView(host);
             fx = new SimEffectsView(host);
+            // Read-only qualification surface; ordinary matches keep no diagnostic copies.
+            if (new URLSearchParams(location.search).has("bots-check")) window.__soldatPractice = () => {
+              const hash = host!.hash(), view = world!.renderView;
+              return { tick: view.tick, hash, bink: bink.counter, bullets: view.bulletCount,
+                scores: Array.from(view.globals.teamScores),
+                players: Array.from({ length: view.slots }, (_, index) => view.sprite(index))
+                  .filter(sprite => (sprite.flags & 1) !== 0)
+                  .map(sprite => ({ slot: sprite.slot, name: sprite.playerName, team: sprite.team, flags: sprite.flags,
+                    x: sprite.posX, y: sprite.posY, kills: sprite.kills, deaths: sprite.deaths, fired: sprite.fired, weapon: sprite.weapon, secondaryWeapon: sprite.secondaryWeapon })) };
+            };
             respawn = () => {
               requireStatus(host!.command(world!.tick, { kind: "spawn", slot: 1 }), "sim_command(spawn)");
               world!.sync(); input.reset(); hud?.spawned(); canvas.focus({ preventScroll: true });
@@ -328,6 +357,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                   world = new SimWorldView(host); fx = new SimEffectsView(host);
                   gallery = undefined; overrides.clear(); input.reset(); clock.reset(); presentationTick = 0;
                   combatEvents.clear();
+                  bink.clear();
                   diagnostics.tick = world.tick; draw();
                 },
                 render: draw,
@@ -350,7 +380,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
               draw();
             }
             const warnings = map.missing?.filter(item => item.active).map(item => `${item.kind}: ${item.requested} (fallback ${item.fallback ?? "unavailable"})`) ?? [];
-            diagnostics.simulation = `combat sandbox; ${fxAvailable ? "cosmetics active" : "cosmetic simulation unavailable"}; positional SFX ready${warnings.length ? `; WARNING ${warnings.join("; ")}` : ""}`;
+            diagnostics.simulation = `${combatCapture ? "combat sandbox" : `${sandbox.mode.toUpperCase()} practice; ${sandbox.bots} bots`}; ${fxAvailable ? "cosmetics active" : "cosmetic simulation unavailable"}; positional SFX ready${warnings.length ? `; WARNING ${warnings.join("; ")}` : ""}`;
             onStatus(diagnostics.simulation);
           }).catch(error => {
             if (cancelled) return;
@@ -415,6 +445,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       else if (host) { if (inputPtr) host.exports.sim_free(inputPtr); if (eventPtr) host.exports.sim_free(eventPtr); host.dispose(); }
       delete window.__soldatGate;
       delete window.__soldatCombat;
+      delete window.__soldatPractice;
       hud?.destroy();
       if (window.__soldatClient === diagnostics) delete window.__soldatClient;
       respawn = undefined;

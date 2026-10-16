@@ -5,6 +5,7 @@ import {
   HISTORIC_MAP_CREDITS, contentUrl, loadContentManifest, loadContentNotices, sourceUrl,
   type ContentManifest, type ContentNotice,
 } from './content';
+import { DEFAULT_SANDBOX, type SandboxOptions } from './sandbox-options';
 
 const ACTIONS: { action: ControlAction; label: string }[] = [
   { action: 'left', label: 'Move left' }, { action: 'right', label: 'Move right' },
@@ -18,8 +19,8 @@ const ignoreStatus = (_status: string) => {};
 const cloneSettings = (settings: Settings): Settings => ({ ...settings, bindings: { ...settings.bindings } });
 const errorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-function GameSurface({ map, settings, onStatus = ignoreStatus, capture = false }: {
-  map: string; settings: Settings; onStatus?: (status: string) => void; capture?: boolean;
+function GameSurface({ map, settings, sandbox = DEFAULT_SANDBOX, onStatus = ignoreStatus, capture = false }: {
+  map: string; settings: Settings; sandbox?: SandboxOptions; onStatus?: (status: string) => void; capture?: boolean;
 }) {
   const container = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -27,12 +28,12 @@ function GameSurface({ map, settings, onStatus = ignoreStatus, capture = false }
     let active = true;
     let destroy: (() => void) | undefined;
     try {
-      destroy = mountGame(container.current, map, settings, status => { if (active) onStatus(status); });
+      destroy = mountGame(container.current, map, settings, status => { if (active) onStatus(status); }, sandbox);
     } catch (error) {
       onStatus(`Could not start ${map}: ${errorMessage(error)}`);
     }
     return () => { active = false; destroy?.(); };
-  }, [map, settings, onStatus]);
+  }, [map, settings, sandbox, onStatus]);
   return <div ref={container} className={capture ? 'game-surface capture-surface' : 'game-surface'} aria-label={`${map} game canvas`} />;
 }
 
@@ -193,6 +194,8 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
   const [reload, setReload] = useState(0);
   const [selectedMap, setSelectedMap] = useState('Arena');
   const [mapQuery, setMapQuery] = useState('');
+  const [sandbox, setSandbox] = useState<SandboxOptions>(() => ({ ...DEFAULT_SANDBOX }));
+  const [runningOptions, setRunningOptions] = useState<SandboxOptions>(() => ({ ...DEFAULT_SANDBOX }));
   const [runningMap, setRunningMap] = useState<string | null>(() => {
     const params = new URLSearchParams(location.search);
     return params.has('server') ? params.get('map') || 'Arena' : null;
@@ -241,7 +244,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
       </nav>
       {audioStatus && <span className="audio-status" role="status">{audioStatus}</span>}
     </header>
-    <GameSurface map={runningMap} settings={settings} onStatus={setStatus} />
+    <GameSurface map={runningMap} settings={settings} sandbox={runningOptions} onStatus={setStatus} />
     {modal && <Modal title={modal === 'settings' ? 'Settings' : 'About / Credits & Licenses'} onClose={() => setModal(null)}>
       {modal === 'settings' ? <SettingsPanel settings={settings} onApply={applySettings} /> : <CreditsPanel manifest={manifest} />}
     </Modal>}
@@ -255,7 +258,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
         <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => setPage('settings')}>Settings</button>
         <button type="button" aria-current={page === 'credits' ? 'page' : undefined} onClick={() => setPage('credits')}>Credits & Licenses</button>
       </nav>
-      <p className="sidebar-note">Desktop keyboard and mouse.<br />Single-player sandbox; no server connection.</p>
+      <p className="sidebar-note">Desktop keyboard and mouse.<br />Practice against original waypoint bots; no server connection.</p>
       <p className="disclaimer">Unofficial. Uses open-licensed Soldat/OpenSoldat content. No affiliation or endorsement.</p>
     </aside>
     <section className="briefing-content" aria-labelledby="page-title">
@@ -263,7 +266,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
       {manifestError && <div className="error-message" role="alert"><p>{manifestError} Check that imported content is served at /content/.</p><button type="button" onClick={() => setReload(reload + 1)}>Reload content index</button></div>}
       {settingsStatus && <p className="save-status" role="status">{settingsStatus}</p>}
       {page === 'play' && <>
-        <p className="section-intro">Explore imported maps locally. Only the selected map and its required assets load when you start.</p>
+        <p className="section-intro">Choose a map and opponents for local practice. Bots use the original OpenSoldat profiles and map waypoints.</p>
         {!manifest && !manifestError && <p role="status">Loading map catalog…</p>}
         {manifest && <div className="map-briefing">
           <div className="map-catalog">
@@ -276,9 +279,27 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
           </div>
           <div className="map-orders">
             <h3>{selectedMap || 'No maps imported'}</h3>
-            <dl><dt>Session</dt><dd>Local single-player sandbox</dd><dt>Texture filtering</dt><dd>{settings.filter === 'nearest' ? 'Nearest' : 'Linear'}{settings.mipmaps ? ', mipmaps on' : ', mipmaps off'}</dd></dl>
+            <dl><dt>Session</dt><dd>Local practice</dd><dt>Texture filtering</dt><dd>{settings.filter === 'nearest' ? 'Nearest' : 'Linear'}{settings.mipmaps ? ', mipmaps on' : ', mipmaps off'}</dd></dl>
+            <fieldset className="match-settings"><legend>Match setup</legend>
+              <label htmlFor="game-mode">Game mode<select id="game-mode" value={sandbox.mode} onChange={event => setSandbox({ ...sandbox, mode: event.target.value as SandboxOptions['mode'] })}>
+                <option value="dm">Deathmatch</option><option value="ctf">Capture the flag</option>
+              </select></label>
+              <label htmlFor="bot-count">Bots (0–31)<input id="bot-count" type="number" min={0} max={31} step={1} value={sandbox.bots} onChange={event => setSandbox({ ...sandbox, bots: Math.max(0, Math.min(31, Math.trunc(Number(event.target.value)))) })} /></label>
+              {sandbox.mode === 'ctf' && <>
+                <label htmlFor="player-team">Your team<select id="player-team" value={sandbox.team} onChange={event => setSandbox({ ...sandbox, team: Number(event.target.value) as 1 | 2 })}>
+                  <option value={1}>Alpha (red)</option><option value={2}>Bravo (blue)</option>
+                </select></label>
+                <label htmlFor="bot-team">Bot teams<select id="bot-team" value={sandbox.botTeam} onChange={event => setSandbox({ ...sandbox, botTeam: event.target.value as SandboxOptions['botTeam'] })}>
+                  <option value="balanced">Balance both teams</option><option value="alpha">All Alpha (red)</option><option value="bravo">All Bravo (blue)</option>
+                </select></label>
+              </>}
+              <label htmlFor="bot-difficulty">Bot difficulty<select id="bot-difficulty" value={sandbox.botDifficulty} onChange={event => setSandbox({ ...sandbox, botDifficulty: Number(event.target.value) })}>
+                <option value={300}>Stupid</option><option value={200}>Poor</option><option value={100}>Normal</option><option value={50}>Hard</option><option value={10}>Impossible</option>
+              </select></label>
+            </fieldset>
+            {sandbox.bots > 0 && currentMap && !currentMap.botCapable && <p className="asset-warning" role="status">bots need waypoints on this map</p>}
             {activeMissing.length > 0 && <div className="asset-warning"><h4>Content warning</h4><ul>{activeMissing.map((item, index) => <li key={index}>{item.requested}{item.fallback ? ` — fallback: ${item.fallback}` : ' — missing dependency'}</li>)}</ul></div>}
-            <button type="button" className="primary launch-button" disabled={!currentMap} onClick={() => { setStatus(''); setRunningMap(selectedMap); }}>Start sandbox</button>
+            <button type="button" className="primary launch-button" disabled={!currentMap} onClick={() => { setStatus(''); setRunningOptions({ ...sandbox }); setRunningMap(selectedMap); }}>Start sandbox</button>
             <p className="muted">Controls are configurable in Settings. Audio is off until you choose Enable audio in-game.</p>
           </div>
         </div>}

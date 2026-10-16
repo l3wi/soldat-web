@@ -3,7 +3,7 @@ import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message, type Reli
 import { connectWss, type MessageTransport } from "@soldat-web/protocol/transport";
 import { OnlineSession, type OnlineMetrics } from "./session.ts";
 
-const FROZEN_WASM = "a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88";
+const FROZEN_WASM = "0b1abc99f7292d7f636ea97992b47651af901b16004ddea571043b66a595f509";
 export interface OnlineHook {
   readonly metrics: OnlineMetrics;
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */
@@ -16,6 +16,7 @@ export interface OnlineHook {
 declare global { interface Window { __soldatOnline?: OnlineHook } }
 export interface BrowserOnline {
   session: OnlineSession; prediction: SimHost; hook: OnlineHook;
+  weaponChoice(primary: number, secondary: number, selection: "primary" | "secondary"): void;
   updateOverlay(): void; dispose(): void;
 }
 async function bytes(url: string, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
@@ -27,9 +28,10 @@ export async function connectOnline(options: {
   url: string; map: string; container: HTMLElement; signal: AbortSignal;
   onStatus(status: string): void; onEvent(event: ReliableEvent): void;
   onPresentation(bytes: Uint8Array): void;
+  onLiveStep(tick: number, bytes: Uint8Array, slot: number): void;
 }): Promise<BrowserOnline> {
   const wasm = await bytes("/sim.wasm", options.signal);
-  if (await sha256(wasm) !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen Phase-4 WASM");
+  if (await sha256(wasm) !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen ABI4 WASM");
   const response = await fetch("/content/sim/manifest.json", { signal: options.signal });
   if (!response.ok) throw new Error(`Simulation manifest: HTTP ${response.status}`);
   const manifest = await response.json() as SimManifest;
@@ -82,12 +84,13 @@ export async function connectOnline(options: {
             const rules: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.rules));
             if (!rules || typeof rules !== "object" || Array.isArray(rules)) throw new Error("Invalid welcome rules");
             for (const host of [prediction, extraction]) {
-              requireStatus(host.init(Object.fromEntries(Object.entries(rules)), Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
+              requireStatus(host.init({ ...Object.fromEntries(Object.entries(rules)), ai: false }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
               requireStatus(host.loadMap(message.map), "sim_load_map(welcome)");
             }
             session = new OnlineSession({ prediction, extraction, slot: message.slot, send,
               onEvent(event) { options.onEvent(event); hook?.onGameplayEvent?.(event); },
-              onPresentation: options.onPresentation, onSnapshot: metrics => hook?.onSnapshot?.(metrics) });
+              onPresentation: options.onPresentation, onLiveStep: (tick, bytes) => options.onLiveStep(tick, bytes, message.slot),
+              onSnapshot: metrics => hook?.onSnapshot?.(metrics) });
             clearTimeout(timer); resolve(session);
           } else if (session) session.receive(message);
           else if (message.type === "ping") send({ type: "pong", timestamp: message.timestamp });
@@ -107,6 +110,10 @@ export async function connectOnline(options: {
     overlay.style.cssText = "position:absolute;top:8px;left:8px;z-index:20;pointer-events:none;margin:0;padding:8px;background:#101820df;color:#d9f0df;font:12px/1.5 monospace;white-space:pre-wrap";
     options.container.append(overlay);
     return { session: admitted, prediction, hook, dispose,
+      weaponChoice(primary, secondary, selection) {
+        if (disposed || admitted.metrics.status !== "online") throw new Error("Online connection unavailable");
+        transport!.send("reliableControl", encodeMessage({ type: "weapon-choice", primary, secondary, selection }));
+      },
       updateOverlay() {
         const m = admitted.metrics;
         overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.serverTick}\nRTT ${m.rttMs.toFixed(1)}ms · snapshot gaps ${(m.loss * 100).toFixed(1)}% · snapshot age ≈${(m.snapshotAgeMs + m.rttMs / 2).toFixed(1)}ms (receipt ${m.snapshotAgeMs.toFixed(1)}ms)\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash @${m.snapshotTick}: ${m.loadedHash} ${m.loadedHash === m.snapshotHash ? "=" : "≠"} ${m.snapshotHash}`;

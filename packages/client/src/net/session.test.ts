@@ -32,10 +32,20 @@ test("held controls preserve movement/aim/order, clear only one-shot bits, and o
   assert.deepEqual(held.subarray(2), input.subarray(2)); assert.notEqual(held.buffer, input.buffer);
 });
 
+test("held Node Buffer controls never mutate the borrowed wire snapshot", () => {
+  const input = Buffer.from(encodeInput({ Right: true, Fire: true, ThrowNade: true, MouseAimX: 200 }));
+  const original = Uint8Array.from(input), held = heldInput(input);
+  assert.equal(new DataView(held.buffer).getUint16(0, true), 2 | 16);
+  assert.deepEqual(Uint8Array.from(input), original, "Buffer.slice is a shared view, not Uint8Array.slice ownership");
+  assert.notEqual(held.buffer, input.buffer);
+});
+
 test("real fullstate load/hash, REPLAY, newest+2 redundancy, remote authoritative split and exactly-once events", async () => {
   const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
   const sent: Message[] = []; let now = 0, events = 0;
-  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send: message => sent.push(message), onEvent: () => events++ });
+  const liveTicks: number[] = [];
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send: message => sent.push(message),
+    onEvent: () => events++, onLiveStep: tick => liveTicks.push(tick) });
   try {
     for (const slot of [1, 2]) requireStatus(authoritative.command(0, { kind: "join", slot, team: 1, control: "authoritative" }), "join");
     const initial = save(authoritative);
@@ -43,6 +53,7 @@ test("real fullstate load/hash, REPLAY, newest+2 redundancy, remote authoritativ
     const right = encodeInput({ Right: true, MouseAimX: 200, MouseDist: 150 });
     now = 34; session.advance(() => right);
     const inputs = sent.filter(message => message.type === "input");
+    assert.deepEqual(liveTicks, [1, 2, 3, 4]);
     assert.equal(inputs.length, 4); assert.deepEqual(inputs[3]!.frames.map(frame => frame.seq), [4, 3, 2]);
     assert.deepEqual(inputs[3]!.frames.map(frame => frame.tick), [3, 2, 1]);
     assert.ok(inputs.every(message => message.frames.every(frame => frame.viewTick <= frame.tick)));
@@ -59,6 +70,7 @@ test("real fullstate load/hash, REPLAY, newest+2 redundancy, remote authoritativ
       requireStatus(authoritative.step(1), "reference REPLAY");
     }
     session.receive(second);
+    assert.deepEqual(liveTicks, [1, 2, 3, 4], "reconciliation never republishes live-step bink events");
     assert.equal(session.metrics.replayLength, 2); assert.equal(session.metrics.predictedTick, 4);
     assert.equal(prediction.hash(), authoritative.hash());
     assert.equal(session.metrics.loadedHash, second.stateHash.toString(16).padStart(16, "0"));

@@ -70,10 +70,12 @@ for (const mode of ["dm", "ctf"] as const) {
       // Exercise the new reliable path in the actual listener and worker. A
       // choice outside native limbo eligibility remains a next-respawn choice.
       workers[0]!.postMessage({ type: "weapon-choice", primary: 5, secondary: 11, selection: "primary" });
-      // The real server owns its clock in another worker. Await 720 observed
-      // simulation ticks rather than sleeping for a guessed wall-clock delay.
+      // Observe at least 720 real ticks and an actual bot shot. CTF opponents
+      // can need longer than twelve seconds to traverse their native waypoints.
+      // The test's finite timeout remains the bound; no fixed sleep proves fire.
       const startTick = samples.at(-1)!.tick;
-      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotSnapshot).tick >= startTick + 720, context.signal);
+      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotSnapshot).tick >= startTick + 720 &&
+        samples.some(observed => observed.projectiles.length > 0 || observed.bots.some(bot => bot.fired > 0)), context.signal);
       assert.deepEqual(errors, []);
       for (const player of [1, 2]) {
         const snapshots = clientSamples.filter(sample => sample.type === "snapshot" && sample.player === player);
@@ -104,7 +106,8 @@ for (const mode of ["dm", "ctf"] as const) {
           assert.ok(bot.input, "bot control record missing from the wire snapshot");
           const bytes = Uint8Array.from(bot.input), input = new DataView(bytes.buffer);
           assert.equal(bytes.length, 12);
-          assert.equal(input.getUint16(0, true), bot.controlBits);
+          assert.equal(input.getUint16(0, true), bot.controlBits,
+            `bot control mismatch player=${sample.player} tick=${sample.tick} slot=${bot.slot} hash=${sample.hash}: ${JSON.stringify(bot)}`);
           assert.equal(input.getInt16(2, true), bot.aimX);
           assert.equal(input.getInt16(4, true), bot.aimY);
           assert.equal(input.getInt16(6, true), bot.mouseDist);

@@ -66,6 +66,9 @@ dt { color: var(--muted); margin-top: 13px; }
 dd { margin: 2px 0 0; overflow-wrap: anywhere; }
 .launch-button { width: 100%; margin: 15px 0 17px; }
 .map-orders .muted { font-size: 13px; }
+.match-settings { display: grid; gap: 13px; }
+.match-settings label { font-size: 13px; gap: 5px; }
+.match-settings input, .match-settings select { width: 100%; }
 .asset-warning { background: #3b3d37; border-left: 3px solid #efc584; padding: 14px; font-size: 13px; color: #f0d7ae; }
 .asset-warning ul { padding-left: 18px; margin-bottom: 0; overflow-wrap: anywhere; }
 .error-message { border-left: 3px solid #e1a3a3; background: #47383e; padding: 16px; margin-bottom: 20px; color: #ffe2df; }

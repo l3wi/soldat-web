@@ -12,7 +12,7 @@ export function cursorMoveAccuracy(sprite: Pick<WorldSprite, "legsId" | "legsFra
   return 0;
 }
 
-/** InterfaceGraphics.pas:2291–2308. HitSprayCounter is not exported by ABI3. */
+/** InterfaceGraphics.pas:2291–2308; bink is supplied by the client-only counter. */
 export function cursorScale(moveAccuracy: number, hitSprayCounter = 0, sniperLine = false): number {
   const base = sniperLine ? 0.5 : 1;
   const inaccuracy = hitSprayCounter + moveAccuracy * 100;

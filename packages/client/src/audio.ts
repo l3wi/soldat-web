@@ -1,5 +1,6 @@
 import type Phaser from 'phaser';
 import { SOUND_SAMPLES } from './sound-samples';
+import { SIM_PRESENTATION_EVENTS } from '@soldat-web/sim-host';
 
 let decodedSounds: Promise<Record<string, AudioBuffer>> | undefined;
 
@@ -184,6 +185,7 @@ export class Audio {
       this.lastSource = source;
       this.lastTarget = target;
       if (kind === 0x80000004) this.soundEvent(view, offset, payloadBytes);
+      else if (kind === SIM_PRESENTATION_EVENTS.BINK) { /* Client cursor owns this known nonsound presentation event. */ }
       else if ((kind & PRESENTATION_BIT) !== 0) {
         this.unmappedPresentationEvents++;
         this.unmappedKinds.set(kind, (this.unmappedKinds.get(kind) ?? 0) + 1);
