@@ -65,7 +65,7 @@ async function body(request: IncomingMessage): Promise<Record<string, unknown>> 
 
 /** HTTPS control plane. Every registered match owns a separate existing worker/WASM. */
 export async function createPlatformServer(options: PlatformOptions): Promise<{ httpsServer: HttpsServer; close(): Promise<void> }> {
-  const target = options.targetPlayers ?? 8, maxMatches = options.maxMatches ?? 8, maxLobbies = options.maxLobbies ?? 128;
+  const target = options.targetPlayers ?? 16, maxMatches = options.maxMatches ?? 8, maxLobbies = options.maxLobbies ?? 128;
   const idleMs = options.idleMs ?? 5 * 60_000, reservationMs = options.reservationMs ?? 30_000;
   for (const [name, value, max] of [["targetPlayers", target, 32], ["maxMatches", maxMatches, 64], ["maxLobbies", maxLobbies, 4096]] as const) {
     if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`Invalid ${name}`);

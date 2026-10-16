@@ -19,7 +19,7 @@ const regions = JSON.parse(await readFile(new URL("../regions.local.json", impor
 await writeFile(configPath, JSON.stringify({
   wasmPath: resolve(root, "build-out/sim/sim.wasm"), contentRoot: resolve(root, process.env.SOLDAT_CONTENT_ROOT ?? "dist/content-next"),
   map: "Arena", matchSeed: "123456789", rules: { mode: "dm", rng: "keyed", world: "original", botDifficulty: 100 },
-  tlsKeyPath: key, tlsCertPath: cert, host: "127.0.0.1", port, publicUrl: origin, targetPlayers: 8, maxMatches: 8,
+  tlsKeyPath: key, tlsCertPath: cert, host: "127.0.0.1", port, publicUrl: origin, maxMatches: 8,
   regions: regions.map(region => ({ ...region, url: origin })),
   allowedOrigins: [5195, 5198, 5199].flatMap(clientPort => [`http://127.0.0.1:${clientPort}`, `http://localhost:${clientPort}`]),
 }, null, 2));
