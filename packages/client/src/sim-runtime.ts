@@ -1,11 +1,12 @@
 import simWasmUrl from 'virtual:soldat-sim-wasm';
 import { sha256 } from '@soldat-web/sim-host';
-import { sessionBytes, sessionResult } from './session-cache';
+import { sessionBytes, sessionResult, type SessionProgressCallback } from './session-cache';
 
 const modules = new Map<string, Promise<{ module: WebAssembly.Module; sha256: string }>>();
 
 /** Cache immutable code, never the host, memory, WASI imports or gameplay state. */
-export function loadSimulationCode(signal?: AbortSignal, url = simWasmUrl): Promise<{ module: WebAssembly.Module; sha256: string }> {
+export function loadSimulationCode(signal?: AbortSignal, url = simWasmUrl, onProgress?: SessionProgressCallback): Promise<{ module: WebAssembly.Module; sha256: string }> {
+  const bytes = sessionBytes(url, signal, onProgress);
   let request = modules.get(url);
   if (!request) {
     request = sessionBytes(url).then(async bytes => {
@@ -14,5 +15,5 @@ export function loadSimulationCode(signal?: AbortSignal, url = simWasmUrl): Prom
     }).catch(error => { modules.delete(url); throw error; });
     modules.set(url, request);
   }
-  return sessionResult(request, signal);
+  return Promise.all([bytes, sessionResult(request, signal)]).then(([, code]) => code);
 }

@@ -77,6 +77,11 @@ function gameAssets(build: boolean): Plugin {
 
 export default defineConfig(({ command }) => ({
   plugins: [gameAssets(command === "build"), gateAssets(root)],
+  server: {
+    proxy: {
+      "/api": { target: process.env.SOLDAT_SERVER_URL ?? "https://127.0.0.1:7443", changeOrigin: true, secure: false },
+    },
+  },
   build: {
     target: "es2022", outDir: "../../dist/client", emptyOutDir: true,
     rollupOptions: {

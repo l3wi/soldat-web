@@ -6,6 +6,8 @@ export interface Settings {
   filter: 'nearest' | 'linear';
   mipmaps: boolean;
   nickname: string;
+  volume: number;
+  gameplayBackground: boolean;
   bindings: Record<ControlAction, string>;
 }
 
@@ -20,6 +22,8 @@ export const DEFAULT_SETTINGS: Settings = {
   filter: 'linear',
   mipmaps: true,
   nickname: 'Player',
+  volume: 0.6,
+  gameplayBackground: true,
   bindings: {
     left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
     fire: 'Mouse0', jetpack: 'Mouse2', throwNade: 'KeyE',
@@ -35,6 +39,8 @@ export function loadSettings(): Settings {
     filter: DEFAULT_SETTINGS.filter,
     mipmaps: DEFAULT_SETTINGS.mipmaps,
     nickname: DEFAULT_SETTINGS.nickname,
+    volume: DEFAULT_SETTINGS.volume,
+    gameplayBackground: DEFAULT_SETTINGS.gameplayBackground,
     bindings: { ...DEFAULT_SETTINGS.bindings },
   };
   try {
@@ -44,6 +50,8 @@ export function loadSettings(): Settings {
     if (value.filter === 'nearest' || value.filter === 'linear') settings.filter = value.filter;
     if (typeof value.mipmaps === 'boolean') settings.mipmaps = value.mipmaps;
     if (typeof value.nickname === 'string' && validNickname(value.nickname)) settings.nickname = value.nickname;
+    if (typeof value.volume === 'number' && Number.isFinite(value.volume)) settings.volume = Math.max(0, Math.min(1, value.volume));
+    if (typeof value.gameplayBackground === 'boolean') settings.gameplayBackground = value.gameplayBackground;
     if (typeof value.bindings === 'object' && value.bindings !== null) {
       const bindings = value.bindings as Record<string, unknown>;
       for (const action of Object.keys(settings.bindings) as ControlAction[]) {
@@ -55,6 +63,13 @@ export function loadSettings(): Settings {
     // Storage can be unavailable (private browsing) or contain an older/corrupt value.
   }
   return settings;
+}
+
+export function hasSavedNickname(): boolean {
+  try {
+    const value: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null');
+    return !!value && typeof value === 'object' && 'nickname' in value && typeof value.nickname === 'string' && validNickname(value.nickname);
+  } catch { return false; }
 }
 
 export function saveSettings(settings: Settings): void {

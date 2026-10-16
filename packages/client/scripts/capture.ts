@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { compare } from "../../render-spike/scripts/compare";
 import type {} from "../src/game";
 import { createHash } from "node:crypto";
+import { enterShell, openPractice, choosePracticeMap, leaveGame } from "./shell-driver.mjs";
 
 const root = resolve(import.meta.dir, "../../.."), out = resolve(root, "tests/fixtures/render");
 const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--force-device-scale-factor=1"] });
@@ -33,54 +34,62 @@ try {
     nativeParity[map] = result;
   }
   await page.goto(base);
-  await page.waitForSelector("#map-choice option");
-  const maps = await page.locator("#map-choice option").count();
+  await enterShell(page);
+  await openPractice(page);
+  await page.getByRole("button", { name: /^Map / }).click();
+  const names = await page.getByRole("option").allTextContents();
+  const maps = names.length;
   assert.equal(maps, 99);
-  await page.getByRole("button", { name: "Credits & Licenses", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Credits & licenses", exact: true }).click();
+  await page.getByText("Notices, licenses & source provenance", { exact: true }).click();
   await page.waitForSelector(".credits .notice-text", { state: "attached" });
   assert.equal(await page.locator(".notice-text").count(), 4);
+  await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByText("Graphics & controls", { exact: true }).click();
   await page.getByLabel("Texture filtering").selectOption("nearest");
   await page.getByLabel("Use mipmaps").uncheck();
   await page.getByRole("button", { name: "Move left", exact: false }).click();
   await page.keyboard.press("ArrowLeft");
-  await page.getByRole("button", { name: "Apply settings" }).click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("soldat-web.settings.v1")!));
   assert.equal(saved.filter, "nearest"); assert.equal(saved.mipmaps, false); assert.equal(saved.bindings.left, "ArrowLeft");
-  await page.getByRole("button", { name: "Choose map", exact: true }).click();
-  await page.selectOption("#map-choice", "Airpirates");
+  await page.getByRole("button", { name: "Back [Esc]", exact: true }).click();
+  await openPractice(page);
+  await choosePracticeMap(page, "Airpirates");
   const soundRuns: unknown[] = [];
   for (let cycle = 0; cycle < 3; cycle++) {
-    await page.getByRole("button", { name: "Start sandbox" }).click();
+    await page.getByRole("button", { name: "Start practice [Enter]", exact: true }).click();
     await page.waitForFunction(() => {
       const state = window.__soldatClient;
       return state?.ready && state.simulation !== "loading";
     });
     const game = page.locator('canvas[aria-label$="local sandbox"]');
     assert.equal(await game.count(), 1);
-    await page.getByRole("button", { name: "Enable audio" }).click();
-    await page.getByText("Audio enabled.", { exact: true }).waitFor();
     await game.focus();
+    // Initial original limbo captures gameplay until primary selection.
+    await page.keyboard.press("Digit4");
     await page.mouse.move(640, 360);
     await page.mouse.down({ button: "right" });
     await page.waitForFunction(() => (window.__soldatClient?.playedSounds ?? 0) > 0, undefined, { timeout: 20_000 });
     await page.mouse.up({ button: "right" });
     if (cycle === 0) await game.screenshot({ path: resolve(out, "client-sim-Airpirates.png") });
-    await page.getByRole("button", { name: "Respawn", exact: true }).click();
+    // Test browser module boundary: a static Node import cannot invoke the page-owned live host.
+    await page.evaluate(async () => { const runtime = "/src/game.ts"; (await import(runtime)).respawnGame(); });
     const live = await page.evaluate(() => window.__soldatClient);
     assert.ok(live && live.tick > 0 && !/unavailable|stopped/i.test(live.simulation));
     soundRuns.push(live);
-    await page.getByRole("button", { name: "Main menu", exact: true }).click();
-    await page.waitForFunction(() => document.querySelectorAll("canvas").length === 0);
+    await leaveGame(page);
+    await openPractice(page);
   }
   assert.deepEqual(errors, []);
   const mapLoads: unknown[] = [];
   if (process.argv.includes("--maps")) {
-    await page.getByRole("button", { name: "Choose map", exact: true }).click();
-    const names = await page.locator("#map-choice option").evaluateAll(options => options.map(option => (option as HTMLOptionElement).value));
-    for (const name of names) {
-      await page.selectOption("#map-choice", name);
-      await page.getByRole("button", { name: "Start sandbox" }).click();
+    for (const label of names) {
+      const name = label.replace(/^\d+\s*/, "");
+      await choosePracticeMap(page, name);
+      await page.getByRole("button", { name: "Start practice [Enter]", exact: true }).click();
       await page.waitForFunction(() => (window.__soldatClient?.tick ?? 0) > 1 || /unavailable|stopped/i.test(window.__soldatClient?.simulation ?? ""), undefined, { timeout: 120_000 });
       const state = await page.evaluate(() => window.__soldatClient);
       assert.ok(state && state.tick > 1 && state.ready, `Map ${name}: ${JSON.stringify(state)}`);
@@ -93,8 +102,8 @@ try {
         await page.locator("canvas").screenshot({ path: resolve(out, `client-weather-${name}.png`) });
       }
       mapLoads.push({ name, ...state });
-      await page.getByRole("button", { name: "Main menu", exact: true }).click();
-      await page.waitForFunction(() => document.querySelectorAll("canvas").length === 0);
+      await leaveGame(page);
+      await openPractice(page);
     }
     await writeFile(resolve(root, "build-out/client-g2/maps-chrome.json"), JSON.stringify(mapLoads, null, 2) + "\n");
   }

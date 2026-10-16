@@ -22,7 +22,7 @@ export interface BrowserOnline {
   updateOverlay(): void; dispose(): void;
 }
 export async function connectOnline(options: {
-  url: string; map: string; container: HTMLElement; signal: AbortSignal;
+  url: string; map: string; container: HTMLElement; signal: AbortSignal; nickname?: string;
   onStatus(status: string): void; onEvent(event: ReliableEvent): void;
   onPresentation(bytes: Uint8Array): void;
   onLiveStep(tick: number, bytes: Uint8Array, slot: number): void;
@@ -88,7 +88,7 @@ export async function connectOnline(options: {
       const params = new URLSearchParams(location.search);
       const contentSetHash = Uint8Array.from(manifest.sha256.match(/.{2}/g) ?? [], pair => parseInt(pair, 16));
       send({ type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash, simAbiVersion: SIM_ABI_VERSION,
-        nickname: params.get("nickname") || "Player", weapon: Number(params.get("weapon") ?? 4), secondaryWeapon: Number(params.get("secondaryWeapon") ?? 0) });
+        nickname: options.nickname ?? (params.get("nickname") || "Player"), weapon: Number(params.get("weapon") ?? 4), secondaryWeapon: Number(params.get("secondaryWeapon") ?? 0) });
     });
     if (disposed) throw new Error("Online connection closed during admission");
     hook = { metrics: admitted.metrics, session: admitted }; window.__soldatOnline = hook;

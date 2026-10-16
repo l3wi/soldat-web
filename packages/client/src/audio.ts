@@ -153,6 +153,11 @@ export class Audio {
     if (!this.destroyed) this.unlocked = true;
   }
 
+  /** Master output gain; native per-source volume and attenuation stay intact. */
+  public setVolume(volume: number): void {
+    this.scene.sound.setVolume(volume);
+  }
+
   /** Follow the player's particle position, not the aim-offset camera (Sound.pas:436-440). */
   public setListener(x: number, y: number): void {
     this.listenerX = x;

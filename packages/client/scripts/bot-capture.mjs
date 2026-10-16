@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
+import { enterShell, openPractice, choosePracticeMap } from "./shell-driver.mjs";
 
 // One installed Chrome, one disposable private profile, one page, serial matches.
 const root = resolve(import.meta.dirname, "../../..");
@@ -32,11 +33,12 @@ try {
     const servedWasm = await fetch(`${url}/sim.wasm`);
     if (!servedWasm.ok || hash(new Uint8Array(await servedWasm.arrayBuffer())) !== expected) throw new Error("Served WASM changed between bot matches");
     await page.goto(`${url}/?bots-check`, { waitUntil: "networkidle" });
-    await page.waitForSelector("#map-choice option[value='Arena']");
-    await page.selectOption("#map-choice", map);
-    await page.selectOption("#game-mode", mode);
+    await enterShell(page, "Bot capture");
+    await openPractice(page);
+    if (mode === "ctf") await page.getByRole("button", { name: /^Game type / }).click();
+    await choosePracticeMap(page, map);
     await page.fill("#bot-count", String(count));
-    await page.getByRole("button", { name: "Start sandbox", exact: true }).click();
+    await page.getByRole("button", { name: "Start practice [Enter]", exact: true }).click();
     await page.waitForFunction(() => !!window.__soldatPractice && window.__soldatClient?.tick > 2, undefined, { timeout: 60_000 });
     // Secondary stays in limbo; primary applies immediately without fixture injections.
     const canvas = page.locator(".game-surface > canvas").first();

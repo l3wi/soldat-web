@@ -29,6 +29,7 @@ export class InputSampler {
   private sequence = 0;
   private previousConflict = 0;
   private destroyed = false;
+  private suspended = false;
 
   constructor(private readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.bindings = ACTIONS.map(action => settings.bindings[action]);
@@ -48,8 +49,14 @@ export class InputSampler {
     canvas.addEventListener('contextmenu', this.contextMenu);
   }
 
+  public setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    this.reset();
+    if (suspended && document.pointerLockElement === this.canvas) document.exitPointerLock();
+  }
+
   private blocked(target: EventTarget | null): boolean {
-    return document.hidden || document.querySelector('dialog[open]') !== null ||
+    return this.suspended || document.hidden || document.querySelector('dialog[open]') !== null ||
       (target instanceof Element && target.closest(
         'input, textarea, select, button, dialog, [contenteditable]:not([contenteditable="false"])',
       ) !== null);

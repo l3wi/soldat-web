@@ -1,5 +1,6 @@
 import { RENDER_LAYOUT, SPRITE_FLAGS, type RenderView } from "@soldat-web/sim-host";
 import { contentUrl } from "../content";
+import { sessionFont, sessionImage } from "../session-cache";
 import { resizeCamera } from "../camera";
 import { SoldatMap, TextureBank } from "./soldat-map";
 import type { WorldView } from "../world";
@@ -343,6 +344,7 @@ export class CombatHud {
   private scoreboard = false;
   private scroll = 0;
   private destroyed = false;
+  private suspended = false;
   private focusedBeforeChat: HTMLElement | null = null;
   private scoreboardText = "";
   private chatNotice = "";
@@ -399,16 +401,13 @@ export class CombatHud {
   static async create(host: HTMLElement, content: HudContent, options: HudOptions): Promise<CombatHud> {
     const hud = new CombatHud(host, options);
     try {
-      const font = new FontFace(hud.fontFamily, `url("${contentUrl(content.font)}")`);
-      await font.load();
+      const font = await sessionFont(hud.fontFamily, contentUrl(content.font));
       document.fonts.add(font);
       hud.font = font;
       await Promise.all(content.graphics.interface.map(async graphic => {
         if (!graphic.asset) throw new Error(`Missing original HUD graphic ${graphic.symbol}`);
         const asset = graphic.asset;
-        const image = new Image();
-        image.src = contentUrl(asset.frames[0]!.object);
-        await image.decode();
+        const image = await sessionImage(contentUrl(asset.frames[0]!.object));
         hud.images.set(graphic.symbol.replace("GFX_INTERFACE_", ""), {
           image, width: asset.width / asset.scale, height: asset.height / asset.scale,
         });
@@ -446,6 +445,20 @@ export class CombatHud {
 
   /** Explicit sandbox spawn commands can replace a living soldier in one tick. */
   spawned(): void { if (this.options.weaponsMenu) this.limbo.spawn(); }
+
+  /** Show original limbo only; native weapon-choice/apply still owns life legality. */
+  openWeapons(): void {
+    if (!this.options.weaponsMenu || !this.limboPlayer || this.inputActive || this.limbo.active) return;
+    this.limbo.active = true;
+    this.chatNotice = "Choose weapons; changes apply when native spawn rules allow";
+    this.chatNoticeUntil = this.lastTick + 180;
+    this.options.onInputCapture?.(this.gameplayCaptured);
+  }
+
+  setSuspended(suspended: boolean): void {
+    this.suspended = suspended;
+    if (suspended) this.blur();
+  }
 
   /** Hide the per-frame overlay for map-only/object-only gallery captures. */
   clear(): void {
@@ -535,9 +548,9 @@ export class CombatHud {
     }
     const pointer = this.options.pointer;
     const dialog = document.querySelector("dialog[open]") !== null;
-    const customCursor = !!me && !!pointer && !state.rasterOnly && !this.inputActive && !dialog;
+    const customCursor = !!me && !!pointer && !state.rasterOnly && !this.inputActive && !dialog && !this.suspended;
     this.host.style.cursor = customCursor ? "none" : this.previousCursor;
-    if (this.limbo.active && !this.inputActive && !dialog) this.drawLimbo();
+    if (this.limbo.active && !this.inputActive && !dialog && !this.suspended) this.drawLimbo();
     if (customCursor && me && pointer) {
       const x = pointer.pointerX / this.width * this.logicalWidth;
       const y = pointer.pointerY / this.height * 480;
@@ -602,7 +615,7 @@ export class CombatHud {
   }
 
   private readonly menuMouseDown = (event: MouseEvent): void => {
-    if (!this.limbo.active || this.inputActive || event.button !== 0 || document.querySelector("dialog[open]")) return;
+    if (this.suspended || !this.limbo.active || this.inputActive || event.button !== 0 || document.querySelector("dialog[open]")) return;
     if (!(event.target instanceof HTMLCanvasElement) || !this.host.contains(event.target)) return;
     const rect = this.host.getBoundingClientRect();
     event.target.focus({ preventScroll: true });
@@ -802,7 +815,7 @@ export class CombatHud {
   }
 
   private readonly keyDown = (event: KeyboardEvent): void => {
-    if (this.destroyed || event.isComposing) return;
+    if (this.destroyed || this.suspended || event.isComposing) return;
     const target = event.target;
     const outsideEditor = target instanceof Element && !this.root.contains(target) &&
       target.closest('input, textarea, select, button, dialog, [contenteditable="true"]');

@@ -1,11 +1,11 @@
 import Phaser from "phaser";
-import { SimStatus, requireStatus, readTraceState, encodeInput, type SimHost, type SimCommand, type Control } from "@soldat-web/sim-host";
+import { SimStatus, SPRITE_FLAGS, requireStatus, readTraceState, encodeInput, type SimHost, type SimCommand, type Control } from "@soldat-web/sim-host";
 import { Audio, SOUND_MAPPING_STATUS } from "./audio";
 import { createCamera, resizeCamera, updateCamera, setZoom } from "./camera";
 import { ClientClock } from "./clock";
 import { InputSampler } from "./input";
 import { loadSandbox } from "./sandbox";
-import { DEFAULT_SANDBOX, type SandboxOptions } from "./sandbox-options";
+import { ATTRACT_SANDBOX, DEFAULT_SANDBOX, type SandboxOptions } from "./sandbox-options";
 import type { Settings } from "./settings";
 import { SimWorldView } from "./world";
 import { loadGostek, type GostekRenderer } from "./render/gostek";
@@ -26,13 +26,38 @@ import { loadSimulationCode } from "./sim-runtime";
 
 let lifecycle = Promise.resolve();
 let audio: Audio | undefined;
+let audioContext: AudioContext | undefined;
+let audioUnlockRequested = false;
+let masterVolume = 1;
+let pauseGame: ((paused: boolean) => void) | undefined;
+let weaponsGame: (() => void) | undefined;
 let gostekData: Promise<GostekRenderer> | undefined;
 let effectsData: Promise<EffectsRenderer> | undefined;
 let combatData: Promise<CombatRenderer> | undefined;
 let respawn: (() => void) | undefined;
 export function respawnGame(): void { if (!respawn) throw new Error("Simulation unavailable"); respawn(); }
 const LOCAL_SLOT = [1] as const;
-export async function unlockGameAudio(): Promise<void> { await audio?.unlock(); }
+const NO_SLOTS: readonly number[] = [];
+/** Create/resume during the gesture, even while the match's assets are loading. */
+export async function unlockGameAudio(): Promise<void> {
+  audioUnlockRequested = true;
+  audioContext ??= new AudioContext();
+  if (audioContext.state === "suspended") await audioContext.resume();
+  await audio?.unlock();
+}
+export function setGamePaused(paused: boolean): void { pauseGame?.(paused); }
+export function openGameWeapons(): void { weaponsGame?.(); }
+/** Normalized shell master gain, independent of native per-source volume. */
+export function setGameVolume(volume: number): void {
+  masterVolume = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 0));
+  audio?.setVolume(masterVolume);
+}
+
+export interface GameMountOptions {
+  attract?: boolean;
+  paused?: boolean;
+  serverUrl?: string;
+}
 
 export interface ClientDiagnostics {
   ready: boolean; map: string; simulation: string; tick: number;
@@ -65,11 +90,17 @@ declare global { interface Window { __soldatCombat?: CombatHook } }
 
 /** Serialized React mount/unmount lifecycle: Phaser destruction is asynchronous,
  * so a new game never races the previous game's canvas/audio/resource teardown. */
-export function mountGame(container: HTMLElement, mapName: string, settings: Settings, onStatus: (status: string) => void, sandbox: SandboxOptions = DEFAULT_SANDBOX): () => void {
+export function mountGame(container: HTMLElement, mapName: string, settings: Settings, onStatus: (status: string) => void, sandbox: SandboxOptions = DEFAULT_SANDBOX, options: GameMountOptions = {}): () => void {
   let cancelled = false;
   const abort = new AbortController();
-  const qualification = new URLSearchParams(location.search).has("g2");
-  const combatCapture = new URLSearchParams(location.search).has("combat");
+  const attract = options.attract === true;
+  if (attract) sandbox = ATTRACT_SANDBOX;
+  let paused = options.paused === true;
+  let applyPause: (() => void) | undefined;
+  const setPaused = (value: boolean) => { paused = value; applyPause?.(); };
+  pauseGame = setPaused;
+  const qualification = !attract && new URLSearchParams(location.search).has("g2");
+  const combatCapture = !attract && new URLSearchParams(location.search).has("combat");
   let release!: () => void;
   const ended = new Promise<void>(resolve => { release = resolve; });
   lifecycle = lifecycle.then(async () => {
@@ -78,6 +109,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
     let host: SimHost | undefined;
     let online: BrowserOnline | undefined;
     let hud: CombatHud | undefined;
+    let input: InputSampler | undefined;
     let inputPtr = 0, eventPtr = 0;
     const EVENT_CAPACITY = 1_048_576;
     const diagnostics: ClientDiagnostics = { ready: false, map: mapName, simulation: "loading", tick: 0, fraction: 0, droppedTicks: 0, renders: 0, soundMapping: SOUND_MAPPING_STATUS, soundEvents: 0, playedSounds: 0, sparks: 0 };
@@ -92,24 +124,27 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       if (cancelled) return;
       const bank = new TextureBank();
       const coreAssets = [...gostek.assets, ...effects.assets, ...combat.assets];
-      await bank.load([...coreAssets, ...map.scenery.flatMap(s => s.asset ? [s.asset] : [])], map.terrain.asset!, map.edge.asset!, "/content/", coreAssets);
+      await bank.load([...coreAssets, ...map.scenery.flatMap(s => s.asset ? [s.asset] : [])], map.terrain.asset!, map.edge.asset!, "/content/");
       if (cancelled) return;
       const geometry = buildMap(map, sectors, bank.regions), scenery = new AnimatedScenery(map, bank.regions);
-      const capture = new URLSearchParams(location.search).has("capture");
-      const serverUrl = !capture && !qualification ? new URLSearchParams(location.search).get("server") : null;
+      const capture = !attract && new URLSearchParams(location.search).has("capture");
+      const serverUrl = !attract && !capture && !qualification ? options.serverUrl ?? new URLSearchParams(location.search).get("server") : null;
       let width = Math.max(1, container.clientWidth), height = Math.max(1, container.clientHeight);
       const camera = createCamera(width, height), clock = new ClientClock(), actors = new QuadBatch(), particles = new QuadBatch();
       const projectiles = new QuadBatch(), objects = new QuadBatch();
       const canvas = document.createElement("canvas");
       canvas.width = width; canvas.height = height;
-      canvas.tabIndex = 0; canvas.setAttribute("aria-label", `${map.name} ${serverUrl ? "online match" : "local sandbox"}`);
+      canvas.tabIndex = attract ? -1 : 0;
+      canvas.setAttribute("aria-label", `${map.name} ${attract ? "bot match backdrop" : serverUrl ? "online match" : "local sandbox"}`);
+      if (attract) { canvas.setAttribute("aria-hidden", "true"); canvas.style.pointerEvents = "none"; }
       const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: capture || combatCapture, powerPreference: "high-performance" });
       if (!gl) throw new Error("The map renderer requires WebGL2");
-      const input = new InputSampler(canvas, settings);
+      input = attract ? undefined : new InputSampler(canvas, settings);
+      input?.setSuspended(paused);
       let weaponPreparation = 0;
-      if (!capture) hud = await CombatHud.create(container, content.core, {
+      if (!attract && !capture) hud = await CombatHud.create(container, content.core, {
         startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
-        onInputCapture: () => input.reset(),
+        onInputCapture: () => input?.reset(),
         weaponChoiceNotice: "Choose now after spawning; otherwise applies next respawn",
         onWeaponChoice(primary, secondary, selection) {
           const choice = ++weaponPreparation;
@@ -129,6 +164,10 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
           })().catch(error => { if (!cancelled && choice === weaponPreparation) onStatus(`Weapon choice unavailable: ${String(error)}`); });
         },
       });
+      if (cancelled) return;
+      hud?.setSuspended(paused);
+      const openWeapons = () => hud?.openWeapons();
+      if (!attract) weaponsGame = openWeapons;
       let world: SimWorldView | undefined, render: SoldatMap | undefined;
       let fx: SimEffectsView | undefined;
       let eventBytes: Uint8Array | undefined, inputBytes: Uint8Array | undefined, inputView: DataView | undefined;
@@ -142,6 +181,31 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       const neutral = new Uint8Array(12);
       const combatEvents = new CombatEvents();
       const bink = new CursorBink();
+      let followed = -1, switchAt = 0;
+      const followBot = (snap = false) => {
+        if (!world) return;
+        const current = world.sprites[followed];
+        if (!current?.active || (current.flags & SPRITE_FLAGS.dead) !== 0 || world.tick >= switchAt) {
+          // Cycle living native bots without allocating a per-tick candidate list.
+          for (let offset = 1; offset <= world.sprites.length; offset++) {
+            const index = (Math.max(-1, followed) + offset) % world.sprites.length;
+            const bot = world.sprites[index]!;
+            if (!bot.active || (bot.flags & SPRITE_FLAGS.bot) === 0 || (bot.flags & SPRITE_FLAGS.dead) !== 0) continue;
+            followed = index;
+            switchAt = world.tick + 8 * 60;
+            break;
+          }
+        }
+        const bot = world.sprites[followed];
+        if (!bot?.active || (bot.flags & SPRITE_FLAGS.dead) !== 0) return;
+        if (snap) { camera.x = bot.x; camera.y = bot.y; }
+        else updateCamera(camera, bot.x, bot.y, camera.x, camera.y);
+      };
+      applyPause = () => {
+        clock.reset();
+        input?.setSuspended(paused);
+        hud?.setSuspended(paused);
+      };
       const step = () => {
         presentationTick++;
         if (!host || !world) {
@@ -150,9 +214,9 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
         }
         const player = world.sprites[0]!;
         if (playback && world.tick >= playback.fixture.ticks) return;
-        const slots = playback ? playback.active : combatCapture ? combatSlots : LOCAL_SLOT;
+        const slots = playback ? playback.active : combatCapture ? combatSlots : attract ? NO_SLOTS : LOCAL_SLOT;
         for (const slot of slots) {
-          const sample = playback ? playback.input(slot, world.tick + 1) : overrides.get(slot) ?? (slot === 1 ? input.sample(camera, width, height, player.x, player.y, hud?.gameplayCaptured) : neutral);
+          const sample = playback ? playback.input(slot, world.tick + 1) : overrides.get(slot) ?? (slot === 1 ? input!.sample(camera, width, height, player.x, player.y, paused || hud?.gameplayCaptured) : neutral);
           if (!inputView || inputView.buffer !== sample.buffer) inputView = new DataView(sample.buffer, sample.byteOffset, sample.byteLength);
           const memory = host.exports.memory.buffer;
           if (!inputBytes || inputBytes.buffer !== memory) inputBytes = new Uint8Array(memory, inputPtr, 12);
@@ -161,7 +225,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
         }
         if (fxAvailable) {
           const zoom = Math.exp(camera.z);
-          requireStatus(host.fxSetView(camera.x, camera.y, camera.width * zoom, camera.height * zoom, 1), "fx_set_view");
+          requireStatus(host.fxSetView(camera.x, camera.y, camera.width * zoom, camera.height * zoom, attract ? Math.max(1, followed + 1) : 1), "fx_set_view");
         }
         requireStatus(host.step(), "sim_step");
         if (fxAvailable) {
@@ -170,20 +234,23 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
           else requireStatus(status, "fx_step");
         }
         world.sync();
-        if (!capture && !fixedCamera && inputView) updateCamera(camera, player.x, player.y, inputView.getInt16(2, true), inputView.getInt16(4, true));
+        if (attract) followBot();
+        else if (!capture && !fixedCamera && inputView) updateCamera(camera, player.x, player.y, inputView.getInt16(2, true), inputView.getInt16(4, true));
         audio?.setListener(player.x, player.y);
         const written = requireStatus(host.exports.sim_events(eventPtr, EVENT_CAPACITY), "sim_events");
         if (written > EVENT_CAPACITY) throw new Error(`Simulation event capacity exceeded: ${written}`);
         if (!eventBytes || eventBytes.buffer !== host.exports.memory.buffer) eventBytes = new Uint8Array(host.exports.memory.buffer, eventPtr, EVENT_CAPACITY);
         audio?.drain(eventBytes, written);
-        combatEvents.drain(eventBytes, written, world.renderView);
-        bink.liveStep(world.tick, eventBytes.subarray(0, written), 1);
+        if (!attract) {
+          combatEvents.drain(eventBytes, written, world.renderView);
+          bink.liveStep(world.tick, eventBytes.subarray(0, written), 1);
+        }
         diagnostics.soundEvents = audio?.soundEvents ?? 0; diagnostics.playedSounds = audio?.playedSounds ?? 0;
         if (playback) { playback.commands(world.tick); world.sync(); playback.recordTick(world.tick); }
         diagnostics.tick = world.tick;
       };
-      const visibility = () => { if (!qualification) clock.reset(); input.reset(); };
-      const wheel = (event: WheelEvent) => { event.preventDefault(); setZoom(camera, Math.max(-2, Math.min(2, camera.z + event.deltaY * 0.001))); };
+      const visibility = () => { if (!qualification) clock.reset(); input?.reset(); };
+      const wheel = (event: WheelEvent) => { if (paused) return; event.preventDefault(); setZoom(camera, Math.max(-2, Math.min(2, camera.z + event.deltaY * 0.001))); };
       const lost = (event: Event) => { event.preventDefault(); clock.reset(); };
       const restored = () => { render?.restore(); clock.reset(); };
       const observer = new ResizeObserver(() => {
@@ -193,7 +260,11 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       class Sandbox extends Phaser.Scene {
         create() {
           render = new SoldatMap(gl!, bank, settings.filter === "linear", capture ? false : settings.mipmaps);
-          audio = new Audio(this, error => { if (!cancelled) onStatus(`Audio unavailable: ${error.message}`); });
+          if (!attract) {
+            audio = new Audio(this, error => { if (!cancelled) onStatus(`Audio unavailable: ${error.message}`); });
+            audio.setVolume(masterVolume);
+            if (audioUnlockRequested) void audio.unlock().catch(error => { if (!cancelled) onStatus(`Audio unavailable: ${String(error)}`); });
+          }
           const extern = this.add.extern();
           const framebufferState = { bindings: { framebuffer: null as unknown } };
           extern.render = (renderer, context) => {
@@ -203,7 +274,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             external.glWrapper.updateBindingsFramebuffer(framebufferState, true);
             render!.begin(camera, width, height, camera.y < 0 ? map.backgroundTop : map.backgroundBottom);
             render!.draw(geometry.background, true);
-            const fraction = combatCapture ? 1 : online ? 1 : clock.fraction;
+            const fraction = combatCapture || (attract && paused) ? 1 : online ? 1 : clock.fraction;
             const view = gallery?.view ?? (online ? online.session.authoritativeRenderView() : world?.renderView);
             if (!gallery) { render!.draw(geometry.edges[0]); render!.draw(geometry.polys[0]); drawProps(0); }
             combat.paused = combatPaused; combat.timeElapsed = combatCapture ? 0 : presentationTick / 60;
@@ -218,7 +289,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (!gallery) drawProps(1);
             if (view) render!.drawDynamic(combat.polygons(fraction, view, bank.regions));
             if (!gallery) { render!.draw(geometry.edges[1]); render!.draw(geometry.polys[1]); drawProps(2); }
-            if (view && world && gallery?.mode !== "objects") {
+            if (hud && view && world && gallery?.mode !== "objects") {
               const slot = online?.session.metrics.slot ?? 1;
               const presentation = hudPresentationFromRender(view, slot, gallery?.hud ?? combatEvents.presentation);
               if (!gallery) presentation.hitSprayCounter = bink.counter;
@@ -227,12 +298,12 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             diagnostics.ready = true; diagnostics.renders++;
           };
           document.addEventListener("visibilitychange", visibility);
-          canvas.addEventListener("wheel", wheel, { passive: false });
+          if (!attract) canvas.addEventListener("wheel", wheel, { passive: false });
           canvas.addEventListener("webglcontextlost", lost);
           canvas.addEventListener("webglcontextrestored", restored);
           observer.observe(container);
           this.events.once(Phaser.Scenes.Events.DESTROY, () => {
-            observer.disconnect(); input.destroy();
+            observer.disconnect(); input?.destroy();
             document.removeEventListener("visibilitychange", visibility);
             canvas.removeEventListener("wheel", wheel);
             canvas.removeEventListener("webglcontextlost", lost);
@@ -287,8 +358,8 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             };
             void runGateSuite();
           }
-          if (serverUrl) void audio.prepare().then(() => connectOnline({
-            url: serverUrl, map: map.name, container, signal: abort.signal, onStatus,
+          if (serverUrl) void audio!.prepare().then(() => connectOnline({
+            url: serverUrl, map: map.name, container, signal: abort.signal, onStatus, nickname: settings.nickname,
             onPresentation(bytes) { audio?.drain(bytes, bytes.length); },
             onLiveStep(tick, bytes, slot) { bink.liveStep(tick, bytes, slot); },
             onEvent(event) {
@@ -308,16 +379,16 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (cancelled) return;
             diagnostics.simulation = `online unavailable: ${String(error)}`; onStatus(diagnostics.simulation);
           });
-          else if (!capture && !qualification) void audio.prepare({ loadout: hud?.loadout, bots: combatCapture ? 0 : sandbox.bots }).then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox, settings.nickname)).then(async loaded => {
+          else if (!capture && !qualification) void (attract ? Promise.resolve() : audio!.prepare({ loadout: hud?.loadout, bots: combatCapture ? 0 : sandbox.bots })).then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox, settings.nickname, attract)).then(async loaded => {
             if (cancelled) { loaded.dispose(); return; }
             host = loaded;
-            inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
+            if (!attract) inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
             eventPtr = requireStatus(host.exports.sim_alloc(EVENT_CAPACITY), "sim_alloc(events)");
-            if (!inputPtr || !eventPtr) throw new Error("Simulation buffer allocation failed");
+            if ((!attract && !inputPtr) || !eventPtr) throw new Error("Simulation buffer allocation failed");
             world = new SimWorldView(host);
             fx = new SimEffectsView(host);
             // Read-only qualification surface; ordinary matches keep no diagnostic copies.
-            if (new URLSearchParams(location.search).has("bots-check")) window.__soldatPractice = () => {
+            if (!attract && new URLSearchParams(location.search).has("bots-check")) window.__soldatPractice = () => {
               const hash = host!.hash(), view = world!.renderView;
               return { tick: view.tick, hash, bink: bink.counter, bullets: view.bulletCount,
                 scores: Array.from(view.globals.teamScores),
@@ -327,11 +398,18 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                   .map(sprite => ({ slot: sprite.slot, name: sprite.playerName, team: sprite.team, flags: sprite.flags,
                     x: sprite.posX, y: sprite.posY, kills: sprite.kills, deaths: sprite.deaths, fired: sprite.fired, weapon: sprite.weapon, secondaryWeapon: sprite.secondaryWeapon })) };
             };
-            respawn = () => {
+            if (!attract) respawn = () => {
               requireStatus(host!.command(world!.tick, { kind: "spawn", slot: 1 }), "sim_command(spawn)");
-              world!.sync(); input.reset(); hud?.spawned(); canvas.focus({ preventScroll: true });
+              world!.sync(); input?.reset(); hud?.spawned(); canvas.focus({ preventScroll: true });
             };
-            const player = world.sprites[0]!; camera.x = player.x; camera.y = player.y;
+            if (attract) {
+              // Finish native join/spawn initialization before freezing reduced motion.
+              // No forced spawn, synthetic soldier, or second simulation path.
+              for (let warmup = 0; warmup < 600 && followed < 0; warmup++) step();
+              if (followed < 0) throw new Error("Attract match has no living bot after native startup");
+              followBot(true);
+            }
+            else { const player = world.sprites[0]!; camera.x = player.x; camera.y = player.y; }
             clock.reset();
             if (combatCapture) {
               const wasmSha256 = (await loadSimulationCode(abort.signal, "/sim.wasm")).sha256;
@@ -363,7 +441,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                   eventPtr = requireStatus(host.exports.sim_alloc(EVENT_CAPACITY), "sim_alloc(events)");
                   inputBytes = undefined; eventBytes = undefined; inputView = undefined;
                   world = new SimWorldView(host); fx = new SimEffectsView(host);
-                  gallery = undefined; overrides.clear(); input.reset(); clock.reset(); presentationTick = 0;
+                  gallery = undefined; overrides.clear(); input?.reset(); clock.reset(); presentationTick = 0;
                   combatEvents.clear();
                   bink.clear();
                   diagnostics.tick = world.tick; draw();
@@ -388,7 +466,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
               draw();
             }
             const warnings = map.missing?.filter(item => item.active).map(item => `${item.kind}: ${item.requested} (fallback ${item.fallback ?? "unavailable"})`) ?? [];
-            diagnostics.simulation = `${combatCapture ? "combat sandbox" : `${sandbox.mode.toUpperCase()} practice; ${sandbox.bots} bots`}; ${fxAvailable ? "cosmetics active" : "cosmetic simulation unavailable"}; positional SFX ready${warnings.length ? `; WARNING ${warnings.join("; ")}` : ""}`;
+            diagnostics.simulation = `${attract ? "attract; 8 original AI bots" : combatCapture ? "combat sandbox" : `${sandbox.mode.toUpperCase()} practice; ${sandbox.bots} bots`}; ${fxAvailable ? "cosmetics active" : "cosmetic simulation unavailable"}; ${attract ? "muted" : "positional SFX ready"}${warnings.length ? `; WARNING ${warnings.join("; ")}` : ""}`;
             onStatus(diagnostics.simulation);
           }).catch(error => {
             if (cancelled) return;
@@ -397,12 +475,12 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
           });
         }
         update(time: number) {
-          if (stopped || (!qualification && document.hidden) || gl!.isContextLost()) { clock.reset(); return; }
+          if (stopped || (!qualification && document.hidden) || (paused && !online) || gl!.isContextLost()) { clock.reset(); return; }
           try {
             if (online && host && world) {
               const local = world.sprites[online.session.metrics.slot - 1]!;
               online.session.advance(
-                () => online!.hook.input ?? input.sample(camera, width, height, local.x, local.y, hud?.gameplayCaptured),
+                () => paused ? neutral : online!.hook.input ?? input!.sample(camera, width, height, local.x, local.y, hud?.gameplayCaptured),
                 () => {
                   if (fxAvailable) {
                     const zoom = Math.exp(camera.z);
@@ -434,7 +512,8 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       game = new Phaser.Game({
         type: Phaser.WEBGL, canvas, context: gl as unknown as CanvasRenderingContext2D,
         parent: container, width, height, banner: false, backgroundColor: "#202020",
-        audio: { disableWebAudio: false }, render: { antialias: false, transparent: false, roundPixels: false },
+        input: attract ? { keyboard: false, mouse: false, touch: false, gamepad: false } : undefined,
+        audio: attract ? { noAudio: true } : { disableWebAudio: false, context: audioContext ??= new AudioContext() }, render: { antialias: false, transparent: false, roundPixels: false },
         fps: { target: 144, smoothStep: false }, scene: Sandbox,
       });
       await ended;
@@ -455,9 +534,15 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       delete window.__soldatCombat;
       delete window.__soldatPractice;
       hud?.destroy();
+      input?.destroy();
       if (window.__soldatClient === diagnostics) delete window.__soldatClient;
       respawn = undefined;
+      if (pauseGame === setPaused) { pauseGame = undefined; weaponsGame = undefined; }
+      applyPause = undefined;
     }
   });
-  return () => { cancelled = true; abort.abort(); release(); };
+  return () => {
+    cancelled = true; abort.abort(); release();
+    if (pauseGame === setPaused) { pauseGame = undefined; weaponsGame = undefined; }
+  };
 }

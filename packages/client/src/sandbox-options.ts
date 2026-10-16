@@ -10,6 +10,11 @@ export const DEFAULT_SANDBOX: Readonly<SandboxOptions> = {
   mode: "dm", bots: 4, team: 1, botTeam: "balanced", botDifficulty: 100,
 };
 
+/** The shell backdrop has no authoritative/local soldier. */
+export const ATTRACT_SANDBOX: Readonly<SandboxOptions> = {
+  mode: "dm", bots: 8, team: 1, botTeam: "balanced", botDifficulty: 100,
+};
+
 /** Names of the pinned original server/configs/bots profiles, not invented AI classes. */
 export const BOT_PROFILES = [
   "Admiral", "Billy", "Blain", "Boogie Man", "Commando", "D Dave", "Danko", "Dutch",

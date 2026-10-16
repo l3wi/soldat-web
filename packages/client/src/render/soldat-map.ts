@@ -1,5 +1,6 @@
 import type { Camera, Geometry, ImageAsset } from "./types";
 import { packVertices, type Regions } from "./geometry";
+import { sessionImage } from "../session-cache";
 export const vertexShader = `#version 300 es
 precision highp float;
 in vec2 aPosition;in vec2 aUV;in vec4 aColor;
@@ -25,7 +26,6 @@ interface BufferRecord {
  * Phaser's NPOT guard is never bypassed or patched. All source PNGs are straight
  * alpha; texImage2D is the sole PMA conversion. Retained CPU sources restore GL. */
 export class TextureBank {
-  private static readonly coreImages = new Map<string, Promise<HTMLImageElement>>();
   readonly regions: Regions = new Map();
   readonly sources = new Map<string, TextureImage>();
   async load(
@@ -33,27 +33,15 @@ export class TextureBank {
     terrain: ImageAsset,
     edge: ImageAsset,
     base = "/content/",
-    coreAssets: readonly ImageAsset[] = [],
   ) {
     const objects = [
       ...new Set(assets.flatMap((a) => a.frames.map((f) => f.object))),
     ];
-    const coreKeys = new Set(coreAssets.flatMap(a => a.frames.map(f => f.object)));
     const decoded = await Promise.all(
-      objects.map(async (key) => {
-        const url = base + key;
-        let loading = TextureBank.coreImages.get(url);
-        if (!loading) {
-          loading = (async () => {
-            const image = new Image();
-            image.src = url;
-            await image.decode();
-            return image;
-          })();
-          if (coreKeys.has(key)) TextureBank.coreImages.set(url, loading);
-        }
-        return { key, image: await loading };
-      }),
+      objects.map(async (key) => ({
+        key,
+        image: await sessionImage(base + key),
+      })),
     );
     const size = 4096,
       pad = 2;
@@ -129,17 +117,11 @@ export class TextureBank {
       row = Math.max(row, image.height);
     }
     commit();
-    const decode = async (asset: ImageAsset) => {
-      const image = new Image();
-      image.src = base + asset.frames[0]!.object;
-      await image.decode();
-      return image;
-    };
     this.sources.set("terrain", {
-      source: await decode(terrain),
+      source: await sessionImage(base + terrain.frames[0]!.object),
       repeat: true,
     });
-    const edgeImage = await decode(edge),
+    const edgeImage = await sessionImage(base + edge.frames[0]!.object),
       edgeCanvas = document.createElement("canvas");
     edgeCanvas.width = 2 ** Math.ceil(Math.log2(edge.width));
     edgeCanvas.height = 2 ** Math.ceil(Math.log2(edge.height));
