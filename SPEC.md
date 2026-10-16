@@ -54,7 +54,7 @@ What the original chat assumed, and what research established. "Consequence" is 
 | Base assets = classic assets | **Partly.** All 97 classic maps byte-identical; some sprites/scenery/kits changed; 1.7.x art is already HD. | D2 makes base + OpenSoldat rendering the visual truth. |
 | `.smod` is a custom format | **Refuted.** Standard ZIP; PhysFS mount precedence matters. | Importer reads ZIP; mount rules ported. |
 | Images load directly | **Nuanced.** 2,070 PNG-override lookups, 12 case-only matches, 16 extension/signature mismatches, exact green key (0,255,0,255) on single-frame images only, 921/1,066 NPOT, ~375 MiB decoded total. | §5.2 importer rules; per-map lazy loading. |
-| Sounds need conversion | **Narrow.** 163 PCM WAV + 1 MS-ADPCM (`jump.wav`). | Ship PCM WAV; convert `jump.wav`. |
+| Sounds need conversion | **Narrow.** 163 PCM WAV + 1 MS-ADPCM (`jump.wav`). | Decode masters (incl. `jump.wav`), ship Ogg Opus (user decision 2026-10-16). |
 | Bots needed for early testing | **Refuted.** Scripted command fixtures test physics better. | Bots arrive after combat (plan Phase 5). |
 
 ## 3. Pinned baselines
@@ -187,7 +187,7 @@ Original `AI.pas` runs inside the server's sim instance (`AI_ENABLED`), using PM
 - **R-CON-1** Import all 99 base maps with zero parse failures; 97 classic maps with zero missing active assets; Aftermath/Amnesia import with explicit fallback warnings.
 - **R-CON-2** All 51 POA, 6 PO, gostek table, weapons.ini, mod.ini consumed from pinned base.
 - **R-CON-3** Deterministic output: same inputs ⇒ byte-identical bundle hashes.
-- **R-CON-4** Per-map lazy loading; global core (gostek, weapons, sparks, interface, SFX) loaded once.
+- **R-CON-4** Per-map lazy loading; global core graphics loaded once; SFX loaded on demand with a per-match preload set.
 - **R-CON-5** Local-only import of a user `.pms`/`.smod` for offline viewing (no upload). Untrusted archives: bounded entries, bytes, dimensions, no traversal, case-collision rejection.
 
 ### 5.3 Client
