@@ -48,13 +48,16 @@ export class AuthoritativeMatch {
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
   private readonly host: SimHost;
   private readonly bots: number[];
+  private readonly targetPlayers: number | undefined;
+  private nextBotProfile = 0;
   private readonly teamMode: boolean;
   private readonly emit: (response: WorkerResponse) => void;
   tick = 0;
 
   private constructor(host: SimHost, config: MatchConfiguration & { botCount: number }, emit: (response: WorkerResponse) => void) {
     this.host = host;
-    this.bots = reservedBotSlots(config.botCount);
+    this.targetPlayers = config.targetPlayers;
+    this.bots = reservedBotSlots(config.targetPlayers ?? config.botCount);
     this.teamMode = config.rules.mode === "ctf";
     this.emit = this.profile ? response => {
       const start = performance.now(); emit(response);
@@ -62,8 +65,8 @@ export class AuthoritativeMatch {
     } : emit;
     this.inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
     if (!this.inputPtr) throw new Error("Input allocation failed");
-    for (const [index, slot] of this.bots.entries()) {
-      requireStatus(host.command(0, { kind: "join", slot, control: "bot", bot: BOT_PROFILES[index % BOT_PROFILES.length]!, team: this.teamMode ? index % 2 + 1 : 0 }), "sim_command(bot join)");
+    for (const slot of [...this.bots]) {
+      requireStatus(host.command(0, { kind: "join", slot, control: "bot", bot: BOT_PROFILES[this.nextBotProfile++ % BOT_PROFILES.length]!, team: this.joinTeam() }), "sim_command(bot join)");
     }
   }
 
@@ -90,7 +93,13 @@ export class AuthoritativeMatch {
   receive(message: WorkerRequest, now: bigint): void {
     if (message.type === "stop") return;
     if (message.type === "join") {
-      if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || this.bots.includes(message.slot)) throw new Error("Invalid player slot");
+      if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || (this.targetPlayers === undefined && this.bots.includes(message.slot)) || (this.targetPlayers !== undefined && this.players.size >= this.targetPlayers)) throw new Error("Invalid player slot");
+      if (this.targetPlayers !== undefined && this.bots.length) {
+        const bot = this.bots.includes(message.slot) ? message.slot : this.bots.at(-1)!;
+        requireStatus(this.host.command(this.tick, { kind: "leave", slot: bot }), "sim_command(bot replacement)");
+        this.bots.splice(this.bots.indexOf(bot), 1);
+        this.lastInputs.delete(bot);
+      }
       requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
       requireStatus(this.host.command(this.tick, { kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
@@ -106,6 +115,13 @@ export class AuthoritativeMatch {
         requireStatus(this.host.command(this.tick, { kind: "leave", slot: message.slot }), "sim_command(leave)");
         this.captureCommandEvents();
         this.players.delete(message.slot); this.lastInputs.delete(message.slot); this.history.clear();
+        if (this.targetPlayers !== undefined) {
+          let slot = 32;
+          while (this.players.has(slot) || this.bots.includes(slot)) slot--;
+          requireStatus(this.host.command(this.tick, { kind: "join", slot, control: "bot", bot: BOT_PROFILES[this.nextBotProfile++ % BOT_PROFILES.length]!, team: this.joinTeam() }), "sim_command(bot refill)");
+          this.bots.push(slot);
+          this.captureCommandEvents();
+        }
       }
       this.emit({ type: "left", slot: message.slot });
       return;

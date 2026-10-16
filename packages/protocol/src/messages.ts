@@ -1,4 +1,4 @@
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const INPUT_BYTES = 12;
 export const EVENT_HEADER_BYTES = 20;
 export const MAX_STATE_BYTES = 32 * 1024 * 1024;
@@ -12,7 +12,22 @@ export const LIMITS = {
 export interface InputFrame { seq: number; tick: number; viewTick: number; input: Uint8Array }
 export interface ReliableEvent { id: number; tick: number; header: Uint8Array; payload: Uint8Array }
 export type WeaponSelection = "primary" | "secondary";
+export type GameMode = "dm" | "ctf";
+export interface Region { id: string; name: string; url: string }
+export interface LobbyPlayer { id: string; nickname: string; ready: boolean; host: boolean }
+export interface LobbyState {
+  code: string; mode: GameMode; map: string; targetPlayers: number;
+  players: LobbyPlayer[]; started: boolean; matchId?: string; matchWsUrl?: string;
+}
+export type LobbyMessage =
+  | { type: "lobby-join"; nickname: string; hostToken?: string }
+  | { type: "lobby-update"; mode?: GameMode; map?: string; targetPlayers?: number }
+  | { type: "lobby-ready"; ready: boolean }
+  | { type: "lobby-start" | "lobby-leave" }
+  | { type: "lobby-state"; selfId: string; state: LobbyState }
+  | { type: "lobby-error"; reason: string };
 export type Message =
+  | LobbyMessage
   | { type: "hello"; protocolVersion: number; contentSetHash: Uint8Array; simAbiVersion: number; nickname: string; weapon: number; secondaryWeapon: number }
   | { type: "welcome"; slot: number; serverTick: number; tickRate: number; matchSeed: bigint; map: string; rules: Uint8Array }
   | { type: "input"; frames: InputFrame[] }

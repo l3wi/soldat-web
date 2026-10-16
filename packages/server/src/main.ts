@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createGameServer } from "./server.ts";
+import { createPlatformServer } from "./platform.ts";
+import type { GameMode, Region } from "@soldat-web/protocol";
 import type { MatchConfiguration } from "./worker-messages.ts";
 
 try {
@@ -22,7 +23,15 @@ try {
     ...(config.botCount === undefined ? {} : { botCount: config.botCount as number }),
   };
   const [key, cert] = await Promise.all([readFile(config.tlsKeyPath as string), readFile(config.tlsCertPath as string)]);
-  const server = await createGameServer({ match, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443, onMetrics: metrics => console.log(JSON.stringify({ ...metrics, type: "match-metrics" })) });
+  const index = JSON.parse(await readFile(resolve(contentRoot, "index.json"), "utf8")) as { maps: Record<string, { botCapable: boolean }> };
+  const maps = Object.entries(index.maps).map(([name, value]) => ({ name, botCapable: value.botCapable, mode: (name.toLowerCase().startsWith("ctf_") ? "ctf" : "dm") as GameMode }));
+  const server = await createPlatformServer({
+    match, maps, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443,
+    ...(config.publicUrl === undefined ? {} : { publicUrl: config.publicUrl as string }),
+    ...(config.regions === undefined ? {} : { regions: config.regions as Region[] }),
+    ...(config.targetPlayers === undefined ? {} : { targetPlayers: config.targetPlayers as number }),
+    ...(config.maxMatches === undefined ? {} : { maxMatches: config.maxMatches as number }),
+  });
   console.log(JSON.stringify({ type: "listening", address: server.httpsServer.address(), contentSetHash: manifest.sha256 }));
   let shuttingDown = false;
   const shutdown = () => {

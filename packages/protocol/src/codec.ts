@@ -4,8 +4,8 @@ import type { TransportChannel } from "./transport/types.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice"] as const;
-const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4, 3];
+const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error"] as const;
+const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4, 3, 116, 133, 1, 0, 0, 8192, 258];
 const HEADER_BYTES = 8;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
@@ -94,8 +94,33 @@ function validateEvent(event: ReliableEvent): void {
   const view = new DataView(event.header.buffer, event.header.byteOffset, event.header.byteLength);
   check(view.getUint32(16, true) === event.payload.length && view.getUint32(4, true) === event.tick, "Event header/envelope mismatch");
 }
+function modeId(mode: unknown): number { check(mode === "dm" || mode === "ctf", "Invalid mode"); return mode === "dm" ? 0 : 1; }
+function readMode(r: Reader): "dm" | "ctf" { const id = r.u8(); integer(id, 1); return id === 0 ? "dm" : "ctf"; }
+function readBool(r: Reader): boolean { const value = r.u8(); integer(value, 1); return value === 1; }
 function writePayload(w: Writer, m: Message): void {
   switch (m.type) {
+    case "lobby-join": w.text(m.nickname, 48, true); w.text(m.hostToken ?? "", 64); break;
+    case "lobby-update": {
+      const flags = (m.mode !== undefined ? 1 : 0) | (m.map !== undefined ? 2 : 0) | (m.targetPlayers !== undefined ? 4 : 0);
+      integer(flags, 7, 1); w.u8(flags);
+      if (m.mode !== undefined) w.u8(modeId(m.mode));
+      if (m.map !== undefined) w.text(m.map, 128, true);
+      if (m.targetPlayers !== undefined) { integer(m.targetPlayers, 32, 1); w.u8(m.targetPlayers); }
+      break;
+    }
+    case "lobby-ready": check(typeof m.ready === "boolean", "Invalid ready"); w.u8(m.ready ? 1 : 0); break;
+    case "lobby-start": case "lobby-leave": break;
+    case "lobby-error": w.text(m.reason, 256, true); break;
+    case "lobby-state": {
+      const s = m.state;
+      check(/^[A-Z0-9]{6}$/.test(s.code), "Invalid lobby code");
+      w.text(m.selfId, 32, true); w.text(s.code, 6, true); w.u8(modeId(s.mode)); w.text(s.map, 128, true);
+      integer(s.targetPlayers, 32, 1); w.u8(s.targetPlayers); integer(s.players.length, 32); w.u8(s.players.length);
+      for (const p of s.players) { w.text(p.id, 32, true); w.text(p.nickname, 48, true); check(typeof p.ready === "boolean" && typeof p.host === "boolean", "Invalid roster flags"); w.u8(p.ready ? 1 : 0); w.u8(p.host ? 1 : 0); }
+      check(typeof s.started === "boolean", "Invalid started"); w.u8(s.started ? 1 : 0);
+      if (s.started) { w.text(s.matchId!, 64, true); w.text(s.matchWsUrl!, 1024, true); }
+      break;
+    }
     case "hello":
       w.u16(m.protocolVersion); check(m.contentSetHash.length === 32, "Content hash must be 32 bytes"); w.bytes(m.contentSetHash);
       w.u32(m.simAbiVersion); w.text(m.nickname, LIMITS.nickname, true); w.u8(m.weapon); w.u8(m.secondaryWeapon); break;
@@ -166,6 +191,25 @@ export function decodeMessage(bytes: Uint8Array): Message {
     const { type } = header(bytes), r = new Reader(bytes);
     let message: Message;
     switch (type) {
+      case "lobby-join": { const nickname = r.text(48, true), hostToken = r.text(64); message = { type, nickname, ...(hostToken ? { hostToken } : {}) }; break; }
+      case "lobby-update": {
+        const flags = r.u8(); integer(flags, 7, 1);
+        const mode = flags & 1 ? readMode(r) : undefined, map = flags & 2 ? r.text(128, true) : undefined;
+        const targetPlayers = flags & 4 ? r.u8() : undefined;
+        if (targetPlayers !== undefined) integer(targetPlayers, 32, 1);
+        message = { type, ...(mode !== undefined ? { mode } : {}), ...(map !== undefined ? { map } : {}), ...(targetPlayers !== undefined ? { targetPlayers } : {}) }; break;
+      }
+      case "lobby-ready": message = { type, ready: readBool(r) }; break;
+      case "lobby-start": case "lobby-leave": message = { type }; break;
+      case "lobby-error": message = { type, reason: r.text(256, true) }; break;
+      case "lobby-state": {
+        const selfId = r.text(32, true), code = r.text(6, true), mode = readMode(r), map = r.text(128, true), targetPlayers = r.u8(), count = r.u8();
+        check(/^[A-Z0-9]{6}$/.test(code), "Invalid lobby code"); integer(targetPlayers, 32, 1); integer(count, 32);
+        const players = [];
+        for (let i = 0; i < count; i++) players.push({ id: r.text(32, true), nickname: r.text(48, true), ready: readBool(r), host: readBool(r) });
+        const started = readBool(r);
+        message = { type, selfId, state: { code, mode, map, targetPlayers, players, started, ...(started ? { matchId: r.text(64, true), matchWsUrl: r.text(1024, true) } : {}) } }; break;
+      }
       case "hello": message = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true), weapon: r.u8(), secondaryWeapon: r.u8() }; break;
       case "welcome": {
         const slot = r.u8(), serverTick = r.u32(), tickRate = r.u16(), matchSeed = r.u64(), map = r.text(LIMITS.map, true), rules = r.blob(LIMITS.rules);

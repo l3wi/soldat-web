@@ -7,8 +7,10 @@ export interface MatchConfiguration {
   map: string;
   rules: Record<string, unknown>;
   matchSeed: string;
-  /** Fixed bot population, reserved in the highest slots; leaves room for a human. */
+  /** Legacy fixed opponents when targetPlayers is absent. */
   botCount?: number;
+  /** Dynamic total population; humans replace bots, 1..32. */
+  targetPlayers?: number;
 }
 export type WorkerRequest =
   | { type: "join"; slot: number; weapon: number; secondaryWeapon: number; name?: string }

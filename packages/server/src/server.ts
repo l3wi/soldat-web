@@ -1,6 +1,9 @@
 import { Server as HttpsServer, createServer } from "node:https";
 import type { ServerOptions } from "node:https";
+import type { IncomingMessage } from "node:http";
+import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
+import type { WebSocket } from "ws";
 import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, validateWeaponChoice } from "@soldat-web/protocol";
 import type { Message, ReliableEvent } from "@soldat-web/protocol";
 import type { MessageTransport } from "@soldat-web/protocol/transport";
@@ -17,6 +20,8 @@ export interface GameServerOptions {
   tls?: ServerOptions;
   host?: string;
   port?: number;
+  path?: string;
+  authorize?: (request: IncomingMessage) => boolean;
   onError?: (error: Error) => void;
   onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & { wireEncodeMs: number[]; workerSimEncodeMs: number[] }) => void;
   onReliableEvent?: (slot: number, event: ReliableEvent) => void;
@@ -25,9 +30,13 @@ export interface GameServerOptions {
 export interface GameServer {
   httpsServer: HttpsServer;
   close(): Promise<void>;
+  readonly humanCount: number;
+  readonly humans: string[];
+  readonly available: boolean;
 }
 interface Session {
   transport: MessageTransport;
+  nickname?: string;
   state: "hello" | "joining" | "active" | "closed";
   timer: NodeJS.Timeout;
   inputTokens: number;
@@ -67,17 +76,25 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     server = options.httpsServer ?? createServer(options.tls!, (_request, response) => {
       response.writeHead(404); response.end();
     });
-    sockets = new WebSocketServer({ server, maxPayload: MAX_PACKET_BYTES, perMessageDeflate: false });
+    sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_PACKET_BYTES, perMessageDeflate: false });
   } catch (error) {
     await controller.stop();
     throw error;
   }
   const sessions = new Map<number, Session>();
   // A disconnected slot is not reusable until the worker confirms leave.
-  const occupiedSlots = new Set<number>(reservedBotSlots(options.match.botCount!));
+  const pendingConnections = new Map<WebSocket, NodeJS.Timeout>();
+  const occupiedSlots = new Set<number>(options.match.targetPlayers === undefined ? reservedBotSlots(options.match.botCount!) : []);
   let closing = false;
   let wireEncodeMs: number[] = [];
   const wireByTick = new Map<number, number>();
+  const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+    if (socket.destroyed) return;
+    if (new URL(request.url ?? "/", "https://localhost").pathname !== (options.path ?? "/")) return;
+    if (closing || (options.authorize && !options.authorize(request))) { socket.destroy(); return; }
+    sockets.handleUpgrade(request, socket, head, ws => sockets.emit("connection", ws, request));
+  };
+  server.on("upgrade", upgrade);
   const report = options.onError ?? ((error: Error) => console.error(error));
   const serverError = (error: Error) => { report(error); void close(); };
   const disconnect = (slot: number, code: number, reason: string) => {
@@ -135,7 +152,15 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       return;
     }
     if (!("slot" in response)) return;
-    if (response.type === "left") { occupiedSlots.delete(response.slot); return; }
+    if (response.type === "left") {
+      occupiedSlots.delete(response.slot);
+      const pending = pendingConnections.entries().next().value;
+      if (pending) {
+        const [socket, timer] = pending; pendingConnections.delete(socket); clearTimeout(timer);
+        if (!closing && socket.readyState === socket.OPEN) { admit(socket); socket.resume(); }
+      }
+      return;
+    }
     const session = sessions.get(response.slot);
     if (!session) return;
     try {
@@ -160,8 +185,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       } else if (response.type === "reject") disconnect(response.slot, 1008, response.reason);
     } catch (error) { report(error instanceof Error ? error : new Error(String(error))); disconnect(response.slot, 1011, "Server packet failure"); }
   };
-  sockets.on("connection", socket => {
-    if (closing || occupiedSlots.size >= 32) { socket.close(1013, "Match unavailable or full"); return; }
+  const admit = (socket: WebSocket) => {
+    if (closing || occupiedSlots.size >= (options.match.targetPlayers ?? 32)) { socket.close(1013, "Match unavailable or full"); return; }
     let slot = 1;
     while (occupiedSlots.has(slot)) slot++;
     occupiedSlots.add(slot);
@@ -178,6 +203,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         if (session.state === "hello") {
           validateHello(message, options.match.contentSetHash);
           if (message.type !== "hello") throw new ProtocolError("TYPE", "Expected hello");
+          session.nickname = message.nickname;
           session.state = "joining";
           // The sim stores original 24-char printable-ASCII names; other admitted nicknames get a slot label.
           const name = /^[\x20-\x7e]{1,24}$/.test(message.nickname) ? message.nickname : `Player ${slot}`;
@@ -227,6 +253,14 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         disconnect(slot, error instanceof ProtocolError ? 1008 : 1011, error instanceof ProtocolError ? "Protocol admission or message rejected" : "Server failure");
       }
     };
+  };
+  sockets.on("connection", socket => {
+    if (options.match.targetPlayers !== undefined && !closing && sessions.size + pendingConnections.size < options.match.targetPlayers && occupiedSlots.size >= options.match.targetPlayers) {
+      const timer = setTimeout(() => { pendingConnections.delete(socket); socket.close(1013, "Match admission timed out"); }, 5000);
+      socket.pause();
+      timer.unref(); pendingConnections.set(socket, timer);
+      socket.once("close", () => { clearTimeout(timer); pendingConnections.delete(socket); });
+    } else admit(socket);
   });
   sockets.on("error", error => { report(error); void close(); });
   let closePromise: Promise<void> | undefined;
@@ -235,7 +269,10 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     closing = true;
     closePromise = (async () => {
       for (const slot of sessions.keys()) disconnect(slot, 1001, "Server shutting down");
+      for (const [socket, timer] of pendingConnections) { clearTimeout(timer); socket.close(1001, "Server shutting down"); }
+      pendingConnections.clear();
       server.off("error", serverError);
+      server.off("upgrade", upgrade);
       const terminate = setTimeout(() => { for (const socket of sockets.clients) socket.terminate(); }, 1000);
       terminate.unref();
       await Promise.all([
@@ -255,5 +292,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     } catch (error) { await close(); throw error; }
   }
   server.on("error", serverError);
-  return { httpsServer: server, close };
+  return { httpsServer: server, close,
+    get humanCount() { return sessions.size + pendingConnections.size; },
+    get humans() { return [...sessions.values()].flatMap(session => session.nickname ? [session.nickname] : []); },
+    get available() { return !closing; },
+  };
 }

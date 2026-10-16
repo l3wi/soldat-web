@@ -5,3 +5,5 @@ export { PlayerInputBuffer } from "./input-buffer.ts";
 export type { BufferedInput, InputRejection } from "./input-buffer.ts";
 export { MatchController } from "./match-controller.ts";
 export type { MatchConfiguration } from "./worker-messages.ts";
+export { createPlatformServer } from "./platform.ts";
+export type { PlatformOptions } from "./platform.ts";

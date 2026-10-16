@@ -1,4 +1,4 @@
-# Binary protocol reference — version 2
+# Binary protocol reference — version 3
 
 Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/protocol` is dependency-free at runtime. It does not interpret simulation save-state schemas or deliver assets. The simulation ABI is independently versioned; see [`sim-abi.md`](../../docs/formats/sim-abi.md).
 
@@ -8,7 +8,7 @@ Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/pr
 
 All integers are unsigned, little-endian, except the signed i16 aim fields inside simulation input. There is no implicit padding. Strings are UTF-8 with byte lengths, not character counts, and must be well-formed Unicode. Invalid UTF-8, unknown versions/types/channels, nonzero reserved controls, truncation, trailing fields, and oversized declarations are rejected. Encoding rejects invalid numeric ranges rather than truncating them. No JSON is used by the packet codec. `welcome.rules` is a bounded opaque byte string; the admission configuration may encode the sim's rules JSON in these bytes, outside the input/snapshot hot path.
 
-Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained. Encoders make a new packet; transport `send` copies it before returning so queued data cannot be changed by the caller. Delta decoding creates an owned state array. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slot numbers are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 2 is a clean cutover: version-1 peers are rejected, not heuristically decoded.
+Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained. Encoders make a new packet; transport `send` copies it before returning so queued data cannot be changed by the caller. Delta decoding creates an owned state array. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slot numbers are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 3 adds the friend-lobby control plane as a clean cutover: version-1/2 peers are rejected, not heuristically decoded.
 
 ## Packet header
 
@@ -16,7 +16,7 @@ One WebSocket binary message contains exactly one packet. There is no stream con
 
 | Offset | Type | Field |
 | ---: | --- | --- |
-| 0 | u16 | Wire version, exactly `2` |
+| 0 | u16 | Wire version, exactly `3` |
 | 2 | u8 | Message type from the table below |
 | 3 | u8 | Channel: `0` reliableControl, `1` latestState |
 | 4 | u32 | Payload byte length, excluding this 8-byte header |
@@ -39,6 +39,13 @@ Only snapshots use channel 1. Every other type uses channel 0; a mismatch is inv
 | 11 | resync | client → server | 4 |
 | 12 | disconnect | either | 260 |
 | 13 | weapon-choice | client → server | 3 |
+| 14 | lobby-join | client → server | 116 |
+| 15 | lobby-update | host → server | 133 |
+| 16 | lobby-ready | client → server | 1 |
+| 17 | lobby-start | host → server | 0 |
+| 18 | lobby-leave | client → server | 0 |
+| 19 | lobby-state | server → client | 8,192 |
+| 20 | lobby-error | server → client | 258 |
 
 The direction column describes application policy, not a different wire encoding. The authoritative server rejects messages inappropriate to its admission/session state.
 
@@ -52,7 +59,7 @@ Offsets below and in the remaining message tables are relative to payload start.
 | ---: | --- | --- |
 | 0 | u16 | Admission protocol version (must match server policy) |
 | 2 | 32 bytes | Raw SHA-256 content-set hash, not hexadecimal text |
-| 34 | u32 | Simulation ABI version, currently `0x00010003` |
+| 34 | u32 | Simulation ABI version, currently `0x00010004` |
 | 38 | u16 | Nickname UTF-8 byte length N, 1–48 |
 | 40 | N bytes | Nickname |
 | 40+N | u8 | Primary weapon original number, server admission accepts 1–10 |
@@ -196,13 +203,13 @@ Start the configured WSS listener from the repository root:
 SOLDAT_SERVER_CONFIG=/absolute/path/server.json node packages/server/src/main.ts
 ```
 
-The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`; optional `botCount` defaults to zero and must be an integer in 0–31. Paths are relative to the process working directory. Never commit private TLS keys. The server derives its admission hash from `contentRoot/sim/manifest.json`; the worker independently verifies that manifest and every raw content file before mounting them in the sim.
+The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`; `targetPlayers` defaults to eight and accepts 1–32; `maxMatches` defaults to eight. `publicUrl` is the external HTTPS origin, required behind a reverse proxy. `regions` is an explicit list of `{id,name,url}` HTTPS origins; without it the server advertises its single Local listener. Paths are relative to the process working directory. Never commit private TLS keys. `contentRoot/index.json` supplies the validated bot-capable map catalog, and `sim/manifest.json` supplies the admission hash. Match workers are created lazily; each independently verifies content before mounting it.
 
 The programmatic `createGameServer` API accepts either `{ match, tls: { key, cert } }` or `{ match, httpsServer }`, never HTTP or an insecure fallback. A caller-supplied HTTPS listener remains caller-owned; closing the game service stops only its WSS connections and match worker. Internally managed HTTPS listeners are closed too. One `worker_thread` owns one real `SimHost`/WASM instance.
 
-Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects startup explicitly. The server enables `ai:true` and defaults `rules.world` to `"original"` for native flags, medikits, grenade kits and map-authored stationary guns. Explicit `"fixture"` retains the controlled legacy harness world; welcome carries this match-identity rule unchanged. Set `rules.mode` to `"dm"` (default) or `"ctf"`, and optionally `rules.botDifficulty` to an integer in 0–300 (sim default 100). For example, `"botCount":4,"rules":{"mode":"ctf","rng":"keyed","world":"original","botDifficulty":100}` starts four bots on the configured map. Use a bot-capable map with original PMS waypoints.
+Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects match creation explicitly. The server enables `ai:true` and defaults `rules.world` to `"original"` for native flags, medikits, grenade kits and map-authored stationary guns. Explicit `"fixture"` retains the controlled legacy harness world; welcome carries this match-identity rule unchanged. `rules.botDifficulty` accepts an integer in 0–300 (sim default 100). Product matchmaking uses dynamic `targetPlayers`; standalone qualification callers may still specify fixed `botCount:0..31` when no target is configured.
 
-Bot slots are reserved from the top of the fixed 32-player range: four bots occupy slots 29–32, leaving human slots 1–28. Reservations exist before admission and survive human departures; a human slot is reusable only after the worker confirms leave. Stock profiles cycle through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. Bot joins use `control:"bot"`; the simulation retains each profile's original name, cosmetics and weapon preference. DM uses team zero. CTF bot teams alternate Alpha/Bravo, and human joins select the less populated current team (Alpha on ties).
+With a population target, each human join removes one original bot with `leave` before the human is admitted; each human departure joins an original profile in a free slot. Profiles rotate through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. The simulation retains each profile's original name, cosmetics and weapon preference. DM uses team zero; every CTF join/refill selects the less populated current team (Alpha on ties). Without a target, standalone fixed bots retain their highest-slot reservations for qualification. Human slots are not reused until the worker confirms leave; a replacement connection waits in a bounded admission queue during that acknowledgement race.
 
 Human joins explicitly use `control:"authoritative"` and the admitted loadout, and record both next-respawn choices with `weapon-choice`. Welcome carries the effective server rules, including `ai:true`; prediction and extraction hosts must override only AI execution to `ai:false` before loading server snapshots.
 
@@ -265,3 +272,38 @@ Measured before the real module was available: 60 synthetic consecutive-state pa
 Measured on the rebuilt real `sim.wasm` (ABI `0x00010001`): 60 consecutive arena state pairs, ticks 0→60, **307,276,440 raw bytes → 65,067 delta bytes**, ratio **0.000211754 (0.0211754%)**. Each raw state was 5,121,274 bytes; encoded deltas averaged 1,084.45 bytes. All 60 reconstructed states matched byte-for-byte. Content-set hash: `855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109`. This is the fixture's initial idle segment, not a combat/multiplayer bandwidth estimate. The earlier first-step tick-contract failure was fixed in the simulator before collecting these results; no synthetic fallback was used.
 
 The ABI-1 idle delta measurement above is historical, not current combat/multiplayer evidence. Current online qualification, exact frozen binary identity, security results and all pending real-impairment/human/soak checks are recorded in [G4](../../docs/gates/G4.md).
+
+## Matchmaking HTTP reference
+
+The HTTPS origin corresponding to the game WSS endpoint serves JSON endpoints. All responses use `Cache-Control: no-store`; allowed development origins receive explicit CORS headers. POST requests require `Content-Type: application/json`, at most 1,024 body bytes, and no unknown fields. Errors are `{error:string}` with 400 (invalid), 403 (origin), 404 (missing), 409 (full), 413/415 (body), 429 (rate), or 503 (server capacity). Successful POSTs return 201; GETs return 200.
+
+| Method and path | Request | Response |
+| --- | --- | --- |
+| `GET /api/ping` | — | `{ok:true}`; measure actual RTT, not a configured latency |
+| `GET /api/regions` | — | `[{id,name,url}]`; `url` is an HTTPS origin; only configured regions exist |
+| `POST /api/quickplay` | `{nickname}` | `{matchId,wsUrl,map,mode,humans:string[],bots:number}` |
+| `POST /api/lobbies` | `{mode:"dm"|"ctf",map}` | `{code,hostToken,wsUrl}` |
+| `GET /api/lobbies/:code` | — | `LobbyState`, without host token or admission ticket |
+
+Quickplay selects the available public match with the lowest human-plus-reservation load, otherwise starts a separate worker/WASM with a rotating bot-capable stock DM map. The response roster includes pending reservations. `wsUrl` includes a random, single-use admission ticket valid for 30 seconds. Connect there using the ordinary binary `hello`; there is no new simulation admission message. Unconsumed reservations expire and cannot exhaust capacity permanently.
+
+The six-character lobby code is uppercase alphanumeric. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Derive lobby WSS as `wss://<api-host>/lobbies/CODE`. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
+
+## Lobby binary payload reference
+
+Every lobby message uses reliableControl and the existing eight-byte binary header. Strings below use the codec's u16 UTF-8 byte length prefix; modes are u8 (`0` DM, `1` CTF), booleans u8 (`0` false, `1` true), and populations u8 (`1..32`). Invalid flags, booleans, modes, bounds, truncation and trailing fields are rejected.
+
+| Message | Ordered payload fields |
+| --- | --- |
+| `lobby-join` | nickname string (1..48 bytes), hostToken string (0..64; empty means guest) |
+| `lobby-update` | u8 presence mask (mode=1, map=2, targetPlayers=4; 1..7), then present mode, map string (1..128), targetPlayers |
+| `lobby-ready` | ready boolean |
+| `lobby-start`, `lobby-leave` | empty |
+| `lobby-error` | reason string (1..256) |
+| `lobby-state` | selfId string (1..32), code string (6), mode, map string (1..128), targetPlayers, u8 roster length (0..32), roster entries, started boolean, then matchId string (1..64) and personalized matchWsUrl string (1..1024) only when started |
+| roster entry | id string (1..32), nickname string (1..48), ready boolean, host boolean |
+
+Only the host may update mode/map/target or start. Send compatible mode/map changes together. Setup changes reset guest readiness; the host is always ready. Start requires all current guests ready. The server locks setup during worker creation, broadcasts the started state, and late joins receive a ticket to the same match, replacing a bot. Leaving closes that member's lobby session; closing an unstarted host session closes its lobby rather than transferring the capability to a stranger. Once started, the match survives host departure.
+
+Lobby traffic has a 12-message burst and four messages/second refill per socket. API creation has an eight-request burst per source IP and one request/10 seconds refill; rejected POSTs consume that budget too. Match workers, lobbies, roster lengths, pending admissions, request bodies and packet sizes are bounded. Default idle cleanup is five minutes with no humans or reservations; empty lobbies also expire. Population targets count humans plus original bots, never exceed 32, and preserve CTF team balance on replacement/refill.
+
