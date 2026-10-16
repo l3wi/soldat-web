@@ -66,7 +66,7 @@ reducedMotion.addEventListener('change', syncBackground);
 syncBackground();
 
 function wordmark() {
-  return `<header class="masthead"><h1 class="wordmark"><span>Field</span><span>Sandbox</span></h1></header>`;
+  return `<header class="masthead"><h1 class="wordmark"><span>Soldat</span><span>Online</span></h1></header>`;
 }
 function roster(friends = false) {
   // A plain wrapping row of names; bots are one aggregate entry. In friend lobbies, unready names are dimmed.
@@ -135,7 +135,7 @@ function content() {
     case 'credits':
       return `<h2>Credits</h2>
         <ul class="credit-list"><li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li><li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li><li>Play typeface: Play contributors, SIL Open Font License 1.1.</li><li>Art and captures: CC BY 4.0, cropped or tinted.</li></ul>
-        <nav class="menu" aria-label="License documents"><a class="small" href="./assets/base-license.txt">CC BY 4.0 license</a><a class="small" href="./assets/base-credits.txt">Contributor credits</a><a class="small" href="./assets/play-OFL.txt">Play font license</a></nav>
+        <nav class="menu" aria-label="License documents"><a class="small" href="./assets/base-license.txt" target="_blank" rel="noopener">CC BY 4.0 license</a><a class="small" href="./assets/base-credits.txt" target="_blank" rel="noopener">Contributor credits</a><a class="small" href="./assets/play-OFL.txt" target="_blank" rel="noopener">Play font license</a></nav>
         <div class="actions">${action('Back', 'menu', true)}</div>`;
   }
 }

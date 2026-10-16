@@ -264,7 +264,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
 
   return <main className="briefing-shell">
     <aside className="briefing-sidebar">
-      <header><div className="briefing-mark" aria-hidden="true"><span /><span /><span /></div><h1>Field sandbox</h1><p>Offline browser development build</p></header>
+      <header><div className="briefing-mark" aria-hidden="true"><span /><span /><span /></div><h1>Soldat Online</h1><p>Offline browser development build</p></header>
       <nav aria-label="Main menu">
         <button type="button" aria-current={page === 'play' ? 'page' : undefined} onClick={() => setPage('play')}>Choose map</button>
         <button type="button" aria-current={page === 'settings' ? 'page' : undefined} onClick={() => setPage('settings')}>Settings</button>

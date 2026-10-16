@@ -16,7 +16,7 @@ Evidence: `docs/research/*.md` (six research reports; each claim there carries a
 | D7 | Server runtime **Node 24 LTS**; one WASM instance per match, one match per `worker_thread`. Bun for tooling/build only. | Default |
 | D8 | Content = **opensoldat/base pinned at `5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`** (CC BY 4.0), curated and hash-manifested. No files from the classic 1.7.1.1 installer are shipped. | Default (LicensingProvenance) |
 | D9 | Platforms: desktop, keyboard + mouse; current and previous major of Chrome/Edge, Firefox, Safari ≥ 26.4. Mobile/touch out of scope. | Default |
-| D10 | Independent public product name/logo; "Soldat" used only descriptively with non-endorsement disclaimer. | Default (LicensingProvenance) |
+| D10 | Product name **"Soldat Online"** (user decision 2026-10-16). It contains the Soldat mark, so written THD/MM permission is a launch prerequisite; until granted, use it for development/private builds only, and keep the non-endorsement disclaimer. | User (overrides the earlier independent-name default) |
 
 Defaults D5–D10 are reversible; changing them changes the plan, not the architecture.
 
@@ -269,7 +269,7 @@ Bun workspaces for build/test tooling; server runs on Node 24.
 1. Ship only files derived from pinned `opensoldat/base` (CC BY 4.0) plus the unmodified Play TTF (SIL OFL 1.1). Classic 1.7.1.1 installer is a local reference fixture only.
 2. Code: project code MIT; retain OpenSoldat MIT notice in the sim fork and served third-party notices; `Vector.pas` stays under MPL 1.1 with its header and published source; Kraken SDK, PascalScript, dglOpenGL and SDL bindings are not built into `sim.wasm`. humanova/soldat-web (MIT) attribution for reused toolchain scripts.
 3. Credits & Licenses screen: Michał Marcinkowski / Transhuman Design; OpenSoldat contributors; base `Credits.md` names; known map authors from the 1.7.1.1 manual; BSG for the modules if ever shipped; CC BY 4.0 link + pinned base commit; list of browser transformations; Play OFL notice; non-endorsement disclaimer.
-4. Naming: codename `soldat-web` internal only. Public title/logo are original and cleared before launch. Allowed descriptive phrasing: "Unofficial browser game using open-licensed Soldat/OpenSoldat content", "Plays Soldat .pms maps". No "Soldat" in product name or logo without written THD/MM permission.
+4. Naming: product name "Soldat Online" (D10). Before any public release: obtain written THD/MM authorization covering the name, wordmark, domain and store listings; if refused, fall back to an independent title. Until then: no original Soldat logo/title art as branding, keep "Unofficial … not affiliated with or endorsed by Transhuman Design" on landing and About.
 5. User content is local-only at launch; public hosting requires a separate rights/takedown design.
 
 ## 10. Open items (do not block Phase 0)
