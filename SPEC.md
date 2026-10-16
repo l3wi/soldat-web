@@ -165,6 +165,7 @@ flowchart LR
 - Client prediction lead is adaptive (smoothed one-way delay + jitter margin + 1–2 ticks, bounded by the 128-frame ring), not a fixed cap.
 - Validation: finite/range checks, input rate cap, sequence/replay rejection; client never sends position, velocity, hits or damage.
 - Transport interface: two channels `reliableControl` and `latestState`. WSS implements both on one socket. WebTransport adapter maps `latestState` to datagrams. Transport chosen once at admission; no mid-match switching.
+- Matchmaking and lobbies (user decision 2026-10-16): a server process runs a registry of matches (one worker + one WASM instance each). HTTPS API `/api/ping`, `/api/regions`, `/api/quickplay`, `/api/lobbies`, `/api/lobbies/:code`; lobby updates over WSS (protocol v3). Quick play: client pings each configured region, auto-selects the lowest after a 3 s cancellable countdown, joins the least-loaded public match with room or creates one. Friend lobbies: 6-character code / `/?lobby=CODE` link, host sets mode then map, guests ready, host starts; late join allowed. Every match keeps a target player total filled with original bots: a joining human replaces a bot, a leaving human is replaced by one. Multi-region is a stretch goal (config-driven region list; dev ships one Local region).
 
 ### 4.5 Bots
 
