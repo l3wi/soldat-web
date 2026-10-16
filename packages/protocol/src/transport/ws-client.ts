@@ -11,9 +11,9 @@ export interface WssClientOptions extends BackpressureOptions {
 /**
  * Opens native browser WSS, returning immediately so handlers can be installed
  * before open. send owns a copy, including when the socket is not open yet.
- * At most one non-drained packet is handed to the socket; newer snapshots remain
- * replaceable until bufferedAmount reaches zero. Fatal browser closes use 4002
- * (protocol), 4009 (size), 4013 (backpressure), or 4011 (socket failure).
+ * At most one non-drained packet is handed to the socket; all pending packets
+ * retain cross-channel FIFO order. Fatal browser closes use 4002 (protocol),
+ * 4009 (size), 4013 (backpressure), or 4011 (socket failure).
  */
 export function connectWss(url: string | URL, options: WssClientOptions = {}): MessageTransport {
   const address = new URL(url);

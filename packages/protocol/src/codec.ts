@@ -1,11 +1,10 @@
-import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, type Message, type ReliableEvent, type WeaponSelection } from "./messages.ts";
-import { validateDelta } from "./delta.ts";
+import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, MAX_STATE_BYTES, PROTOCOL_VERSION, ProtocolError, type Message, type ReliableEvent, type SlotInput, type TickRecord, type WeaponSelection } from "./messages.ts";
 import type { TransportChannel } from "./transport/types.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error"] as const;
-const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4, 3, 116, 133, 1, 0, 0, 8192, 258];
+const TYPES = ["hello", "welcome", "input", "ticks", "state", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error"] as const;
+const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.tickBatch, MAX_STATE_BYTES + 20, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 0, LIMITS.reason + 4, 3, 116, 133, 1, 0, 0, 8192, 258];
 const HEADER_BYTES = 8;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
@@ -79,6 +78,115 @@ export function validateInput(input: Uint8Array): void {
   const order = view.getUint16(8, true);
   check((order & 0xfff0) === 0 && (order & 3) !== 3 && (order & 12) !== 12, "Invalid press-order bits");
 }
+function validateCommand(bytes: Uint8Array, offset = 0): void {
+  check(bytes instanceof Uint8Array && bytes.length > 0 && bytes.length <= LIMITS.commandBytes, "Command must be 1..4096 bytes", offset);
+  let text: string;
+  try { text = decoder.decode(bytes); }
+  catch (cause) { throw new ProtocolError("UTF8", "Invalid command UTF-8", offset, { cause }); }
+  try { JSON.parse(text); }
+  catch (cause) { throw new ProtocolError("VALUE", "Invalid command JSON", offset, { cause }); }
+}
+function equalInput(a: Uint8Array | undefined, b: Uint8Array): boolean {
+  if (!a) return false;
+  for (let i = 0; i < INPUT_BYTES; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+function writeTickRecords(w: Writer, records: TickRecord[]): void {
+  const start = w.offset;
+  integer(records.length, LIMITS.tickRecords, 1); w.u16(records.length);
+  let previous: (Uint8Array | undefined)[] = [];
+  for (const record of records) {
+    integer(record.tick, 0xffffffff);
+    switch (record.type) {
+      case "step": {
+        w.u8(1); w.u32(record.tick);
+        integer(record.commands.length, LIMITS.commands); w.u8(record.commands.length);
+        for (const command of record.commands) { validateCommand(command); w.u16(command.length); w.bytes(command); }
+        integer(record.inputs.length, 32);
+        const current: (Uint8Array | undefined)[] = [];
+        let mask = 0, count = 0, previousSlot = 0;
+        for (const entry of record.inputs) {
+          integer(entry.slot, 32, previousSlot + 1); validateInput(entry.input);
+          current[entry.slot] = entry.input; mask += 2 ** (entry.slot - 1); previousSlot = entry.slot;
+          if (!equalInput(previous[entry.slot], entry.input)) count++;
+        }
+        w.u32(mask); w.u8(count);
+        for (const entry of record.inputs) if (!equalInput(previous[entry.slot], entry.input)) { w.u8(entry.slot); w.bytes(entry.input); }
+        previous = current;
+        break;
+      }
+      case "correct":
+        integer(record.slot, 32, 1); validateInput(record.input);
+        w.u8(2); w.u32(record.tick); w.u8(record.slot); w.bytes(record.input); break;
+      case "hash": w.u8(3); w.u32(record.tick); w.u64(record.hash); break;
+      default: throw new ProtocolError("TYPE", "Unknown tick record type");
+    }
+    if (w.offset - start > LIMITS.tickBatch - 4) throw new ProtocolError("OVERSIZED", "Tick records exceed batch limit");
+  }
+}
+function readTickRecords(r: Reader): TickRecord[] {
+  const count = r.u16(); integer(count, LIMITS.tickRecords, 1);
+  const records: TickRecord[] = [];
+  let previous: (Uint8Array | undefined)[] = [];
+  for (let i = 0; i < count; i++) {
+    const type = r.u8(), tick = r.u32();
+    switch (type) {
+      case 1: {
+        const commandCount = r.u8(); integer(commandCount, LIMITS.commands);
+        const commands: Uint8Array[] = [];
+        for (let c = 0; c < commandCount; c++) {
+          const length = r.u16();
+          if (length > LIMITS.commandBytes) throw new ProtocolError("OVERSIZED", "Command exceeds limit", r.offset - 2);
+          const command = r.take(length); validateCommand(command, r.offset - length); commands.push(command);
+        }
+        const mask = r.u32(), changedCount = r.u8(); integer(changedCount, 32);
+        const current: (Uint8Array | undefined)[] = [];
+        let previousSlot = 0;
+        for (let c = 0; c < changedCount; c++) {
+          const slot = r.u8(); integer(slot, 32, previousSlot + 1);
+          check((mask & 2 ** (slot - 1)) !== 0, "Changed slot absent from roster", r.offset - 1);
+          const input = r.take(INPUT_BYTES); validateInput(input); current[slot] = input; previousSlot = slot;
+        }
+        const inputs: SlotInput[] = [];
+        for (let slot = 1; slot <= 32; slot++) if ((mask & 2 ** (slot - 1)) !== 0) {
+          const input = current[slot] ?? previous[slot];
+          check(input !== undefined, "New human slot lacks input", r.offset);
+          current[slot] = input; inputs.push({ slot, input });
+        }
+        previous = current; records.push({ type: "step", tick, commands, inputs }); break;
+      }
+      case 2: {
+        const slot = r.u8(); integer(slot, 32, 1); const input = r.take(INPUT_BYTES); validateInput(input);
+        records.push({ type: "correct", tick, slot, input }); break;
+      }
+      case 3: records.push({ type: "hash", tick, hash: r.u64() }); break;
+      default: throw new ProtocolError("TYPE", "Unknown tick record type", r.offset - 5);
+    }
+  }
+  return records;
+}
+/** Encodes a self-contained record batch once, for reuse across recipients. */
+export function encodeTickRecords(records: TickRecord[]): Uint8Array {
+  return typed(() => {
+    const measure = new Writer(); writeTickRecords(measure, records);
+    const bytes = new Uint8Array(measure.offset); writeTickRecords(new Writer(bytes), records); return bytes;
+  });
+}
+/**
+ * Frames already validated encodeTickRecords output without re-encoding records.
+ * Treat recordBytes as immutable; payload validation happens when decoding.
+ */
+export function encodeTicksMessage(lastConsumedInputSeq: number, recordBytes: Uint8Array): Uint8Array {
+  return typed(() => {
+    integer(lastConsumedInputSeq, 0xffffffff);
+    check(recordBytes instanceof Uint8Array && recordBytes.length >= 2, "Expected encoded tick records");
+    if (recordBytes.length > LIMITS.tickBatch - 4) throw new ProtocolError("OVERSIZED", "Tick records exceed batch limit");
+    integer(new DataView(recordBytes.buffer, recordBytes.byteOffset, recordBytes.byteLength).getUint16(0, true), LIMITS.tickRecords, 1);
+    const bytes = new Uint8Array(HEADER_BYTES + 4 + recordBytes.length), w = new Writer(bytes);
+    w.u16(PROTOCOL_VERSION); w.u8(4); w.u8(1); w.u32(4 + recordBytes.length);
+    w.u32(lastConsumedInputSeq); w.bytes(recordBytes); return bytes;
+  });
+}
 /** Original selectable weapon numbers, shared by admission and reliable changes. */
 export function validateWeaponChoice(primary: number, secondary: number): void {
   integer(primary, 10, 1);
@@ -131,14 +239,8 @@ function writePayload(w: Writer, m: Message): void {
       integer(m.frames.length, LIMITS.frames, 1); w.u8(m.frames.length);
       for (const frame of m.frames) { integer(frame.seq, 0xffffffff, 1); validateInput(frame.input); w.u32(frame.seq); w.u32(frame.tick); w.u32(frame.viewTick); w.bytes(frame.input); }
       break;
-    case "snapshot":
-      integer(m.snapshotId, 0xffffffff, 1); validateDelta(m.state);
-      w.u32(m.serverTick); w.u32(m.lastConsumedInputSeq); w.u32(m.snapshotId); w.u32(m.baselineId); w.u64(m.stateHash);
-      integer(m.inputs.length, 32); w.u8(m.inputs.length);
-      let previousSlot = 0;
-      for (const entry of m.inputs) { integer(entry.slot, 32, previousSlot + 1); validateInput(entry.input); w.u8(entry.slot); w.bytes(entry.input); previousSlot = entry.slot; }
-      w.blob(m.state, LIMITS.delta); break;
-    case "snapshotAck": integer(m.snapshotId, 0xffffffff, 1); w.u32(m.snapshotId); break;
+    case "ticks": w.u32(m.lastConsumedInputSeq); writeTickRecords(w, m.records); break;
+    case "state": w.u32(m.tick); w.u64(m.hash); w.u32(m.lastConsumedInputSeq); w.blob(m.bytes, MAX_STATE_BYTES); break;
     case "events":
       integer(m.events.length, LIMITS.events, 1); w.u16(m.events.length);
       for (const event of m.events) { validateEvent(event); w.u32(event.id); w.u32(event.tick); w.bytes(event.header); w.bytes(event.payload); }
@@ -146,7 +248,7 @@ function writePayload(w: Writer, m: Message): void {
     case "eventAck": integer(m.eventId, 0xffffffff, 1); w.u32(m.eventId); break;
     case "chat": w.text(m.text, LIMITS.chat, true); break;
     case "ping": case "pong": w.u64(m.timestamp); break;
-    case "resync": w.u32(m.baselineId); break;
+    case "resync": break;
     case "weapon-choice":
       validateWeaponChoice(m.primary, m.secondary); validateWeaponSelection(m.selection);
       w.u8(m.primary); w.u8(m.secondary); w.u8(m.selection === "primary" ? 0 : 1); break;
@@ -160,7 +262,7 @@ function header(bytes: Uint8Array): { type: Message["type"]; channel: TransportC
   if (view.getUint16(0, true) !== PROTOCOL_VERSION) throw new ProtocolError("VERSION", "Unsupported wire version");
   const id = view.getUint8(2), type = TYPES[id - 1];
   if (!type) throw new ProtocolError("TYPE", "Unknown message type", 2);
-  const channelId = type === "snapshot" ? 1 : 0;
+  const channelId = type === "state" || type === "ticks" ? 1 : 0;
   if (view.getUint8(3) !== channelId) throw new ProtocolError("CHANNEL", "Message uses wrong channel", 3);
   const length = view.getUint32(4, true);
   if (length > MAX_PAYLOAD[id]!) throw new ProtocolError("OVERSIZED", "Payload exceeds message type limit", 4);
@@ -176,12 +278,13 @@ function typed<T>(fn: () => T): T {
 export function readChannel(bytes: Uint8Array): TransportChannel { return typed(() => header(bytes).channel); }
 export function encodeMessage(message: Message): Uint8Array {
   return typed(() => {
+    if (message.type === "ticks") return encodeTicksMessage(message.lastConsumedInputSeq, encodeTickRecords(message.records));
     const id = TYPES.indexOf(message.type) + 1;
     if (!id) throw new ProtocolError("TYPE", "Unknown message type");
     const measure = new Writer(); writePayload(measure, message);
     if (measure.offset > MAX_PAYLOAD[id]!) throw new ProtocolError("OVERSIZED", "Payload exceeds message type limit");
     const result = new Uint8Array(measure.offset + HEADER_BYTES), w = new Writer(result);
-    w.u16(PROTOCOL_VERSION); w.u8(id); w.u8(message.type === "snapshot" ? 1 : 0); w.u32(measure.offset); writePayload(w, message);
+    w.u16(PROTOCOL_VERSION); w.u8(id); w.u8(message.type === "state" ? 1 : 0); w.u32(measure.offset); writePayload(w, message);
     return result;
   });
 }
@@ -222,17 +325,8 @@ export function decodeMessage(bytes: Uint8Array): Message {
         for (let i = 0; i < count; i++) { const seq = r.u32(), tick = r.u32(), viewTick = r.u32(), input = r.take(INPUT_BYTES); integer(seq, 0xffffffff, 1); validateInput(input); frames.push({ seq, tick, viewTick, input }); }
         message = { type, frames }; break;
       }
-      case "snapshot": {
-        const serverTick = r.u32(), lastConsumedInputSeq = r.u32(), snapshotId = r.u32(), baselineId = r.u32(), stateHash = r.u64();
-        const count = r.u8(); integer(count, 32);
-        const inputs = [];
-        let previousSlot = 0;
-        for (let i = 0; i < count; i++) { const slot = r.u8(); integer(slot, 32, previousSlot + 1); const input = r.take(INPUT_BYTES); validateInput(input); inputs.push({ slot, input }); previousSlot = slot; }
-        const state = r.blob(LIMITS.delta);
-        integer(snapshotId, 0xffffffff, 1); validateDelta(state);
-        message = { type, serverTick, lastConsumedInputSeq, snapshotId, baselineId, stateHash, inputs, state }; break;
-      }
-      case "snapshotAck": { const snapshotId = r.u32(); integer(snapshotId, 0xffffffff, 1); message = { type, snapshotId }; break; }
+      case "ticks": message = { type, lastConsumedInputSeq: r.u32(), records: readTickRecords(r) }; break;
+      case "state": message = { type, tick: r.u32(), hash: r.u64(), lastConsumedInputSeq: r.u32(), bytes: r.blob(MAX_STATE_BYTES) }; break;
       case "events": {
         const count = r.u16(); integer(count, LIMITS.events, 1); const events = [];
         for (let i = 0; i < count; i++) {
@@ -246,7 +340,7 @@ export function decodeMessage(bytes: Uint8Array): Message {
       case "eventAck": { const eventId = r.u32(); integer(eventId, 0xffffffff, 1); message = { type, eventId }; break; }
       case "chat": message = { type, text: r.text(LIMITS.chat, true) }; break;
       case "ping": case "pong": message = { type, timestamp: r.u64() }; break;
-      case "resync": message = { type, baselineId: r.u32() }; break;
+      case "resync": message = { type }; break;
       case "weapon-choice": {
         const primary = r.u8(), secondary = r.u8(), selectionId = r.u8();
         validateWeaponChoice(primary, secondary); integer(selectionId, 1);

@@ -2,9 +2,9 @@ import { MAX_PACKET_BYTES } from '../index.ts';
 import type { TransportChannel } from './types.ts';
 
 export interface BackpressureOptions {
-  /** Reliable bytes awaiting send, excluding the one packet in the socket. */
+  /** Bytes awaiting send across both reliable WSS channels, excluding the socket. */
   maxReliableBytes?: number;
-  /** Also bound overhead from many tiny reliable packets. */
+  /** Also bound overhead from many tiny packets across both channels. */
   maxReliablePackets?: number;
 }
 
@@ -21,14 +21,13 @@ export class BackpressureError extends Error {
 }
 
 /**
- * Owns copies of enqueued packets. Reliable packets are FIFO and take priority
- * over the single replaceable snapshot. dequeue transfers ownership to its caller.
- * Adapters must close on BackpressureError: reliable traffic is never evicted.
+ * Owns copies of enqueued packets in one FIFO across both channels.
+ * dequeue transfers ownership to its caller. Adapters must close on overflow:
+ * neither state nor tick records can be replaced or reordered with controls.
  */
 export class BackpressureQueue {
-  private reliable: (Uint8Array | undefined)[] = [];
-  private reliableHead = 0;
-  private latest: Uint8Array | undefined;
+  private packets: (QueuedPacket | undefined)[] = [];
+  private head = 0;
   private bytes = 0;
   readonly maxReliableBytes: number;
   readonly maxReliablePackets: number;
@@ -44,47 +43,37 @@ export class BackpressureQueue {
   }
 
   get reliableBytes(): number { return this.bytes; }
-  get reliablePackets(): number { return this.reliable.length - this.reliableHead; }
-  get size(): number { return this.reliablePackets + (this.latest ? 1 : 0); }
+  get reliablePackets(): number { return this.packets.length - this.head; }
+  get size(): number { return this.packets.length - this.head; }
 
   enqueue(channel: TransportChannel, packet: Uint8Array): void {
-    if (channel === 'latestState') {
-      this.latest = packet.slice();
-      return;
-    }
-    if (channel !== 'reliableControl') throw new TypeError('Unknown transport channel');
+    if (channel !== 'latestState' && channel !== 'reliableControl') throw new TypeError('Unknown transport channel');
     if (this.reliablePackets >= this.maxReliablePackets ||
         packet.byteLength > this.maxReliableBytes - this.bytes) {
       throw new BackpressureError('Reliable transport queue capacity exceeded');
     }
-    this.reliable.push(packet.slice());
+    this.packets.push({ channel, packet: packet.slice() });
     this.bytes += packet.byteLength;
   }
 
   dequeue(): QueuedPacket | undefined {
-    if (this.reliablePackets > 0) {
-      const packet = this.reliable[this.reliableHead]!;
-      this.reliable[this.reliableHead++] = undefined;
-      this.bytes -= packet.byteLength;
-      if (this.reliableHead === this.reliable.length) {
-        this.reliable = [];
-        this.reliableHead = 0;
-      } else if (this.reliableHead >= 1024 && this.reliableHead * 2 >= this.reliable.length) {
-        this.reliable = this.reliable.slice(this.reliableHead);
-        this.reliableHead = 0;
-      }
-      return { channel: 'reliableControl', packet };
+    if (this.size === 0) return undefined;
+    const next = this.packets[this.head]!;
+    this.packets[this.head++] = undefined;
+    this.bytes -= next.packet.byteLength;
+    if (this.head === this.packets.length) {
+      this.packets = [];
+      this.head = 0;
+    } else if (this.head >= 1024 && this.head * 2 >= this.packets.length) {
+      this.packets = this.packets.slice(this.head);
+      this.head = 0;
     }
-    if (!this.latest) return undefined;
-    const packet = this.latest;
-    this.latest = undefined;
-    return { channel: 'latestState', packet };
+    return next;
   }
 
   clear(): void {
-    this.reliable = [];
-    this.reliableHead = 0;
+    this.packets = [];
+    this.head = 0;
     this.bytes = 0;
-    this.latest = undefined;
   }
 }

@@ -1,4 +1,4 @@
-# Binary protocol reference — version 3
+# Binary protocol reference — version 4
 
 Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/protocol` is dependency-free at runtime. It does not interpret simulation save-state schemas or deliver assets. The simulation ABI is independently versioned; see [`sim-abi.md`](../../docs/formats/sim-abi.md).
 
@@ -6,9 +6,9 @@ Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/pr
 
 `encodeMessage(message)` returns one binary packet. `decodeMessage(packet)` returns the discriminated `Message` union or throws `ProtocolError` with a stable `code` and byte `offset`. All decoder failures, including invalid UTF-8 and native bounds failures, are typed. `readChannel(packet)` checks only outer framing; applications must still call `decodeMessage`.
 
-All integers are unsigned, little-endian, except the signed i16 aim fields inside simulation input. There is no implicit padding. Strings are UTF-8 with byte lengths, not character counts, and must be well-formed Unicode. Invalid UTF-8, unknown versions/types/channels, nonzero reserved controls, truncation, trailing fields, and oversized declarations are rejected. Encoding rejects invalid numeric ranges rather than truncating them. No JSON is used by the packet codec. `welcome.rules` is a bounded opaque byte string; the admission configuration may encode the sim's rules JSON in these bytes, outside the input/snapshot hot path.
+All integers are unsigned, little-endian, except the signed i16 aim fields inside simulation input. There is no implicit padding. Strings are UTF-8 with byte lengths, not character counts, and must be well-formed Unicode. Invalid UTF-8, unknown versions/types/channels, nonzero reserved controls, truncation, trailing fields, and oversized declarations are rejected. Encoding rejects invalid numeric ranges rather than truncating them. Step commands are bounded UTF-8 JSON bytes, validated without rewriting their original representation. `welcome.rules` remains a bounded opaque byte string; applications interpret the sim rules.
 
-Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained. Encoders make a new packet; transport `send` copies it before returning so queued data cannot be changed by the caller. Delta decoding creates an owned state array. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slot numbers are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 3 adds the friend-lobby control plane as a clean cutover: version-1/2 peers are rejected, not heuristically decoded.
+Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained; unchanged inputs in later decoded steps may share the earlier step's view. Encoders make a new packet; transport `send` copies it before returning. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slots are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 4 is a clean cutover to input relay: older wire versions are rejected. There are no snapshot IDs, snapshot acknowledgements, baselines, or full-state deltas.
 
 ## Packet header
 
@@ -16,27 +16,27 @@ One WebSocket binary message contains exactly one packet. There is no stream con
 
 | Offset | Type | Field |
 | ---: | --- | --- |
-| 0 | u16 | Wire version, exactly `3` |
+| 0 | u16 | Wire version, exactly `4` |
 | 2 | u8 | Message type from the table below |
 | 3 | u8 | Channel: `0` reliableControl, `1` latestState |
 | 4 | u32 | Payload byte length, excluding this 8-byte header |
 | 8 | bytes | Message-specific payload |
 
-Only snapshots use channel 1. Every other type uses channel 0; a mismatch is invalid. Global packet limit is `32 MiB + 512` bytes. The tighter per-type payload limits below also apply.
+Only `state` and `ticks` use channel 1. Every other type uses channel 0; a mismatch is invalid. Both channels are ordered and reliable on WSS. Global packet limit is `32 MiB + 512` bytes. The tighter per-type payload limits below also apply.
 
 | ID | Type | Direction | Maximum payload bytes |
 | ---: | --- | --- | ---: |
 | 1 | hello | client → server | 90 |
 | 2 | welcome | server → client | 4,245 |
 | 3 | input | client → server | 73 |
-| 4 | snapshot | server → client | 32 MiB + 450 |
-| 5 | snapshotAck | client → server | 4 |
+| 4 | ticks | server → client | 1,048,576 |
+| 5 | state | server → client | 32 MiB + 20 |
 | 6 | events | server → client | 1,048,576 |
 | 7 | eventAck | client → server | 4 |
 | 8 | chat | client → server; server policy handles delivery | 1,026 |
 | 9 | ping | either | 8 |
 | 10 | pong | reply to ping | 8 |
-| 11 | resync | client → server | 4 |
+| 11 | resync | client → server | 0 |
 | 12 | disconnect | either | 260 |
 | 13 | weapon-choice | client → server | 3 |
 | 14 | lobby-join | client → server | 116 |
@@ -107,42 +107,60 @@ Send current frame first, followed by previous two when available. Admission has
 
 Bits 12–15 of control and bits 4–15 of press order are zero. Conflicting order pairs 1+2 or 4+8 are invalid. Coordinate ranges are the complete signed i16 range; browser floating-point/NaN coordinates are never transmitted as f32.
 
-## Snapshots and acknowledgement
+## Confirmed timeline and full-state recovery
 
-### snapshot
+### ticks
 
-| Offset | Type | Field |
+The public `TickRecord` union is:
+
+```ts
+type TickRecord =
+  | { type: "step"; tick: number; commands: Uint8Array[]; inputs: { slot: number; input: Uint8Array }[] }
+  | { type: "correct"; tick: number; slot: number; input: Uint8Array }
+  | { type: "hash"; tick: number; hash: bigint };
+```
+
+`{type:"ticks", lastConsumedInputSeq, records}` contains u32 recipient-specific `lastConsumedInputSeq` at payload offset 0, then u16 record count (1–128) at offset 4, then the ordered records. The entire payload is bounded to 1 MiB. Each record starts with a u8 tag and u32 tick; fields following that prefix are:
+
+| Tag | Record | Remaining wire fields |
 | ---: | --- | --- |
-| 0 | u32 | Server tick represented by the state |
-| 4 | u32 | Last consumed input sequence **for this recipient**, zero before first input |
-| 8 | u32 | This snapshot's nonzero ID |
-| 12 | u32 | Acknowledged baseline snapshot ID, or zero for empty baseline |
-| 16 | u64 | `sim_hash_state` of this exact authoritative snapshot tick |
-| 24 | u8 | Active input record count A, 0–32 |
-| 25+13i | u8 | Original player slot, strictly ascending |
-| 26+13i | 12 bytes | Last authoritative consumed input for that slot |
-| 25+13A | u32 | Encoded state byte length D, 5–(32 MiB + 5) |
-| 29+13A | D bytes | Delta-encoded opaque sim save-state |
+| 1 | step | u8 command count (0–64); each command as u16 byte length (1–4,096) and UTF-8 JSON bytes; u32 human roster mask; u8 changed-input count (0–32); changed inputs |
+| 2 | correct | u8 slot (1–32), exactly 12 validated input bytes |
+| 3 | hash | u64 simulation state hash |
 
-Snapshot IDs and baseline IDs are per recipient. `snapshotAck` consists of a nonzero u32 snapshot ID at offset 0. A sender may choose a baseline only after receiving an acknowledgement for a state it actually sent. A receiver must acknowledge only after successful delta decoding and successful sim state loading. Never acknowledge an unreceived or rejected state. Do not assume that an unsent/coalesced snapshot became a baseline.
+A changed-input entry is u8 slot then 12 validated input bytes. Entries must have strictly ascending slots and belong to that step's roster. Roster bit `slot−1` denotes a human slot, including bit 31 for slot 32. The roster allows joins and departures without synthesizing inputs. Bots never appear in human input lists.
 
-Input records include bots as well as humans. Bot records are projected from the simulation's published `controlBits`, `aimX`, `aimY`, and `mouseDist`; press-order and reserved words are zero. Names, teams, kills, deaths, appearance, and team scores remain in the authoritative sim state/render projection, not duplicated host-maintained player objects. Clients initialize their sim instances with `ai:false`, load the authoritative snapshots, and hold these remote inputs during prediction; clients never run bot policy.
+Callers pass **every current human input** in ascending slot order for each step, with at most 32 entries. The first step in each message encodes all of them. Later steps encode only inputs different from the immediately preceding step; newly present slots always include input bytes, and absent slots are removed. Corrections and hashes do not change this compression context. Decoder output expands every step back to the full sorted human input list. A newly present slot with no changed entry is malformed. Compression never depends on another packet.
 
-`resync` consists of the unavailable/rejected u32 baseline ID at offset 0. Baseline zero requests a full state. The server resets this recipient's baseline and sends a delta against empty bytes. An unknown baseline must cause resync, not decoding against an unrelated state. Explicit resync also discards unsimulated queued/held intent and allows one next current/future input to rebase its forward sequence jump; IDs must still exceed the previously accepted floor. Clients keep sequences monotonic. This lets a >128-frame outage recover without granting extra simulation time; stale historical actions are not admitted during rebase.
+Commands preserve the exact bytes applied through `sim_command`, in order, before that step. The codec rejects invalid UTF-8, empty commands, invalid JSON, and commands over 4,096 bytes; semantic command authorization remains the application's responsibility. JSON is not parsed into the public API or reserialized. The codec preserves record order without imposing monotonic ticks: a correction refers to an earlier tick.
 
-### Delta byte format
+For one shared encoding across recipients:
 
-`encodeDelta(state, baseline?)` and `decodeDelta(delta, baseline?)` treat both blobs as opaque. Omitted baseline is empty. Baseline bytes beyond its length are implicitly zero, so shrinking/growing/empty states round-trip exactly. Both state and baseline are bounded to 32 MiB. `validateDelta(delta)` validates framing and returns decoded byte length without allocation or baseline data; the snapshot codec calls it automatically. It cannot verify that a caller supplied the correct baseline ID/content.
+```ts
+const recordBytes = encodeTickRecords(records);
+for (const recipient of recipients) {
+  recipient.transport.send("latestState",
+    encodeTicksMessage(recipient.lastConsumedInputSeq, recordBytes));
+}
+```
 
-| Offset | Type | Field |
+`encodeTickRecords` validates and encodes the shared batch. `encodeTicksMessage` frames its immutable output with a recipient-specific sequence without parsing or encoding each record again. This low-level framing helper checks sequence, byte/count bounds, not the record payload; pass only unchanged `encodeTickRecords` output. As with `readChannel`, complete untrusted-payload validation belongs to `decodeMessage`.
+
+### state and resync
+
+`{type:"state", tick, hash, lastConsumedInputSeq, bytes}` contains a raw, opaque `sim_save_state`, not an encoded delta:
+
+| Payload offset | Type | Field |
 | ---: | --- | --- |
-| 0 | u8 | Mode: 0 raw XOR, 1 zero/literal runs |
-| 1 | u32 | Decoded state length L |
-| 5 | bytes | Mode-specific bytes |
+| 0 | u32 | Tick boundary represented by the state |
+| 4 | u64 | `sim_hash_state` at that boundary |
+| 12 | u32 | Last consumed input sequence for this recipient |
+| 16 | u32 | Save-state length N, 0–32 MiB |
+| 20 | N bytes | Unmodified save-state bytes |
 
-Mode 0 contains exactly L XOR bytes (`state[i] XOR (baseline[i] ?? 0)`). Mode 1 is a sequence of u32 run tokens, each covering a nonzero count of output bytes. Bit 31 set means literal XOR bytes follow; bits 0–30 encode count. Bit 31 clear means a zero XOR run with no following bytes (copy baseline/implicit zero). Runs must cover exactly L bytes; zero-length, overflowing, truncated and trailing runs are invalid.
+The codec bounds bytes without interpreting the save-state schema. The simulation host must validate and load the state, then compare its hash before replay. `{type:"resync"}` has no payload or extra fields. Join/resync sends a full state followed by the ordered record stream from its boundary. A correction older than the recipient's sync boundary requires a fresh full state, not replay against missing history.
 
-The deterministic encoder groups zero runs of at least 8 bytes; shorter zeros remain inside literal spans. It measures runs without an intermediate XOR allocation and falls back to raw XOR unless runs are strictly smaller. Encoded output never exceeds L+5 bytes. Decoder validates runs before allocating output. This is compression, not authentication; TLS and the admission identities protect the session.
+Per SPEC §4.4, server timeline batches flush every two simulation ticks, with a hash every 30 ticks and after corrections. Confirmed and prediction instances run the original AI; bot commands and deterministic state are shared through the timeline, not bot control frames. Confirmed replay applies commands, then human inputs, then `sim_step`, retaining sparse anchors for corrections. Prediction holds remote human inputs and replays unacknowledged local inputs when confirmed history changes. Application timeline gaps, unavailable history, or hash mismatch request full resync.
 
 ## Reliable simulation events
 
@@ -191,7 +209,7 @@ connection.send("reliableControl", encodeMessage({ type: "ping", timestamp: 1n }
 
 `MessageTransport` exposes `send(channel, packet)`, `close(code?, reason?)`, and assignable `onMessage`, `onClose`, `onError` callbacks. The browser factory returns synchronously and queues until open. It requires `wss:` and uses native WebSocket with `binaryType="arraybuffer"`. The Node adapter is `createNodeTransport(socket)` in `packages/server/src/transport/ws-server.ts` and uses the server's `ws` dependency. WSS implements both channels over one ordered socket; it cannot undo head-of-line blocking for bytes already sent.
 
-Reliable packets are FIFO and prioritized; they are never silently dropped. The default reliable backlog is bounded by MAX_PACKET_BYTES and 1,024 packets. Overflow produces an explicit error and closes the connection. Latest state retains exactly one **unsent** packet, replacing it on a newer snapshot. Queued bytes are copied on enqueue. Adapters do not send more while WebSocket bufferedAmount is nonzero; the browser polls only while backlog exists (10 ms), and Node uses send completion callbacks with bounded polling when necessary. Close/error clears pending data and scheduling. This is not a WebTransport implementation; that remains Phase 6.
+Both channels share one **bounded FIFO**: controls cannot overtake a full state or tick batch, and a newer timeline packet never replaces an unsent one. The default combined backlog is bounded by MAX_PACKET_BYTES and 1,024 packets (configured through `maxReliableBytes` and `maxReliablePackets`); these limits cover both channels despite the option names. Overflow produces an explicit error and closes the connection, rather than silently losing confirmed history. Queued bytes are copied on enqueue. Adapters do not send more while WebSocket bufferedAmount is nonzero; the browser polls only while backlog exists (10 ms), and Node uses send completion callbacks with bounded polling when necessary. Close/error clears pending data and scheduling. A future WebTransport adapter must explicitly repeat unacknowledged timeline ranges; this package currently implements WSS, not datagrams.
 
 Browsers permit application close codes rather than arbitrary protocol close codes. Fatal browser adapter codes are 4002 (protocol), 4009 (size), 4013 (backpressure), 4011 (socket failure); Node uses 1002/1009/1013/1011 respectively. Closing a failed session is explicit failure, not delivery of its queued reliable messages.
 
@@ -211,19 +229,16 @@ Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or fai
 
 With a population target, each human join removes one original bot with `leave` before the human is admitted; each human departure joins an original profile in a free slot. Profiles rotate through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. The simulation retains each profile's original name, cosmetics and weapon preference. DM uses team zero; every CTF join/refill selects the less populated current team (Alpha on ties). Without a target, standalone fixed bots retain their highest-slot reservations for qualification. Human slots are not reused until the worker confirms leave; a replacement connection waits in a bounded admission queue during that acknowledgement race.
 
-Human joins explicitly use `control:"authoritative"` and the admitted loadout, and record both next-respawn choices with `weapon-choice`. Welcome carries the effective server rules, including `ai:true`; prediction and extraction hosts must override only AI execution to `ai:false` before loading server snapshots.
+Human joins explicitly use `control:"authoritative"` and the admitted loadout. Welcome carries the effective server rules, including `ai:true`; confirmed and prediction hosts retain AI execution so bots evolve deterministically.
 
-The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; overdue whole steps are discarded and counted, retaining the fractional remainder. Simulation never receives variable dt. `onMetrics` reports per-tick total sim+save+delta/IPC-post plus all listener wire encodings attributed to that tick (`simEncodeMs`), the original worker-only samples (`workerSimEncodeMs`), scheduled tick lateness (`tickLatenessMs`), per-packet listener wire encoding (`wireEncodeMs`), and historical rollback durations/ticks/rejections. The total is summed work across the worker/listener, not a fabricated single-thread elapsed span. These are samples, not a performance guarantee. The optional `onReliableEvent(slot,event)` observation runs after successful reliable enqueue, including retransmissions, so qualification can compare server-enqueued IDs against client-applied IDs without claiming enqueue is TCP delivery.
+The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; simulation never receives variable dt. Protocol encoding, transport enqueue, and successful simulation replay are not evidence of packet delivery or acceptance under real network impairment.
 
 Delayed-input validation and rollback execute between fixed steps. Their measured CPU work is charged to the next tick's `simEncodeMs` (and `workerSimEncodeMs`), in addition to the separate `replayMs` diagnostics. This prevents a costly synchronous rewind from disappearing from the sim budget simply because it ran in a message callback rather than `step()`.
 `onDisconnect(slot,code,reason)` observes the listener's actual policy close before socket teardown. Qualification records it separately from the client's WebSocket close code: TCP failure can prevent the close frame from reaching the client, which then sees 1006 rather than the originating policy reason.
 
-Ordinary snapshots are produced every second simulation tick (30 Hz), against each recipient's last retained acknowledged baseline. Up to 128 candidates are retained; overflow resets that recipient to an empty baseline. Resync also resets to zero. **Only one full snapshot is outstanding while baseline zero awaits acknowledgement**: WSS already reliably carries it, so queuing additional fullstates at 30 Hz would multiply TCP head-of-line blocking. After the worker accepts that exact fullstate ACK, normal deltas resume. Initial/full-resync acknowledgement has a bounded 60-second deadline. The 10-second RTT-probe deadline runs only on a synchronized session, pauses through fullstate recovery, and resumes with a fresh deadline without falsifying the probe's original RTT timestamp. A future datagram transport must preserve reliable bootstrap delivery or explicitly add retransmission; it cannot assume this WSS rule makes a datagram reliable. The hash is taken after saving the same state and before another mutation. Clients compare it **after loading and before prediction replay**, acknowledge only successfully loaded states, and hold remote controls from the input records with action bits 6–11 cleared.
-Repeated resync requests while a fullstate is already outstanding coalesce onto that reliable fullstate instead of generating more bulk data. Queued/held input is still cleared. This does not grant time or acknowledge a state on the client's behalf.
+The server relays consumed human inputs and commands as confirmed timeline records rather than serializing state every two ticks. Full save-state bytes are reserved for join/resync. There are no baseline caches or snapshot acknowledgements. Initial and recovery state plus every following tick record must retain WSS send order; transport backlog exhaustion is an explicit connection failure.
 
-Input IDs start at 1, with maximum forward jump 128. Target ticks at **server arrival** are bounded to `[current,current+8]`, per the revised SPEC §4.4. These inputs are queued and consumed only at their own fixed tick; arriving early never buys simulation time. At most nine distinct target ticks (current plus eight future) fit the per-player queue. Client prediction estimates server-now from the last snapshot, its receipt age and smoothed RTT/2. Outbound lead targets `RTT/2 + min(p95 recent RTT deviation/2, six ticks) + two ticks`, bounded by the 128-frame ring minus eight safety ticks. The six-tick jitter cap reserves two ticks of the server's admission window for clock-estimate error. Lead increases at one tick/s and decreases at four; the local prediction clock stays within 0.9–1.1× and generates sampled ticks sequentially. Actual remote view ticks are never fabricated. Inputs remain capped at 90 packets/s with burst 128 in listener and worker. Redundancy is processed oldest first. Gaps repeat movement/Fire/Jetpack/aim but clear one-shot bits 6–11; after 15 silent ticks held controls become neutral. Stale ordinary target ticks, duplicate IDs, malformed controls, fabricated future views and excessive sequence jumps are rejected.
-
-Clients also request explicit resync when the unconsumed sequence distance reaches 128, even if valid snapshots keep retiring tick-indexed history. This recovers an initially rejected/backlogged stream without relaxing the server's sequence-jump ceiling. The recovery remembers its sequence floor so the first rebased input can be sent instead of immediately requesting another resync.
+Input IDs start at 1. Inputs admitted early are queued and consumed at their own fixed tick; arriving early never buys simulation time. SPEC §4.4 bounds target ticks at arrival to `[current,current+8]`, with adaptive jitter margin at most six ticks. Redundant input frames are processed oldest first. Admission, sequence/rate/lead checks, one-shot clearing on gaps, and explicit resync recovery remain application responsibilities, not effects of the binary codec.
 
 View age selects **lag compensation**, not permission to move. All classes retain genuine `viewTick <= targetTick` and `viewTick <= current+2`, the eight-tick queued arrival window, sequence/rate/replay checks, and original native cooldown/ammo/animation rules:
 
@@ -242,7 +257,7 @@ Reliable gameplay events use only the canonical `SIM_GAMEPLAY_EVENTS` kinds `0x1
 
 ### Historical projectile policy and trade-offs
 
-The single server instance retains 31 tick-boundary history entries (500 ms span), consumed inputs and historical active weapons. Normal ticks save fullstate anchors; replay invalidates affected successor anchors and rebuilds overlapping history from the nearest valid retained anchor without serializing every intermediate state. A newly sequenced delayed Fire/grenade intent can rewind at most `min(12,ceil(RTT_ms*0.03)+2)` ticks (200 ms hard cap). The declared view tick must be no later than shot/current+2, no earlier than shot−18, and is further bounded by measured RTT plus an interpolation allowance. Accepted history inserts **only** Fire/ThrowNade and quantized aim; movement stays recorded. Every player's recorded input is replayed to now using `REPLAY`. This derives muzzle, spread/RNG, ammo, cooldown, collision, damage and explosions from original mechanics. An overlapping replay may include an already-corrected prefix before the inserted shot; its already committed events are drained, never confirmed twice. Replay metrics count all actual steps including that prefix. One rewind globally per current tick and one per player per six ticks bound abuse/cost. Membership changes invalidate history, preventing replay across joins/leaves.
+The server keeps consumed human inputs and sparse full-state anchors for historical replay. An accepted lag-compensation rewind emits `correct` records for replaced historical inputs, followed by the hash of the resulting boundary. Consumers must replay from a retained anchor and must not treat a correction as a newly advanced tick. A recipient whose sync boundary is newer than the corrected tick receives a fresh full state instead.
 
 These view-age bounds govern the historical branch only. Expired compensation uses the present-time policy in the table above, preserving the declared old view instead of pretending the client rendered a newer state.
 
@@ -259,19 +274,12 @@ bun run --cwd packages/protocol test
 bun run --cwd packages/server test
 bun run --cwd packages/protocol typecheck
 bun run --cwd packages/server typecheck
-node packages/protocol/scripts/measure-delta.ts
 node --test packages/server/scripts/bots.test.ts
 ```
 
-The bot integration test requires the current ABI-4 WASM and regenerated content, including stock bot profiles and waypoint maps. It starts a real TLS/WSS server and two Node worker clients running the product `OnlineSession` with AI disabled. DM/Arena and CTF/ctf_Ash cases check snapshot hashes in both clients, relayed controls, profile names, balanced teams, scores, waypoint movement, and firing. It also checks malformed choices and choice flooding against a healthy match. `NET_G4_WASM`, `NET_G4_CONTENT`, and `NET_BOTS_OUT` override the module, content root, and test-artifact directory. This command is an acceptance test, not a claim that it has already passed.
+Protocol unit tests cover minimum/maximum messages, shared tick encoding, human roster changes and changed-input compression, state framing, JSON/UTF-8 validation, byte/record limits, malformed/truncated packets, and structured fuzzing. Transport queue tests cover cross-channel FIFO, ownership, combined capacity limits, and storage compaction.
 
-The delta measurement command uses `build-out/sim/sim.wasm`, verified `dist/content/sim/manifest.json` content and the arena movement fixture when the real sim exists. It steps through 60 consecutive real states and checks byte-exact delta reconstruction. If WASM is absent (or `--synthetic` is supplied), it measures a deterministic sparse 64 KiB synthetic stream and explicitly reports the real save-state measurement as **pending**. A failed real module/content/fixture check fails the command instead of silently substituting synthetic results. Ratio is encoded delta bytes divided by uncompressed current-state bytes; headers outside the delta are excluded.
-
-Measured before the real module was available: 60 synthetic consecutive-state pairs, 3,932,160 raw bytes → 9,176 delta bytes, ratio **0.00233358 (0.23336%)**.
-
-Measured on the rebuilt real `sim.wasm` (ABI `0x00010001`): 60 consecutive arena state pairs, ticks 0→60, **307,276,440 raw bytes → 65,067 delta bytes**, ratio **0.000211754 (0.0211754%)**. Each raw state was 5,121,274 bytes; encoded deltas averaged 1,084.45 bytes. All 60 reconstructed states matched byte-for-byte. Content-set hash: `855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109`. This is the fixture's initial idle segment, not a combat/multiplayer bandwidth estimate. The earlier first-step tick-contract failure was fixed in the simulator before collecting these results; no synthetic fallback was used.
-
-The ABI-1 idle delta measurement above is historical, not current combat/multiplayer evidence. Current online qualification, exact frozen binary identity, security results and all pending real-impairment/human/soak checks are recorded in [G4](../../docs/gates/G4.md).
+Server/client integration and real-network qualification require the current frozen WASM and verified content. These commands are acceptance checks, not a claim that they have passed for this revision. Current qualification status belongs in [G4](../../docs/gates/G4.md). The obsolete v3 delta probe and its idle/synthetic ratios do not measure v4 input-relay bandwidth and have been removed; SPEC §6.4 targets still require actual v4 multiplayer measurement.
 
 ## Matchmaking HTTP reference
 

@@ -8,8 +8,7 @@
   },
   "scripts": {
     "test": "bun test test src/transport",
-    "typecheck": "tsc --noEmit",
-    "measure:delta": "node scripts/measure-delta.ts"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "^1.3.0",
