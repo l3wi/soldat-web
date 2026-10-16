@@ -70,12 +70,13 @@ function wordmark() {
   return `<header class="masthead"><h1 class="wordmark"><span>Field</span><span>Sandbox</span></h1>${state.screen === 'boot' ? '' : '<span class="edition">Working title<br>Original art / browser edition</span>'}</header>`;
 }
 function roster(friends = false) {
-  return `<div class="roster-grid" aria-label="${friends ? 'Lobby players' : 'Joined players'}">
-    <div class="roster-tile you"><span>${identity()}</span><small>${friends ? (state.host ? 'Host / Ready' : state.ready ? 'Ready' : 'Not ready') : 'You'}</small></div>
-    <div class="roster-tile"><span>Sarge</span><small>${friends ? (state.host ? 'Ready' : 'Host / Ready') : 'Player'}</small></div>
-    ${friends ? '' : '<div class="roster-tile"><span>Major</span><small>Player</small></div>'}
-    <div class="roster-tile bots"><span>+ ${friends ? '6' : '5'} bots</span><small>Filling empty slots</small></div>
-  </div>`;
+  // A plain wrapping row of names; bots are one aggregate entry. In friend lobbies, unready names are dimmed.
+  const others = friends ? ['Sarge', 'Kowalski', 'Rook'] : ['Sarge', 'Major', 'Kowalski', 'Rook', 'Viper', 'Mags'];
+  const meReady = !friends || state.host || state.ready;
+  const names = [`<li class="you${meReady ? '' : ' waiting'}" title="${friends ? (meReady ? 'Ready' : 'Not ready') : 'You'}">${identity()}</li>`,
+    ...others.map((name, index) => `<li${friends && index === 2 ? ' class="waiting" title="Not ready"' : ''}>${name}</li>`),
+    `<li class="bots">+ ${friends ? 4 : 2} bots</li>`];
+  return `<ul class="roster" aria-label="${friends ? 'Lobby players' : 'Joined players'}">${names.join('')}</ul>`;
 }
 function setupRows() {
   return `<div class="config" aria-label="Game setup">
