@@ -51,7 +51,7 @@ See the [shared protocol reference](../protocol/README.md#matchmaking-http-refer
 - `GET /api/regions`: actual configured regions.
 - `POST /api/quickplay {nickname}`: lowest-load available public match, or a new bot-capable DM rotation match. Returns `{matchId,wsUrl,map,mode,humans,bots}`. Connect with the existing binary hello using the returned single-use, expiring ticket URL.
 - `POST /api/lobbies {mode,map}`: returns `{code,hostToken,wsUrl}`. Keep the token secret; share `/?lobby=CODE`.
-- `GET /api/lobbies/:code`: public lobby state, never the host token or a usable match-admission ticket.
+- `GET /api/lobbies/:code`: public lobby state plus canonical lobby `wsUrl`, never the host token or a usable match-admission ticket. Use this WSS URL even when the HTTP API is reached through a development proxy.
 - Lobby WSS `/lobbies/CODE`: `lobby-join`, `lobby-update`, `lobby-ready`, `lobby-start`, `lobby-leave`; receives personalized `lobby-state {selfId,state}` or `lobby-error {reason}`.
 
 Only the host can change setup/start; setup changes clear guest readiness. All guests must be ready. Late joiners enter the same started match and replace a bot. Host departure closes an unstarted lobby; a started match survives. Empty lobbies and matches with no humans/reservations are reclaimed after five minutes. Outstanding tickets expire after 30 seconds. The server bounds match/lobby/roster capacity, body/packet sizes, and admission waits; malformed and abusive requests do not start unbounded workers.

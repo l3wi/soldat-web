@@ -283,11 +283,11 @@ The HTTPS origin corresponding to the game WSS endpoint serves JSON endpoints. A
 | `GET /api/regions` | — | `[{id,name,url}]`; `url` is an HTTPS origin; only configured regions exist |
 | `POST /api/quickplay` | `{nickname}` | `{matchId,wsUrl,map,mode,humans:string[],bots:number}` |
 | `POST /api/lobbies` | `{mode:"dm"|"ctf",map}` | `{code,hostToken,wsUrl}` |
-| `GET /api/lobbies/:code` | — | `LobbyState`, without host token or admission ticket |
+| `GET /api/lobbies/:code` | — | `LobbyLookup`: `LobbyState` plus canonical lobby `wsUrl`, without host token or admission ticket |
 
 Quickplay selects the available public match with the lowest human-plus-reservation load, otherwise starts a separate worker/WASM with a rotating bot-capable stock DM map. The response roster includes pending reservations. `wsUrl` includes a random, single-use admission ticket valid for 30 seconds. Connect there using the ordinary binary `hello`; there is no new simulation admission message. Unconsumed reservations expire and cannot exhaust capacity permanently.
 
-The six-character lobby code is uppercase alphanumeric. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Derive lobby WSS as `wss://<api-host>/lobbies/CODE`. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
+The six-character lobby code is uppercase alphanumeric. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Use the canonical lobby `wsUrl` returned by create/lookup; do not derive it from the browser's HTTP origin, which may be a development proxy. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
 
 ## Lobby binary payload reference
 

@@ -19,6 +19,7 @@ export interface LobbyState {
   code: string; mode: GameMode; map: string; targetPlayers: number;
   players: LobbyPlayer[]; started: boolean; matchId?: string; matchWsUrl?: string;
 }
+export interface LobbyLookup extends LobbyState { wsUrl: string }
 export type LobbyMessage =
   | { type: "lobby-join"; nickname: string; hostToken?: string }
   | { type: "lobby-update"; mode?: GameMode; map?: string; targetPlayers?: number }

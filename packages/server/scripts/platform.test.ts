@@ -106,6 +106,9 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
     const replacementGame = new RawPeer(rejoined.state.matchWsUrl!); gamePeers.push(replacementGame); await replacementGame.connect(config.match.contentSetHash, "Replacement");
     await replacementGame.waitFor((message): message is Extract<Message, { type: "snapshot" }> => message.type === "snapshot");
     const fetched = await api(server.origin, `/api/lobbies/${created.value.code}`); assert.equal(fetched.value.started, true); assert.equal(fetched.value.hostToken, undefined);
+    assert.equal(fetched.value.wsUrl, created.value.wsUrl);
+    assert.ok(fetched.value.wsUrl.startsWith("wss://"));
+    assert.equal(new URL(fetched.value.wsUrl).search, "");
     assert.deepEqual(server.errors, []);
   } finally { await Promise.all(gamePeers.map(peer => peer.close())); await Promise.all(lobbyPeers.map(peer => peer.close())); await server.close(); }
 });

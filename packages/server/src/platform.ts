@@ -197,7 +197,7 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
       else if (request.method === "GET" && /^\/api\/lobbies\/[A-Z0-9]{6}$/.test(path)) {
         const lobby = lobbies.get(path.split("/").at(-1)!);
         if (!lobby) throw new HttpError(404, "Lobby not found");
-        result = lobby.state;
+        result = { ...lobby.state, wsUrl: `${wsOrigin()}/lobbies/${lobby.code}` };
       } else if (request.method === "POST" && (path === "/api/quickplay" || path === "/api/lobbies")) {
         rateLimit(request.socket.remoteAddress ?? "unknown");
         const data = await body(request);
