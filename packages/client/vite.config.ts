@@ -14,7 +14,7 @@ const virtualWasm = "virtual:soldat-sim-wasm";
 const resolvedVirtualWasm = "\0" + virtualWasm;
 
 function gameAssets(build: boolean): Plugin {
-  const contentRoot = resolve(root, process.env.SOLDAT_CONTENT_ROOT ?? (build ? "dist/content-next" : "dist/content"));
+  const contentRoot = resolve(root, process.env.SOLDAT_CONTENT_ROOT ?? "dist/content-next");
   let outDir = resolve(root, "dist/client");
   let wasmReference: string | undefined;
   return {

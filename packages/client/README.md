@@ -9,12 +9,12 @@ From the repository root:
 ```sh
 bun install
 bun packages/content/src/cli.ts --base reference/base --out dist/content-next
-SOLDAT_CONTENT_ROOT=dist/content-next bun run --cwd packages/client dev --port 5195
+bun run --cwd packages/client dev --port 5195
 ```
 
 Open `http://127.0.0.1:5195/`, choose a map, DM/CTF mode and 0–31 original waypoint bots, then start practice. CTF offers your team and balanced/all-Alpha/all-Bravo bot assignment; difficulty uses the original 300/200/100/50/10 skill settings. Maps marked bot-incapable show **bots need waypoints on this map**. Settings persist on this browser. Click the canvas to focus keyboard/mouse controls; use **Enable audio** for the explicit Web Audio unlock gesture. **Respawn** issues the simulation's reliable `spawn` command at its current tick. Credits & Licenses is available both from the main menu and in-game About.
 
-Development serves `/content/` from `dist/content/` by default, or the repository-relative/absolute `SOLDAT_CONTENT_ROOT` directory when set. Use the explicit `dist/content-next` override above while retaining an older `dist/content` baseline: the current client needs the new index and simulation packs, which the old baseline import lacks. `/sim.wasm` serves the existing `build-out/sim/sim.wasm`. The real module must already exist; neither the client build nor preview rebuilds it. Module/ABI/content failures leave the map visible with an explicit **simulation unavailable** notice; no placeholder soldier or TypeScript pose evaluator exists.
+Development and production now serve `/content/` from the validated `dist/content-next/` import by default; the repository-relative/absolute `SOLDAT_CONTENT_ROOT` overrides that directory. The retained `dist/content/` baseline remains untouched and lacks the new browser index/packs. `/sim.wasm` serves the existing `build-out/sim/sim.wasm`. The real module must already exist; neither the client build nor preview rebuilds it. Module/ABI/content failures leave the map visible with an explicit **simulation unavailable** notice; no placeholder soldier or TypeScript pose evaluator exists.
 
 ```sh
 bun run --cwd packages/client check
