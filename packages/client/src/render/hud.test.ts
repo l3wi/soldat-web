@@ -271,3 +271,22 @@ test("limbo secondary selection stays open and carries explicit apply intent bef
   assert.equal(limbo.active, false);
   assert.deepEqual(choices, [[4, 11, "secondary"], [7, 11, "primary"]]);
 });
+
+test("CTF scoreboard team headers never overlap the preceding team's last bot", () => {
+  const rows: { value: string; y: number }[] = [];
+  const hud = Object.assign(Object.create(CombatHud.prototype), {
+    logicalWidth: 640, scroll: 0, accessible: { textContent: "" },
+    context: { save() {}, beginPath() {}, rect() {}, clip() {}, restore() {} },
+    sprite() {}, text(value: string, _x: number, y: number) { rows.push({ value, y }); },
+  }) as { drawScoreboard(world: { sprites: unknown[] }, state: HudPresentation, localSlot: number): void };
+  hud.drawScoreboard({ sprites: [] }, { gameMode: 3, players: [
+    { slot: 1, name: "Human", team: 1 }, { slot: 2, name: "Alpha bot", team: 1, bot: true },
+    { slot: 3, name: "Bravo bot", team: 2, bot: true },
+  ] }, 1);
+  const y = (name: string) => rows.find(row => row.value === name)!.y;
+  assert.equal(y("Alpha"), 60);
+  assert.equal(y("Human"), 80);
+  assert.equal(y("Alpha bot"), 100);
+  assert.equal(y("Bravo"), 120);
+  assert.equal(y("Bravo bot"), 140);
+});

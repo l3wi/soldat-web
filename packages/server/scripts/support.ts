@@ -12,7 +12,7 @@ import { SIM_ABI_VERSION, type SimManifest } from "@soldat-web/sim-host";
 import { createGameServer, type GameServer } from "../src/server.ts";
 import type { MatchConfiguration, WorkerResponse } from "../src/worker-messages.ts";
 
-export const FROZEN_WASM_SHA256 = "0b1abc99f7292d7f636ea97992b47651af901b16004ddea571043b66a595f509";
+export const FROZEN_WASM_SHA256 = "e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1";
 export const exec = promisify(execFile);
 export const delay = (milliseconds: number) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
 export const json = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item);

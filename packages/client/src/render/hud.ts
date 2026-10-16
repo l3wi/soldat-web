@@ -768,7 +768,7 @@ export class CombatHud {
     let row = 0;
     let accessible = "Player\tKills / points\tDeaths\tPing\n";
     const renderPlayer = (player: HudPlayer): void => {
-      const py = y + 80 + row++ * 20;
+      const py = y + (groups > 0 ? 60 : 80) + row++ * 20;
       const color = player.shirtColor === undefined ? TEAM_COLORS[player.team] : `#${(player.shirtColor & 0xffffff).toString(16).padStart(6, "0")}`;
       this.text(player.name ?? `Slot ${player.slot} (name unavailable)`, x + 44, py, 9, color);
       this.text(shown(player.kills), x + 284, py, 9, color);

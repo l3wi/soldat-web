@@ -22,12 +22,15 @@ const browser = await chromium.launch({ channel: "chrome", headless: true, args:
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
   page.on("pageerror", error => receipt.errors.push(String(error)));
-  page.on("console", message => { if (message.type() === "error") receipt.errors.push(message.text()); });
+  page.on("console", message => { if (message.type() === "error") receipt.errors.push(`${message.text()} ${message.location().url}`); });
+  page.on("response", response => { if (response.status() >= 400) receipt.errors.push(`HTTP ${response.status()}: ${response.url()}`); });
   receipt.runtime = await browser.version();
   for (const mode of ["dm", "ctf"]) for (const count of [4, 8]) {
     const map = mode === "dm" ? "Arena" : "ctf_Ash";
     const row = { map, mode, bots: count, status: "running", samples: 0, movingSlots: [], shootingSlots: [], respawnedSlots: [], kills: 0, deaths: 0, scores: [], errors: [] };
     receipt.rows.push(row); await save();
+    const servedWasm = await fetch(`${url}/sim.wasm`);
+    if (!servedWasm.ok || hash(new Uint8Array(await servedWasm.arrayBuffer())) !== expected) throw new Error("Served WASM changed between bot matches");
     await page.goto(`${url}/?bots-check`, { waitUntil: "networkidle" });
     await page.waitForSelector("#map-choice option[value='Arena']");
     await page.selectOption("#map-choice", map);
@@ -76,6 +79,7 @@ try {
     await save();
     if (row.errors.length) throw new Error(`${map}/${count}: ${row.errors.join("; ")}`);
   }
+  if (hash(await readFile(resolve(root, "build-out/sim/sim.wasm"))) !== expected) throw new Error("Frozen WASM changed during capture");
   receipt.completed = receipt.rows.length === 4 && receipt.errors.length === 0;
   await save();
   if (!receipt.completed) throw new Error(`Browser errors: ${receipt.errors.join("; ")}`);

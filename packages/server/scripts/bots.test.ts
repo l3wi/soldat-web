@@ -9,8 +9,8 @@ import { createGameServer } from "../src/server.ts";
 import { BOT_PROFILES, reservedBotSlots } from "../src/bots.ts";
 import { AuthoritativeMatch } from "../src/match.ts";
 import type { WorkerResponse } from "../src/worker-messages.ts";
-import { loadSim, loadSimContent, requireStatus } from "@soldat-web/sim-host";
-import { RawPeer, qualificationConfig } from "./support.ts";
+import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION } from "@soldat-web/sim-host";
+import { RawPeer, qualificationConfig, FROZEN_WASM_SHA256 } from "./support.ts";
 
 interface BotSample {
   slot: number; name: string; team: number; kills: number; deaths: number;
@@ -142,7 +142,9 @@ for (const mode of ["dm", "ctf"] as const) {
       await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotSnapshot).tick >= before + 12, context.signal);
       assert.ok(samples.at(-1)!.tick > before, "healthy clients stopped receiving snapshots after attacker rejection");
       assert.deepEqual(errors, []);
-      await writeFile(resolve(out, "bots.json"), JSON.stringify({ mode, sharedHashes, slots: ready.map(sample => sample.slot), initial, latest, firingObserved: true, samples: samples.length, errors }, null, 2));
+      await writeFile(resolve(out, "bots.json"), JSON.stringify({ wasmSha256: FROZEN_WASM_SHA256, abiVersion: SIM_ABI_VERSION,
+        contentSetHash: config.manifest.sha256, mode, sharedHashes, slots: ready.map(sample => sample.slot), initial, latest,
+        firingObserved: true, samples: samples.length, errors }, null, 2));
     } finally {
       await Promise.all(workers.map(worker => worker.terminate()));
       await server.close();
