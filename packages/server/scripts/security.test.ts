@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { once } from "node:events";
 import { resolve } from "node:path";
-import { encodeMessage, PROTOCOL_VERSION, ProtocolError, type InputFrame, type Message } from "@soldat-web/protocol";
+import { MAX_CLIENT_PACKET_BYTES, encodeMessage, PROTOCOL_VERSION, ProtocolError, type InputFrame, type Message } from "@soldat-web/protocol";
 import { encodeInput } from "@soldat-web/sim-host";
 import { RawPeer, delay, qualificationServer, type QualificationServer } from "./support.ts";
 
@@ -188,4 +188,34 @@ test("malformed peers leave only expected protocol diagnostics and worker stays 
   const { peer } = await activePeer();
   try { assert.equal(peer.closed, undefined); }
   finally { await peer.close(); }
+});
+
+test("F-04 oversized client message is rejected at WSS maxPayload before adapter delivery", async () => {
+  const { peer } = await activePeer();
+  try {
+    const closed = once(peer.socket, "close");
+    peer.socket.send(new Uint8Array(MAX_CLIENT_PACKET_BYTES + 1));
+    const [code] = await closed; assert.equal(code, 1009);
+  } finally { await peer.close(); }
+});
+
+test("F-06 aggregate control flood closes the session with an explicit reason", async () => {
+  const { peer } = await activePeer();
+  try {
+    const closed = once(peer.socket, "close");
+    for (let index = 0; index < 100; index++) peer.send({ type: "resync" });
+    const [code, reason] = await closed;
+    assert.equal(code, 1008); assert.match(String(reason), /Control rate limit/);
+  } finally { await peer.close(); }
+});
+
+test("F-06 client ping burst receives only one response in a 250ms window", async () => {
+  const { peer, snapshot } = await activePeer();
+  try {
+    const start = peer.messages.length;
+    for (let index = 0; index < 20; index++) peer.send({ type: "ping", timestamp: BigInt(index) });
+    await peer.waitFor((message): message is Extract<Message, { type: "ticks" }> => message.type === "ticks" && boundaryTick(message) >= boundaryTick(snapshot) + 8, start);
+    assert.equal(peer.messages.slice(start).filter(message => message.type === "pong").length, 1);
+    assert.equal(peer.closed, undefined);
+  } finally { await peer.close(); }
 });

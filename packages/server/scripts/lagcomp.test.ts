@@ -28,7 +28,7 @@ async function timeline(weapon = 4, players = 2, diagnostics = false): Promise<T
   const match = await AuthoritativeMatch.start(diagnostics ? { ...config.match, rules: { ...config.match.rules, traceCombat: true } } : config.match, response => responses.push(response));
   const result: Timeline = { match, responses, now: 0n, sequence: 0 };
   for (let slot = 1; slot <= players; slot++) match.receive({ type: "join", slot, weapon: slot === 1 ? weapon : 4, secondaryWeapon: 0 }, result.now);
-  match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, result.now);
+  for (let sample = 0; sample < 64; sample++) match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, result.now);
   return result;
 }
 function stepTo(timeline: Timeline, target: number): void {
@@ -210,11 +210,11 @@ test("trusted RTT, replay window and per-player rewind budget are enforced", asy
   const value = await timeline();
   try {
     stepTo(value, 72);
-    value.match.receive({ type: "rtt", slot: 1, milliseconds: 0 }, value.now);
+    for (let sample = 0; sample < 64; sample++) value.match.receive({ type: "rtt", slot: 1, milliseconds: 0 }, value.now);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 60, viewTick: 56, input: encodeInput({ Fire: true }) }] }, value.now);
     const expired = value.match.takeLagMetrics();
     assert.equal(expired.replayTicks, 0); assert.equal(expired.uncompensatedShots, 1);
-    value.match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, value.now);
+    for (let sample = 0; sample < 64; sample++) value.match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, value.now);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 2, tick: 61, viewTick: 57, input: encodeInput({ Fire: true }) }] }, value.now);
     const compensated = value.match.takeLagMetrics();
     assert.equal(compensated.replayMs.length, 1); assert.equal(compensated.rejectedShots, 0);
@@ -397,4 +397,53 @@ test("timely fire with an old genuine view is present-only and counted", async (
     stepTo(value, 602);
     assert.equal(value.boundary?.lastConsumedInputSeq, value.sequence + 1);
   } finally { value.match.dispose(); }
+});
+
+test("F-05 per-match replay budget falls back to consumed present fire and reports metrics", async () => {
+  const responses: WorkerResponse[] = [];
+  const match = await AuthoritativeMatch.start({ ...config.match, replayTicksPerSecond: 1 }, response => responses.push(response));
+  try {
+    for (let slot = 1; slot <= 8; slot++) {
+      match.receive({ type: "join", slot, weapon: 4, secondaryWeapon: 0 }, 0n);
+      for (let sample = 0; sample < 64; sample++) match.receive({ type: "rtt", slot, milliseconds: 400 }, 0n);
+    }
+    while (match.tick < 72) match.step();
+    responses.length = 0;
+    for (let slot = 1; slot <= 8; slot++) {
+      match.receive({ type: "input", slot, frames: [{ seq: 1, tick: match.tick - 12, viewTick: match.tick - 16, input: encodeInput({ Fire: true }) }] }, 1_000_000_000n);
+      match.step();
+    }
+    const metrics = match.takeLagMetrics();
+    assert.ok(metrics.replayTicks <= 60);
+    assert.ok(metrics.replayBudgetFallbacks > 0);
+    assert.ok(metrics.uncompensatedShots >= metrics.replayBudgetFallbacks);
+    assert.ok(responses.some(response => response.type === "ticks" && response.recipients.some(recipient => recipient.lastConsumedInputSeq === 1)));
+  } finally { match.dispose(); }
+});
+
+test("F-01 consumed-input AFK rejects once and leaving refills the original bot population", async () => {
+  const responses: WorkerResponse[] = [];
+  const match = await AuthoritativeMatch.start({ ...config.match, targetPlayers: 2, afkMs: 100 }, response => responses.push(response));
+  try {
+    match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, 0n);
+    for (let tick = 0; tick < 10; tick++) match.step();
+    const rejects = responses.filter(response => response.type === "reject");
+    assert.equal(rejects.length, 1); assert.match(rejects[0]!.reason, /AFK/);
+    match.receive({ type: "leave", slot: 1 }, 200_000_000n);
+    const host = Reflect.get(match, "host") as SimHost;
+    const view = host.renderView(); if (typeof view === "number") throw new Error("Missing render view");
+    assert.equal(Array.from({ length: 32 }, (_, i) => view.sprite(i)).filter(sprite => sprite.flags & 1).length, 2);
+  } finally { match.dispose(); }
+});
+
+test("F-05 a delayed RTT sample changes smoothed allowance conservatively", async () => {
+  const match = await AuthoritativeMatch.start(config.match, () => {});
+  try {
+    match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, 0n);
+    match.receive({ type: "rtt", slot: 1, milliseconds: 10_000 }, 0n);
+    const players = Reflect.get(match, "players") as Map<number, { rttMs: number }>;
+    assert.equal(players.get(1)!.rttMs, 12.5);
+    match.receive({ type: "rtt", slot: 1, milliseconds: 0 }, 0n);
+    assert.equal(players.get(1)!.rttMs, 9.375);
+  } finally { match.dispose(); }
 });

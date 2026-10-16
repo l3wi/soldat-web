@@ -62,7 +62,7 @@ test("every maximum legal client message fits the direction-specific limit of at
   expect(MAX_CLIENT_PACKET_BYTES).toBeLessThanOrEqual(4096);
   for (let i = 0; i < packets.length; i++) {
     expect(packets[i]!.byteLength).toBeLessThanOrEqual(MAX_CLIENT_PACKET_BYTES);
-    expect(decodeMessage(packets[i]!)).toEqual(messages[i]);
+    expect(decodeMessage(packets[i]!)).toEqual(messages[i]!);
   }
   const state = maximum.find(message => message.type === "state")!;
   expect(encodeMessage(state).byteLength).toBeGreaterThan(MAX_CLIENT_PACKET_BYTES);

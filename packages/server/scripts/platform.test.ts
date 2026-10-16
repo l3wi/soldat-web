@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { request } from "node:https";
 import { resolve } from "node:path";
 import test from "node:test";
+import { connect as connectTcp } from "node:net";
 import { Worker } from "node:worker_threads";
 import { WebSocket } from "ws";
 import { encodeMessage, decodeMessage } from "@soldat-web/protocol";
@@ -60,9 +61,14 @@ class LobbyPeer {
   }
   async close() { if (this.socket.readyState === WebSocket.CLOSED) return; const closed = once(this.socket, "close"); this.socket.close(); await closed; }
 }
+function waitForClose(socket: WebSocket): Promise<[number, Buffer]> {
+  const done = Promise.withResolvers<[number, Buffer]>();
+  socket.once("close", (code, reason) => done.resolve([code, reason]));
+  return done.promise;
+}
 
 test("quickplay leases fill lowest-load matches, create at capacity, and expire idle workers", { timeout: 60_000 }, async () => {
-  const server = await platform({ targetPlayers: 2, idleMs: 1000, reservationMs: 2000 });
+  const server = await platform({ targetPlayers: 2, idleMs: 1000, reservationMs: 2000, maxQuickplayReservationsPerIp: 5 });
   try {
     const first = await api(server.origin, "/api/quickplay", { nickname: "One" });
     const second = await api(server.origin, "/api/quickplay", { nickname: "Two" });
@@ -81,7 +87,7 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
   const server = await platform(); const lobbyPeers: LobbyPeer[] = [], gamePeers: RawPeer[] = [];
   try {
     const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" }); assert.equal(created.status, 201);
-    assert.match(created.value.code, /^[A-Z0-9]{6}$/);
+    assert.match(created.value.code, /^[0-9A-HJKMNP-TV-Z]{8}$/);
     const host = new LobbyPeer(created.value.wsUrl); lobbyPeers.push(host); const initial = await host.join("Host", created.value.hostToken);
     assert.ok(initial.state.players.find(player => player.id === initial.selfId)?.host);
     const guest = new LobbyPeer(created.value.wsUrl); lobbyPeers.push(guest); await guest.join("Guest");
@@ -92,8 +98,10 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
     guest.send({ type: "lobby-ready", ready: true });
     await host.state(state => state.players.every(player => player.ready));
     start = guest.messages.length;
-    host.send({ type: "lobby-update", targetPlayers: 3 });
+    host.send({ type: "lobby-update", targetPlayers: 2 });
     await guest.state(state => state.players.some(player => !player.host && !player.ready), start);
+    host.send({ type: "lobby-update", targetPlayers: 3 });
+    await host.state(state => state.targetPlayers === 3);
     start = host.messages.length;
     guest.send({ type: "lobby-ready", ready: true }); await host.state(state => state.players.every(player => player.ready), start);
     host.send({ type: "lobby-start" }); const started = await host.state(state => state.started); const guestStarted = await guest.state(state => state.started);
@@ -121,7 +129,7 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
 });
 
 test("host capability, lobby socket validation, host departure and idle cleanup", { timeout: 30_000 }, async () => {
-  const server = await platform({ idleMs: 100, maxMatches: 1 });
+  const server = await platform({ idleMs: 100, lobbyExpiryMs: 1000, maxMatches: 1 });
   const peers: LobbyPeer[] = [];
   try {
     const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
@@ -247,4 +255,171 @@ test("three production headless clients share a real worker/WASM authoritative t
     for (const peers of shared) assert.equal(new Set(peers.values()).size, 1);
     assert.deepEqual(server.errors, []);
   } finally { await Promise.all(workers.map(worker => worker.terminate())); await server.close(); }
+});
+
+test("F-01 hosted lobby quotas recover after absolute expiry, including a connected host", async () => {
+  const server = await platform({ maxHostedLobbiesPerIp: 1, lobbyExpiryMs: 150, idleMs: 1000 });
+  const peers: LobbyPeer[] = [];
+  try {
+    const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    const host = new LobbyPeer(created.value.wsUrl); peers.push(host); await host.join("Host", created.value.hostToken);
+    assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 429);
+    const [code, reason] = await once(host.socket, "close");
+    assert.equal(code, 1001); assert.match(String(reason), /expired/);
+    assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 201);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-01 private quota and public reserve reject explicitly while quickplay remains available", { timeout: 60_000 }, async () => {
+  const server = await platform({ maxMatches: 2, maxPrivateMatchesPerIp: 1 });
+  const peers: LobbyPeer[] = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+      const host = new LobbyPeer(created.value.wsUrl); peers.push(host); await host.join(`Host${index}`, created.value.hostToken);
+      const start = host.messages.length; host.send({ type: "lobby-start" });
+      if (index === 0) await host.state(state => state.started);
+      else { const error = await host.error(start); assert.equal(error.type, "lobby-error"); assert.match(error.reason, /reserved for quickplay/); }
+    }
+    assert.equal((await api(server.origin, "/api/quickplay", { nickname: "Public" })).status, 201);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-01 quickplay reservation quota recovers when a single-use ticket is consumed", { timeout: 60_000 }, async () => {
+  const server = await platform({ maxQuickplayReservationsPerIp: 1 });
+  let peer: RawPeer | undefined;
+  try {
+    const created = await api(server.origin, "/api/quickplay", { nickname: "One" });
+    assert.equal((await api(server.origin, "/api/quickplay", { nickname: "Two" })).status, 429);
+    peer = new RawPeer(created.value.wsUrl); await peer.connect(config.match.contentSetHash, "One");
+    assert.equal((await api(server.origin, "/api/quickplay", { nickname: "Three" })).status, 201);
+  } finally { await peer?.close(); await server.close(); }
+});
+
+test("F-02 ready/setup no-ops suppress broadcasts and changed states coalesce at ten per second", async () => {
+  const server = await platform(); const peers: LobbyPeer[] = [];
+  try {
+    const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    const host = new LobbyPeer(created.value.wsUrl); peers.push(host); await host.join("Host", created.value.hostToken);
+    const guest = new LobbyPeer(created.value.wsUrl); peers.push(guest); await guest.join("Guest");
+    await host.state(state => state.players.length === 2);
+    const start = host.messages.length;
+    host.send({ type: "lobby-ready", ready: false });
+    host.send({ type: "lobby-update", targetPlayers: 3 });
+    // Real WSS and the platform coalescing clock cannot be advanced by fake timers.
+    await delay(150); assert.equal(host.messages.length, start);
+    for (let index = 0; index < 8; index++) guest.send({ type: "lobby-ready", ready: index % 2 === 0 });
+    await delay(150);
+    assert.ok(host.messages.length - start <= 2);
+    assert.equal(host.socket.readyState, WebSocket.OPEN);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-02 slow lobby peers are terminated before exceeding the configured send budget", async () => {
+  const server = await platform({ lobbyBufferedBytes: 1 }); let peer: LobbyPeer | undefined;
+  try {
+    const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    peer = new LobbyPeer(created.value.wsUrl); await once(peer.socket, "open");
+    const closed = once(peer.socket, "close"); peer.send({ type: "lobby-join", nickname: "Slow" });
+    const [code] = await closed; assert.equal(code, 1006);
+  } finally { await peer?.close(); await server.close(); }
+});
+
+test("F-03 per-lobby pending admissions include race slots and release on close", async () => {
+  const server = await platform({ targetPlayers: 1 }); const peers: LobbyPeer[] = [];
+  try {
+    const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    for (let index = 0; index < 3; index++) { const peer = new LobbyPeer(created.value.wsUrl); peers.push(peer); await once(peer.socket, "open"); }
+    const rejected = new LobbyPeer(created.value.wsUrl); peers.push(rejected);
+    await waitForClose(rejected.socket); assert.equal(rejected.socket.readyState, WebSocket.CLOSED);
+    await peers[0]!.close();
+    const replacement = new LobbyPeer(created.value.wsUrl); peers.push(replacement); await once(replacement.socket, "open");
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-03 global pending and per-IP websocket caps cover different lobbies and recover", async () => {
+  const server = await platform({ targetPlayers: 8, maxPendingUpgrades: 2, maxWebSocketsPerIp: 2 });
+  const peers: LobbyPeer[] = [];
+  try {
+    const first = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    const second = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    for (let index = 0; index < 2; index++) { const peer = new LobbyPeer(first.value.wsUrl); peers.push(peer); await once(peer.socket, "open"); }
+    const rejected = new LobbyPeer(second.value.wsUrl); peers.push(rejected); await waitForClose(rejected.socket);
+    await peers[0]!.close();
+    const replacement = new LobbyPeer(second.value.wsUrl); peers.push(replacement); await replacement.join("Replacement");
+    const stillFull = new LobbyPeer(first.value.wsUrl); peers.push(stillFull); await waitForClose(stillFull.socket);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-07 codes are case-insensitive, failed lookups throttle, host kick blocks the guest IP", async () => {
+  const server = await platform({ failedLookupsPerMinute: 2 }); const peers: LobbyPeer[] = [];
+  try {
+    const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+    assert.equal((await api(server.origin, `/api/lobbies/${created.value.code.toLowerCase()}`)).status, 200);
+    const host = new LobbyPeer(created.value.wsUrl); peers.push(host); await host.join("Host", created.value.hostToken);
+    const guest = new LobbyPeer(created.value.wsUrl.toLowerCase()); peers.push(guest);
+    const joined = await guest.join("Guest"); await host.state(state => state.players.length === 2);
+    const start = guest.messages.length;
+    const hostState = host.messages.find((message): message is Extract<Message, { type: "lobby-state" }> => message.type === "lobby-state")!;
+    guest.send({ type: "lobby-kick", id: hostState.selfId });
+    const denied = await guest.error(start); assert.equal(denied.type, "lobby-error"); assert.match(denied.reason, /Only host/);
+    const closed = once(guest.socket, "close"); host.send({ type: "lobby-kick", id: joined.selfId });
+    const [code, reason] = await closed; assert.equal(code, 1008); assert.match(String(reason), /Kicked/);
+    const rejoin = new LobbyPeer(created.value.wsUrl); peers.push(rejoin); await waitForClose(rejoin.socket);
+    assert.equal((await api(server.origin, "/api/lobbies/ABC123")).status, 404);
+    assert.equal((await api(server.origin, "/api/lobbies/00000000")).status, 404);
+    assert.equal((await api(server.origin, "/api/lobbies/11111111")).status, 429);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-01 active private-match ownership quota recovers after empty worker expiry", { timeout: 60_000 }, async () => {
+  const server = await platform({ maxMatches: 4, maxPrivateMatchesPerIp: 1, reservationMs: 300, idleMs: 100 });
+  const peers: LobbyPeer[] = [];
+  try {
+    for (let index = 0; index < 2; index++) {
+      const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
+      const peer = new LobbyPeer(created.value.wsUrl); peers.push(peer); await peer.join(`Host${index}`, created.value.hostToken);
+    }
+    const expired = waitForClose(peers[0]!.socket);
+    peers[0]!.send({ type: "lobby-start" }); await peers[0]!.state(state => state.started);
+    let start = peers[1]!.messages.length; peers[1]!.send({ type: "lobby-start" });
+    const error = await peers[1]!.error(start); assert.equal(error.type, "lobby-error"); assert.match(error.reason, /Private match quota/);
+    await expired;
+    start = peers[1]!.messages.length; peers[1]!.send({ type: "lobby-start" });
+    await peers[1]!.state(state => state.started, start);
+  } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("F-03 concurrent raw TCP cap destroys excess connections before TLS admission", async () => {
+  const server = await platform({ maxConnectionsPerIp: 1 });
+  const address = server.httpsServer.address(); assert.ok(address && typeof address !== "string");
+  const first = connectTcp(address.port, "127.0.0.1");
+  first.on("error", () => {});
+  try {
+    await once(first, "connect");
+    const rejected = connectTcp(address.port, "127.0.0.1"); rejected.on("error", () => {});
+    const closed = Promise.withResolvers<void>(); rejected.once("close", () => closed.resolve());
+    await closed.promise; assert.equal(rejected.destroyed, true);
+  } finally { first.destroy(); await server.close(); }
+});
+
+test("F-01 AFK match sessions disconnect explicitly through the real worker and WSS", { timeout: 30_000 }, async () => {
+  const server = await platform({ afkMs: 100 }); let peer: RawPeer | undefined;
+  try {
+    const created = await api(server.origin, "/api/quickplay", { nickname: "AFK" });
+    peer = new RawPeer(created.value.wsUrl);
+    const closed = waitForClose(peer.socket);
+    await peer.connect(config.match.contentSetHash, "AFK");
+    const [code, reason] = await closed; assert.equal(code, 1008); assert.match(String(reason), /AFK/);
+  } finally { await peer?.close(); await server.close(); }
+});
+
+test("F-07/F-08 independent global lookup and creation limits cap rotating-source traffic", async () => {
+  const server = await platform({ globalFailedLookupsPerSecond: 1, globalCreationsPerSecond: 1 });
+  try {
+    assert.equal((await api(server.origin, "/api/lobbies/00000000")).status, 404);
+    assert.equal((await api(server.origin, "/api/lobbies/11111111")).status, 429);
+    assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 201);
+    assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 429);
+  } finally { await server.close(); }
 });

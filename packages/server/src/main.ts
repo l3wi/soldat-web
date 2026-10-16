@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { createPlatformServer } from "./platform.ts";
 import type { GameMode, Region } from "@soldat-web/protocol";
 import type { MatchConfiguration } from "./worker-messages.ts";
+import { hardeningLimits } from "./hardening.ts";
+import { installTlsReload } from "./tls-reload.ts";
 
 try {
   if (Number(process.versions.node.split(".")[0]) !== 24) throw new Error("The authoritative server requires Node 24 LTS");
@@ -25,8 +27,11 @@ try {
   const [key, cert] = await Promise.all([readFile(config.tlsKeyPath as string), readFile(config.tlsCertPath as string)]);
   const index = JSON.parse(await readFile(resolve(contentRoot, "index.json"), "utf8")) as { maps: Record<string, { botCapable: boolean }> };
   const maps = Object.entries(index.maps).map(([name, value]) => ({ name, botCapable: value.botCapable, mode: (name.toLowerCase().startsWith("ctf_") ? "ctf" : "dm") as GameMode }));
+  const hardening = hardeningLimits(config);
   const server = await createPlatformServer({
     match, maps, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443,
+    ...hardening,
+    ...Object.fromEntries(["maxLobbies", "idleMs", "reservationMs"].filter(name => config[name] !== undefined).map(name => [name, config[name]])),
     ...(config.publicUrl === undefined ? {} : { publicUrl: config.publicUrl as string }),
     ...(config.regions === undefined ? {} : { regions: config.regions as Region[] }),
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins as string[] }),
@@ -34,10 +39,12 @@ try {
     ...(config.maxMatches === undefined ? {} : { maxMatches: config.maxMatches as number }),
   });
   console.log(JSON.stringify({ type: "listening", address: server.httpsServer.address(), contentSetHash: manifest.sha256 }));
+  const stopReload = installTlsReload(server.httpsServer, config.tlsKeyPath as string, config.tlsCertPath as string);
   let shuttingDown = false;
   const shutdown = () => {
     if (shuttingDown) return;
     shuttingDown = true;
+    stopReload();
     void server.close().catch(error => { console.error(error); process.exitCode = 1; });
   };
   process.once("SIGINT", shutdown);

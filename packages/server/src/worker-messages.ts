@@ -11,6 +11,8 @@ export interface MatchConfiguration {
   botCount?: number;
   /** Dynamic total population; humans replace bots, 1..32. */
   targetPlayers?: number;
+  afkMs?: number;
+  replayTicksPerSecond?: number;
 }
 export type WorkerRequest =
   | { type: "join"; slot: number; weapon: number; secondaryWeapon: number; name?: string }
@@ -34,5 +36,5 @@ export type WorkerResponse =
   | { type: "ticks"; serverTick: number; records: Uint8Array; recipients: { slot: number; lastConsumedInputSeq: number }[] }
   | { type: "reject"; slot: number; reason: string }
   | { type: "left"; slot: number }
-  | { type: "metrics"; serverTick: number; overloads: number; discardedSteps: string; simEncodeMs: number[]; tickLatenessMs: number[]; replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[] }
+  | { type: "metrics"; serverTick: number; overloads: number; discardedSteps: string; simEncodeMs: number[]; tickLatenessMs: number[]; replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[] }
   | { type: "failure"; reason: string };

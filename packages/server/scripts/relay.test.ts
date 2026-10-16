@@ -55,7 +55,8 @@ test("real match relay: independent clients verify every hash across bot replace
     }});
     clients.set(slot, session);
     match.receive({type: "join", slot, weapon: 4, secondaryWeapon: 0}, BigInt(match.tick) * 16_666_667n);
-    match.receive({type: "rtt", slot, milliseconds: 400}, 0n);
+    // Model a settled probe history; a single delayed sample no longer unlocks rewind.
+    for (let sample = 0; sample < 64; sample++) match.receive({type: "rtt", slot, milliseconds: 400}, 0n);
   };
   const deliver = () => {
     for (const response of responses.splice(0)) {

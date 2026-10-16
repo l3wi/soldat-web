@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, encodeTicksMessage, validateWeaponChoice } from "@soldat-web/protocol";
+import { MAX_CLIENT_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, encodeTicksMessage, validateWeaponChoice } from "@soldat-web/protocol";
 import type { Message, ReliableEvent } from "@soldat-web/protocol";
 import type { MessageTransport } from "@soldat-web/protocol/transport";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
@@ -14,6 +14,7 @@ import type { MatchConfiguration } from "./worker-messages.ts";
 import type { WorkerResponse } from "./worker-messages.ts";
 import { INPUT_PACKET_BURST, INPUT_PACKETS_PER_SECOND } from "./input-buffer.ts";
 import { configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
+import { ConnectionAdmission, TokenBucket, hardeningLimits, sourceIp } from "./hardening.ts";
 export interface GameServerOptions {
   match: MatchConfiguration;
   httpsServer?: HttpsServer;
@@ -22,6 +23,10 @@ export interface GameServerOptions {
   port?: number;
   path?: string;
   authorize?: (request: IncomingMessage) => boolean;
+  admission?: ConnectionAdmission;
+  outboundQueueBytes?: number;
+  controlBurst?: number;
+  controlPerSecond?: number;
   onError?: (error: Error) => void;
   onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & { wireEncodeMs: number[]; workerSimEncodeMs: number[] }) => void;
   onReliableEvent?: (slot: number, event: ReliableEvent) => void;
@@ -46,6 +51,12 @@ interface Session {
   probe?: bigint;
   probeTimer?: NodeJS.Timeout;
   probeDeadline?: bigint;
+  control: TokenBucket;
+  lastPing: number;
+  pendingResync: boolean;
+  pendingAck?: number;
+  controlFlush?: NodeJS.Immediate;
+  admitted(): void;
 }
 
 export function validateHello(message: Message, contentSetHash: string): void {
@@ -63,6 +74,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   if (options.tls && !((options.tls.key && options.tls.cert) || options.tls.pfx)) throw new Error("TLS requires a certificate and private key (or PFX)");
   if (!/^[a-f0-9]{64}$/.test(options.match.contentSetHash)) throw new Error("Content-set hash must be lowercase SHA-256 hex");
   options = { ...options, match: configureMatch(options.match) };
+  const limits = hardeningLimits(options);
+  const admission = options.admission ?? new ConnectionAdmission(limits);
+  const permits = new WeakMap<WebSocket, { joined(): void; release(): void }>();
   const rules = new TextEncoder().encode(JSON.stringify(options.match.rules));
   if (rules.length > 4096) throw new Error("Rules exceed protocol limit");
   const matchSeed = BigInt(options.match.matchSeed);
@@ -71,10 +85,10 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   let server: HttpsServer;
   let sockets: WebSocketServer;
   try {
-    server = options.httpsServer ?? createServer(options.tls!, (_request, response) => {
+    server = options.httpsServer ?? createServer({ ...options.tls!, handshakeTimeout: 5000 }, (_request, response) => {
       response.writeHead(404); response.end();
     });
-    sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_PACKET_BYTES, perMessageDeflate: false });
+    sockets = new WebSocketServer({ noServer: true, maxPayload: MAX_CLIENT_PACKET_BYTES, perMessageDeflate: false });
   } catch (error) {
     await controller.stop();
     throw error;
@@ -89,8 +103,14 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
     if (socket.destroyed) return;
     if (new URL(request.url ?? "/", "https://localhost").pathname !== (options.path ?? "/")) return;
-    if (closing || (options.authorize && !options.authorize(request))) { socket.destroy(); return; }
-    sockets.handleUpgrade(request, socket, head, ws => sockets.emit("connection", ws, request));
+    if (closing || sessions.size + pendingConnections.size >= (options.match.targetPlayers ?? 32) + 2) { socket.destroy(); return; }
+    const permit = admission.acquire(sourceIp(request.socket.remoteAddress));
+    if (!permit) { socket.destroy(); return; }
+    socket.once("close", permit.release);
+    try {
+      if (options.authorize && !options.authorize(request)) { permit.release(); socket.destroy(); return; }
+      sockets.handleUpgrade(request, socket, head, ws => { permits.set(ws, permit); sockets.emit("connection", ws, request); });
+    } catch { permit.release(); socket.destroy(); }
   };
   server.on("upgrade", upgrade);
   const report = options.onError ?? ((error: Error) => console.error(error));
@@ -101,6 +121,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     session.state = "closed";
     clearTimeout(session.timer);
     clearInterval(session.probeTimer);
+    clearImmediate(session.controlFlush);
     sessions.delete(slot);
     options.onDisconnect?.(slot, code, reason);
     if (!closing) {
@@ -185,9 +206,10 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     let slot = 1;
     while (occupiedSlots.has(slot)) slot++;
     occupiedSlots.add(slot);
-    const transport = createNodeTransport(socket);
+    const transport = createNodeTransport(socket, limits.outboundQueueBytes);
     const now = process.hrtime.bigint();
-    const session: Session = { transport, state: "hello", timer: setTimeout(() => disconnect(slot, 1008, "Admission timed out"), 5000), inputTokens: INPUT_PACKET_BURST, lastInput: now, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now };
+    const session: Session = { transport, state: "hello", timer: setTimeout(() => { disconnect(slot, 1008, "Admission timed out"); socket.terminate(); }, 5000), inputTokens: INPUT_PACKET_BURST, lastInput: now, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now,
+      control: new TokenBucket(limits.controlBurst, limits.controlPerSecond), lastPing: -Infinity, pendingResync: false, admitted: () => permits.get(socket)?.joined() };
     sessions.set(slot, session);
     transport.onClose = (code, reason) => disconnect(slot, code, reason || "Connection closed");
     transport.onError = error => { report(error); disconnect(slot, 1002, "Transport error"); };
@@ -195,6 +217,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       try {
         if (channel !== "reliableControl") throw new ProtocolError("CHANNEL", "Clients may only send reliable control messages");
         const message = decodeMessage(packet);
+        if (message.type !== "input" && !session.control.take()) { disconnect(slot, 1008, "Control rate limit exceeded"); return; }
         if (session.state === "hello") {
           validateHello(message, options.match.contentSetHash);
           if (message.type !== "hello") throw new ProtocolError("TYPE", "Expected hello");
@@ -203,6 +226,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
           // The sim stores original 24-char printable-ASCII names; other admitted nicknames get a slot label.
           const name = /^[\x20-\x7e]{1,24}$/.test(message.nickname) ? message.nickname : `Player ${slot}`;
           controller.send({ type: "join", slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, name });
+          session.admitted();
           return;
         }
         if (session.state !== "active") throw new ProtocolError("VALUE", "Admission is not complete");
@@ -226,9 +250,14 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
             controller.send({ type: "weapon-choice", slot, primary: message.primary, secondary: message.secondary, selection: message.selection });
             break;
           }
-          case "eventAck": controller.send({ type: "eventAck", slot, eventId: message.eventId }); break;
-          case "resync": controller.send({ type: "resync", slot }); break;
-          case "ping": transport.send("reliableControl", encodeMessage({ type: "pong", timestamp: message.timestamp })); break;
+          case "eventAck": session.pendingAck = Math.max(session.pendingAck ?? 0, message.eventId); flushControl(); break;
+          case "resync": session.pendingResync = true; flushControl(); break;
+          case "ping":
+            if (Date.now() - session.lastPing >= 250) {
+              session.lastPing = Date.now();
+              transport.send("reliableControl", encodeMessage({ type: "pong", timestamp: message.timestamp }));
+            }
+            break;
           case "pong":
             if (session.probe === undefined || message.timestamp !== session.probe / 1000n) throw new ProtocolError("VALUE", "Unknown timing probe");
             controller.send({ type: "rtt", slot, milliseconds: Number(process.hrtime.bigint() - session.probe) / 1e6 });
@@ -244,10 +273,22 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         disconnect(slot, error instanceof ProtocolError ? 1008 : 1011, error instanceof ProtocolError ? "Protocol admission or message rejected" : "Server failure");
       }
     };
+    function flushControl(): void {
+      if (session.controlFlush) return;
+      session.controlFlush = setImmediate(() => {
+        delete session.controlFlush;
+        if (session.state !== "active") return;
+        if (session.pendingResync) { session.pendingResync = false; controller.send({ type: "resync", slot }); }
+        if (session.pendingAck !== undefined) {
+          const eventId = session.pendingAck; delete session.pendingAck;
+          controller.send({ type: "eventAck", slot, eventId });
+        }
+      });
+    }
   };
   sockets.on("connection", socket => {
     if (options.match.targetPlayers !== undefined && !closing && sessions.size + pendingConnections.size < options.match.targetPlayers && occupiedSlots.size >= options.match.targetPlayers) {
-      const timer = setTimeout(() => { pendingConnections.delete(socket); socket.close(1013, "Match admission timed out"); }, 5000);
+      const timer = setTimeout(() => { pendingConnections.delete(socket); socket.terminate(); }, 5000);
       socket.pause();
       timer.unref(); pendingConnections.set(socket, timer);
       socket.once("close", () => { clearTimeout(timer); pendingConnections.delete(socket); });

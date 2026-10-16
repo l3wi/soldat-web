@@ -1,23 +1,24 @@
 import WebSocket from 'ws';
 import type { RawData } from 'ws';
-import { MAX_PACKET_BYTES, ProtocolError, readChannel } from '@soldat-web/protocol';
+import { MAX_PACKET_BYTES, MAX_CLIENT_PACKET_BYTES, ProtocolError, readChannel } from '@soldat-web/protocol';
 import { BackpressureError, BackpressureQueue } from '@soldat-web/protocol/transport';
 import type { MessageTransport, TransportChannel } from '@soldat-web/protocol/transport';
 
 /**
  * Adapts an already-open ws socket. The WebSocketServer must also configure
- * maxPayload: MAX_PACKET_BYTES, perMessageDeflate: false, to bound receive-time
+ * maxPayload: MAX_CLIENT_PACKET_BYTES, perMessageDeflate: false, to bound receive-time
  * allocation. send copies caller bytes, retaining at most one write in flight,
  * a bounded cross-channel FIFO without replacing timeline records. Socket listeners and
  * retry timers are removed on close; this adapter exclusively owns the socket.
  */
-export function createNodeTransport(socket: WebSocket): MessageTransport {
+export function createNodeTransport(socket: WebSocket, maxOutboundBytes = 4_194_304): MessageTransport {
   if (socket.readyState !== WebSocket.OPEN) throw new Error('WebSocket must be open');
   socket.binaryType = 'arraybuffer';
-  const queue = new BackpressureQueue();
+  const queue = new BackpressureQueue({ maxReliableBytes: maxOutboundBytes });
   let stopped = false;
   let inFlight = false;
   let flushing = false;
+  let inFlightBytes = 0;
   let timer: NodeJS.Timeout | undefined;
 
   const transport: MessageTransport = {
@@ -33,6 +34,7 @@ export function createNodeTransport(socket: WebSocket): MessageTransport {
         if (readChannel(packet) !== channel) {
           throw new ProtocolError('CHANNEL', 'Packet header and send channel differ');
         }
+        if (Math.max(socket.bufferedAmount, inFlightBytes) + queue.reliableBytes + packet.byteLength > maxOutboundBytes) throw new BackpressureError('Slow peer exceeds outbound byte limit');
         queue.enqueue(channel, packet);
       } catch (error) {
         fail(error instanceof Error ? error : new Error(String(error)));
@@ -61,7 +63,8 @@ export function createNodeTransport(socket: WebSocket): MessageTransport {
       error instanceof ProtocolError ? (error.code === 'OVERSIZED' ? 1009 : 1002) : 1011;
     stop();
     try {
-      socket.close(code, 'Transport failure');
+      if (error instanceof BackpressureError) socket.terminate();
+      else socket.close(code, 'Transport failure');
     } finally {
       transport.onError?.(error);
     }
@@ -72,12 +75,15 @@ export function createNodeTransport(socket: WebSocket): MessageTransport {
     timer = undefined;
     if (stopped || flushing || inFlight || socket.readyState !== WebSocket.OPEN) return;
     flushing = true;
+    if (Math.max(socket.bufferedAmount, inFlightBytes) + queue.reliableBytes > maxOutboundBytes) { fail(new BackpressureError('Slow peer exceeds outbound byte limit')); flushing = false; return; }
     try {
       while (!stopped && !inFlight && queue.size > 0 && socket.bufferedAmount === 0) {
         const next = queue.dequeue()!;
         inFlight = true;
+        inFlightBytes = next.packet.byteLength;
         socket.send(next.packet, { binary: true, compress: false }, (error?: Error) => {
           inFlight = false;
+          inFlightBytes = 0;
           if (stopped) return;
           if (error) fail(error);
           else flush();
@@ -103,7 +109,7 @@ export function createNodeTransport(socket: WebSocket): MessageTransport {
       const length = Array.isArray(data)
         ? data.reduce((total, fragment) => total + fragment.byteLength, 0)
         : data.byteLength;
-      if (length > MAX_PACKET_BYTES) {
+      if (length > MAX_CLIENT_PACKET_BYTES) {
         throw new ProtocolError('OVERSIZED', 'Incoming packet exceeds wire limit');
       }
       if (Array.isArray(data)) {

@@ -33,15 +33,38 @@ Required JSON fields: `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `host`, `port` | `0.0.0.0`, `443` | TLS listener |
-| `publicUrl` | local listener origin | External HTTPS origin; set explicitly behind a proxy |
+| `publicUrl` | local listener origin | External direct-listener HTTPS origin; set explicitly in production |
 | `targetPlayers` | `12` | Humans plus bots per public match and friend lobby, 1–32 |
 | `maxMatches` | `8` | Worker/WASM capacity; excess creation returns 503 |
+| `maxLobbies` | `128` | Total lobby capacity, 1–4096 |
+| `idleMs` | `60000` | Close matches with no humans or live leases; reclaim empty lobbies |
+| `reservationMs` | `30000` | Single-use admission lease lifetime |
+| `maxHostedLobbiesPerIp` | `2` | Unstarted/active lobbies owned by one source |
+| `maxPrivateMatchesPerIp` | `2` | Active lobby-started matches owned by one source |
+| `maxQuickplayReservationsPerIp` | `4` | Outstanding public quickplay leases per source |
+| `lobbyExpiryMs` | `1800000` | Absolute lifetime of an unstarted lobby, including connected hosts |
+| `afkMs` | `300000` | Disconnect when consumed controls have not changed for this long |
+| `lobbyBufferedBytes` | `262144` | Lobby socket send-buffer ceiling; excess terminates the peer |
+| `maxPendingUpgrades` | `256` | Pending lobby/match admissions across the listener |
+| `maxWebSocketsPerIp` | `16` | Pending plus joined lobby/match WebSockets per source |
+| `maxConnectionsPerIp` | `32` | Concurrent TCP/TLS sockets per source |
+| `outboundQueueBytes` | `4194304` | Combined match application/socket outbound byte ceiling |
+| `replayTicksPerSecond` | `60` | Rewind-work token refill; fixed capacity is 60 replayed ticks |
+| `controlBurst` | `60` | Aggregate non-input messages initially allowed per match session |
+| `controlPerSecond` | `30` | Aggregate non-input token refill per second |
+| `failedLookupsPerMinute` | `10` | Failed lobby lookup/upgrade tokens per source per minute |
+| `globalFailedLookupsPerSecond` | `100` | Global failed lookup/upgrade burst and refill per second |
+| `globalCreationsPerSecond` | `20` | Global resource-creation burst and refill per second |
 | `regions` | current listener as Local | Configured `{id,name,url}` entries with HTTPS origins |
 | `allowedOrigins` | localhost/127.0.0.1 HTTP port 5195 | Explicit CORS/WSS origin allowlist; no wildcard |
 | `rules.botDifficulty` | native default `100` | Original 0–300 skill value |
 | `rules.world` | `original` | Native gameplay world; `fixture` is for controlled qualification |
 
-The programmatic `createPlatformServer` additionally accepts `maxLobbies` (128), `idleMs` (300000), and `reservationMs` (30000). `allowedOrigins` is also supported in server JSON configuration. The local launcher explicitly allows HTTP localhost/127.0.0.1 on ports **5195, 5198 and 5199**, permitting private capture servers without touching the user's server. Other origins remain rejected. Source-IP limits use the direct socket address, never an untrusted forwarded header. Configure a trusted proxy's own rate limits if deploying behind one.
+All hardening keys are validated positive safe integers no greater than 2147483647; lifecycle times are milliseconds. `maxMatches` is 1–64. At least `ceil(maxMatches / 4)` workers (minimum one) are reserved for public quickplay: private starts receive an explicit capacity error rather than using this reserve. Source quotas use direct socket addresses, with IPv6 grouped by /64 and IPv4-mapped addresses normalized; forwarded headers are never trusted. Bounded IP bucket tables evict their stalest entry, while global creation limits prevent address rotation bypassing total rate limits. Deploy directly with TLS, without a reverse proxy.
+
+Lobby updates coalesce to ten broadcasts per second and unchanged setup/readiness does not broadcast. Lobby admission includes joined and pending peers with two race slots; admission timeouts terminate after five seconds. TLS handshakes time out after five seconds. Match/lobby inbound WebSocket limits derive only from legal client messages; large server state decoder limits remain unchanged. Match control requests coalesce pending resync/ack work, and client pings are answered at most four times per second. Rewind budget exhaustion uses present-time fire and increments `replayBudgetFallbacks`/`uncompensatedShots`; RTT uses a 0.25 EWMA with each sample clamped to a 50 ms change before smoothing. Historical compensation remains capped at twelve ticks (200 ms at 60 Hz).
+
+SIGHUP re-reads the configured `tlsKeyPath`/`tlsCertPath` and calls `setSecureContext` without dropping existing connections. Read/validation failure logs an error and retains the previous TLS context; it never exits. SIGTERM/SIGINT retain graceful shutdown. The local launcher explicitly allows HTTP localhost/127.0.0.1 on ports **5195, 5198 and 5199**. API responses include HSTS (`max-age=31536000`) and `X-Content-Type-Options: nosniff`.
 
 ## API reference
 
@@ -52,9 +75,9 @@ See the [shared protocol reference](../protocol/README.md#matchmaking-http-refer
 - `POST /api/quickplay {nickname}`: lowest-load available public match, or a new bot-capable DM rotation match. Returns `{matchId,wsUrl,map,mode,humans,bots}`. Connect with the existing binary hello using the returned single-use, expiring ticket URL.
 - `POST /api/lobbies {mode,map}`: returns `{code,hostToken,wsUrl}`. Keep the token secret; share `/?lobby=CODE`.
 - `GET /api/lobbies/:code`: public lobby state plus canonical lobby `wsUrl`, never the host token or a usable match-admission ticket. Use this WSS URL even when the HTTP API is reached through a development proxy.
-- Lobby WSS `/lobbies/CODE`: `lobby-join`, `lobby-update`, `lobby-ready`, `lobby-start`, `lobby-leave`; receives personalized `lobby-state {selfId,state}` or `lobby-error {reason}`.
+- Lobby WSS `/lobbies/CODE`: `lobby-join`, `lobby-update`, `lobby-ready`, `lobby-start`, `lobby-kick {id}`, `lobby-leave`; receives personalized `lobby-state {selfId,state}` or `lobby-error {reason}`.
 
-Only the host can change setup/start; setup changes clear guest readiness. All guests must be ready. Late joiners enter the same started match and replace a bot. Host departure closes an unstarted lobby; a started match survives. Empty lobbies and matches with no humans/reservations are reclaimed after five minutes. Outstanding tickets expire after 30 seconds. The server bounds match/lobby/roster capacity, body/packet sizes, and admission waits; malformed and abusive requests do not start unbounded workers.
+Codes have eight random Crockford base32 characters (40 bits; no I/L/O/U); entry and lookups are case-insensitive. Old six-character links fail explicitly. Only the host can change setup/start or kick guests. A kicked guest receives an explicit close reason and its source IP cannot rejoin that lobby for ten minutes. Setup changes clear guest readiness; no-op updates do not. All guests must be ready. Late joiners enter the same started match and replace a bot. Host departure closes an unstarted lobby; a started match survives. Unstarted lobbies expire after thirty minutes even with connected peers. Empty matches with no humans/live reservations close after sixty seconds; tickets expire after thirty seconds. AFK humans are disconnected and bots refill their slots.
 
 ## Population ownership
 

@@ -6,6 +6,7 @@ import type { SimHost, SimManifest } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
 import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
 import { BOT_PROFILES, configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
+import { hardeningLimits, TokenBucket } from "./hardening.ts";
 
 interface Player {
   inputs: PlayerInputBuffer;
@@ -18,6 +19,9 @@ interface Player {
   lastRewind: number;
   weaponTokens: number;
   lastWeaponChoice: bigint;
+  lastInput: Uint8Array;
+  changedAtTick: number;
+  afkRejected: boolean;
 }
 interface History {
   state: Uint8Array | undefined;
@@ -42,6 +46,10 @@ export class AuthoritativeMatch {
   private replayTicks = 0;
   private rejectedShots = 0;
   private uncompensatedShots = 0;
+  private replayBudgetFallbacks = 0;
+  private readonly replayBudget: TokenBucket;
+  private replayNow = 0;
+  private readonly afkTicks: number;
   private inputBufferOccupancy: number[] = [];
   private inputBufferLeadTicks: number[] = [];
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
@@ -55,6 +63,9 @@ export class AuthoritativeMatch {
 
   private constructor(host: SimHost, config: MatchConfiguration & { botCount: number }, emit: (response: WorkerResponse) => void) {
     this.host = host;
+    const limits = hardeningLimits(config);
+    this.replayBudget = new TokenBucket(60, limits.replayTicksPerSecond, 0);
+    this.afkTicks = Math.max(1, Math.ceil(limits.afkMs * 60 / 1000));
     this.targetPlayers = config.targetPlayers;
     this.bots = reservedBotSlots(config.targetPlayers ?? config.botCount);
     this.teamMode = config.rules.mode === "ctf";
@@ -101,7 +112,7 @@ export class AuthoritativeMatch {
       requireStatus(this.command({ kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
       requireStatus(this.command({ kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
-      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now });
+      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, lastInput: new Uint8Array(12), changedAtTick: this.tick, afkRejected: false });
       // Never rewind across membership commands (their ownership is not input).
       this.history.clear();
       this.emit({ type: "joined", slot: message.slot, serverTick: this.tick });
@@ -127,6 +138,7 @@ export class AuthoritativeMatch {
     if (!player) return;
     switch (message.type) {
       case "input": {
+        this.replayNow = Number(now) / 1e6;
         const rejected = player.inputs.offer(message.frames, this.tick, now, frame => this.admitFire(message.slot, player, frame));
         if (rejected.includes("rate")) this.emit({ type: "reject", slot: message.slot, reason: "Input rate limit exceeded" });
         break;
@@ -148,7 +160,13 @@ export class AuthoritativeMatch {
         if (saved < 0 || (applied < 0 && applied !== -4)) this.emit({ type: "reject", slot: message.slot, reason: "Weapon choice rejected by simulation" });
         break;
       }
-      case "rtt": player.rttMs = Math.max(0, Math.min(1000, message.milliseconds)); break;
+      case "rtt": {
+        if (!Number.isFinite(message.milliseconds)) break;
+        const sample = Math.max(0, Math.min(1000, message.milliseconds));
+        const clamped = Math.max(player.rttMs - 50, Math.min(player.rttMs + 50, sample));
+        player.rttMs += (clamped - player.rttMs) * 0.25;
+        break;
+      }
       case "eventAck":
         if (message.eventId <= player.lastEventAck) break;
         if (!player.events.has(message.eventId)) { this.emit({ type: "reject", slot: message.slot, reason: "Unknown event acknowledgement" }); break; }
@@ -224,6 +242,14 @@ export class AuthoritativeMatch {
       this.inputBufferOccupancy.push(player.inputs.size);
       this.inputBufferLeadTicks.push(player.inputs.leadTicks(this.tick));
       const consumed = player.inputs.consume(this.tick), input = consumed.input.slice();
+      let changed = false;
+      for (let index = 0; index < input.length; index++) if (input[index] !== player.lastInput[index]) { changed = true; break; }
+      if (changed) {
+        player.lastInput.set(input); player.changedAtTick = this.tick;
+      } else if (!player.afkRejected && this.tick - player.changedAtTick >= this.afkTicks) {
+        player.afkRejected = true;
+        this.emit({ type: "reject", slot, reason: "AFK: consumed input unchanged for too long" });
+      }
       this.profile?.controls?.push({ slot, seq: consumed.seq, repeated: consumed.repeated, bits: new DataView(input.buffer, input.byteOffset, 12).getUint16(0, true), rejected: { ...player.inputs.rejected } });
       inputs.set(slot, input); weapons.set(slot, render.sprite(slot - 1).weapon);
     }
@@ -267,11 +293,12 @@ export class AuthoritativeMatch {
       if (!this.history.get(anchorTick)?.state) { this.uncompensatedShots++; return "present"; }
     }
     if (!late) return "present";
-    return this.rewindFire(slot, player, frame) ? "rewound" : "reject";
+    const result = this.rewindFire(slot, player, frame);
+    return result === "budget" ? "present" : result ? "rewound" : "reject";
   }
 
   /** Insert intent only; original historical guns derive muzzle, cooldown, ammo and hits. */
-  private rewindFire(slot: number, player: Player, frame: InputFrame): boolean {
+  private rewindFire(slot: number, player: Player, frame: InputFrame): boolean | "budget" {
     const age = this.tick - frame.tick;
     const bits = new DataView(frame.input.buffer, frame.input.byteOffset, 12).getUint16(0, true);
     const entry = this.history.get(frame.tick);
@@ -290,6 +317,9 @@ export class AuthoritativeMatch {
     while (restoreTick >= this.tick - HISTORY_TICKS && !this.history.get(restoreTick)?.state) restoreTick--;
     const anchor = this.history.get(restoreTick)?.state;
     if (!anchor) { this.uncompensatedShots++; return false; }
+    if (!this.replayBudget.take(this.tick - restoreTick, this.replayNow)) {
+      this.uncompensatedShots++; this.replayBudgetFallbacks++; return "budget";
+    }
     const start = performance.now();
     const corrected = previous.slice();
     const view = new DataView(corrected.buffer);
@@ -385,9 +415,9 @@ export class AuthoritativeMatch {
     if (profile) { profile.tick = this.tick; this.profile = emptyProfile(); }
     return profile;
   }
-  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
-    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
-    this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0;
+  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
+    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, replayBudgetFallbacks: this.replayBudgetFallbacks, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
+    this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0; this.replayBudgetFallbacks = 0;
     this.inputBufferOccupancy = []; this.inputBufferLeadTicks = [];
     return result;
   }
