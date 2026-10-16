@@ -17,13 +17,13 @@ const maps = [{ name: "Arena", mode: "dm", botCapable: true }, { name: "ctf_Ash"
 const config = await qualificationConfig(resolve("build-out/platform-tests"));
 interface ApiResponse extends LobbyState { matchId: string; wsUrl: string; hostToken: string; bots: number }
 interface ClientSample { type: string; player: number; error?: string; metrics?: { snapshotTick: number; snapshotHash: string; hashMismatches: number; hashMatches: number; snapshots: number; lastConsumedInputSeq: number } }
-async function api<T = ApiResponse>(origin: string, path: string, data?: unknown, raw?: string): Promise<{ status: number; value: T }> {
-  const result = Promise.withResolvers<{ status: number; value: T }>();
-  const req = request(`${origin}${path}`, { rejectUnauthorized: false, method: data === undefined && raw === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json" } }, response => {
+async function api<T = ApiResponse>(origin: string, path: string, data?: unknown, raw?: string, requestOrigin?: string): Promise<{ status: number; value: T; cors: string | undefined }> {
+  const result = Promise.withResolvers<{ status: number; value: T; cors: string | undefined }>();
+  const req = request(`${origin}${path}`, { rejectUnauthorized: false, method: data === undefined && raw === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json", ...(requestOrigin ? { Origin: requestOrigin } : {}) } }, response => {
     const chunks: Buffer[] = [];
     response.on("data", chunk => chunks.push(chunk));
     // The service under test owns these DTOs; assertions below verify their relevant fields.
-    response.on("end", () => result.resolve({ status: response.statusCode!, value: JSON.parse(Buffer.concat(chunks).toString()) as T }));
+    response.on("end", () => result.resolve({ status: response.statusCode!, value: JSON.parse(Buffer.concat(chunks).toString()) as T, cors: response.headers["access-control-allow-origin"]?.toString() }));
   });
   req.on("error", result.reject); req.end(raw ?? (data === undefined ? undefined : JSON.stringify(data)));
   return result.promise;
@@ -142,6 +142,22 @@ test("host capability, lobby socket validation, host departure and idle cleanup"
     assert.equal(available.status, 201, "canceled worker creation must release the sole match slot");
     assert.deepEqual(server.errors, []);
   } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
+});
+
+test("configured private development origins are allowed explicitly, never by wildcard", async () => {
+  const allowed = ["http://127.0.0.1:5198", "http://localhost:5199"];
+  const server = await platform({ allowedOrigins: allowed });
+  try {
+    for (const origin of allowed) {
+      const result = await api(server.origin, "/api/ping", undefined, undefined, origin);
+      assert.equal(result.status, 200); assert.equal(result.cors, origin);
+    }
+    const denied = await api(server.origin, "/api/ping", undefined, undefined, "http://127.0.0.1:5200");
+    assert.equal(denied.status, 403); assert.equal(denied.cors, undefined);
+    assert.deepEqual(server.errors, []);
+  } finally { await server.close(); }
+  await assert.rejects(platform({ allowedOrigins: ["https://example.com/path"] }), /exact HTTP/);
+  await assert.rejects(platform({ allowedOrigins: ["*"] }));
 });
 
 test("malformed, oversized, incompatible and abusive HTTP requests are rejected", async () => {

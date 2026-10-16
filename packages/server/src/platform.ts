@@ -71,6 +71,14 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
     if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`Invalid ${name}`);
   }
   if (!Number.isFinite(idleMs) || !Number.isFinite(reservationMs) || idleMs < 1 || reservationMs < 1) throw new Error("Invalid lifecycle timeout");
+  if (options.allowedOrigins !== undefined) {
+    if (!Array.isArray(options.allowedOrigins) || options.allowedOrigins.length > 32) throw new Error("Invalid allowedOrigins configuration");
+    for (const value of options.allowedOrigins) {
+      if (typeof value !== "string") throw new Error("Invalid allowed origin");
+      const url = new URL(value);
+      if ((url.protocol !== "http:" && url.protocol !== "https:") || value !== url.origin) throw new Error("Allowed origins must be exact HTTP(S) origins");
+    }
+  }
   if (options.regions !== undefined) {
     if (!Array.isArray(options.regions) || options.regions.length < 1 || options.regions.length > 32) throw new Error("Invalid regions configuration");
     const ids = new Set<string>();

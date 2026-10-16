@@ -37,10 +37,11 @@ Required JSON fields: `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal
 | `targetPlayers` | `8` | Humans plus bots per public match, 1–32 |
 | `maxMatches` | `8` | Worker/WASM capacity; excess creation returns 503 |
 | `regions` | current listener as Local | Configured `{id,name,url}` entries with HTTPS origins |
+| `allowedOrigins` | localhost/127.0.0.1 HTTP port 5195 | Explicit CORS/WSS origin allowlist; no wildcard |
 | `rules.botDifficulty` | native default `100` | Original 0–300 skill value |
 | `rules.world` | `original` | Native gameplay world; `fixture` is for controlled qualification |
 
-The programmatic `createPlatformServer` additionally accepts `maxLobbies` (128), `idleMs` (300000), `reservationMs` (30000), and explicit `allowedOrigins`. Development CORS defaults to the HTTP localhost/127.0.0.1 client on port 5195. Source-IP limits use the direct socket address, never an untrusted forwarded header. Configure a trusted proxy's own rate limits if deploying behind one.
+The programmatic `createPlatformServer` additionally accepts `maxLobbies` (128), `idleMs` (300000), and `reservationMs` (30000). `allowedOrigins` is also supported in server JSON configuration. The local launcher explicitly allows HTTP localhost/127.0.0.1 on ports **5195, 5198 and 5199**, permitting private capture servers without touching the user's server. Other origins remain rejected. Source-IP limits use the direct socket address, never an untrusted forwarded header. Configure a trusted proxy's own rate limits if deploying behind one.
 
 ## API reference
 

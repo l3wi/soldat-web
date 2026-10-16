@@ -21,6 +21,7 @@ await writeFile(configPath, JSON.stringify({
   map: "Arena", matchSeed: "123456789", rules: { mode: "dm", rng: "keyed", world: "original", botDifficulty: 100 },
   tlsKeyPath: key, tlsCertPath: cert, host: "127.0.0.1", port, publicUrl: origin, targetPlayers: 8, maxMatches: 8,
   regions: regions.map(region => ({ ...region, url: origin })),
+  allowedOrigins: [5195, 5198, 5199].flatMap(clientPort => [`http://127.0.0.1:${clientPort}`, `http://localhost:${clientPort}`]),
 }, null, 2));
 console.log(`Local API: ${origin}/api/ping (trust ${cert} in your browser first)`);
 console.log(`Client: VITE_SERVER_URL=wss://127.0.0.1:${port} bun run --cwd packages/client dev --port 5195`);
