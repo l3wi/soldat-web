@@ -245,6 +245,8 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
         const code = path.split("/").at(-1)!.toUpperCase();
         const lobby = /^[0-9A-HJKMNP-TV-Z]{8}$/.test(code) ? lobbies.get(code) : undefined;
         if (!lobby) failedLookup(address);
+        const blockedUntil = lobby.blocked.get(address) ?? 0;
+        if (blockedUntil > Date.now()) throw new HttpError(403, `Removed by the host; you can rejoin in ${Math.ceil((blockedUntil - Date.now()) / 60_000)} min`);
         result = { ...lobby.state, wsUrl: `${wsOrigin()}/lobbies/${lobby.code}` };
       } else if (request.method === "POST" && (path === "/api/quickplay" || path === "/api/lobbies")) {
         rateLimit(address);

@@ -89,6 +89,9 @@ export function ClientShell({ settings, setSettings }: { settings: Settings; set
   const lobbyHandoff = useRef<string | null>(null);
   const request = useRef<AbortController | null>(null);
   const panel = useRef<HTMLElement>(null);
+  /** Current screen for socket callbacks created once per lobby connection. */
+  const screenRef = useRef(screen);
+  screenRef.current = screen;
   const [visible, setVisible] = useState(!document.hidden);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [rotation, setRotation] = useState(0);
@@ -173,7 +176,10 @@ export function ClientShell({ settings, setSettings }: { settings: Settings; set
         setRunning({ map: state.map, sandbox: { ...DEFAULT_SANDBOX, mode: state.mode }, serverUrl: state.matchWsUrl });
         setScreen('menu');
       }
-    }, setError);
+    }, setError, message => {
+      closeLobby();
+      if (screenRef.current === 'lobby' || screenRef.current === 'maps') { navigate('menu'); setError(message); }
+    });
   };
   const createLobby = async () => {
     navigate('lobby'); setHosting(true); setBusy(true); closeLobby();

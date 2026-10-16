@@ -366,6 +366,8 @@ test("F-07 codes are case-insensitive, failed lookups throttle, host kick blocks
     const closed = once(guest.socket, "close"); host.send({ type: "lobby-kick", id: joined.selfId });
     const [code, reason] = await closed; assert.equal(code, 1008); assert.match(String(reason), /Kicked/);
     const rejoin = new LobbyPeer(created.value.wsUrl); peers.push(rejoin); await waitForClose(rejoin.socket);
+    const refused = await api(server.origin, `/api/lobbies/${created.value.code}`);
+    assert.equal(refused.status, 403); assert.match(JSON.stringify(refused.value), /Removed by the host; you can rejoin in 10 min/);
     assert.equal((await api(server.origin, "/api/lobbies/ABC123")).status, 404);
     assert.equal((await api(server.origin, "/api/lobbies/00000000")).status, 404);
     assert.equal((await api(server.origin, "/api/lobbies/11111111")).status, 429);

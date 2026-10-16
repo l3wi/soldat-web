@@ -28,10 +28,11 @@ export class LobbyConnection {
   private closed = false;
   /** Cleared when the socket fails or the server closes it; the transport then rejects sends. */
   private live = true;
-  constructor(url: string, nickname: string, hostToken: string | undefined, onState: (state: LobbyState, selfId?: string) => void, onError: (message: string) => void) {
+  /** `onError` reports recoverable lobby errors; `onClosed` reports that the lobby is gone for this client (kicked, host left, expired, network). */
+  constructor(url: string, nickname: string, hostToken: string | undefined, onState: (state: LobbyState, selfId?: string) => void, onError: (message: string) => void, onClosed: (message: string) => void) {
     this.transport = connectWss(url);
-    this.transport.onError = error => { this.live = false; if (!this.closed) onError(error.message); };
-    this.transport.onClose = (code, reason) => { this.live = false; if (!this.closed) onError(`Lobby disconnected (${code}): ${reason}`); };
+    this.transport.onError = error => { this.live = false; if (!this.closed) onClosed(error.message); };
+    this.transport.onClose = (code, reason) => { this.live = false; if (!this.closed) onClosed(reason || `Lobby disconnected (${code})`); };
     this.transport.onMessage = (_channel, packet) => {
       try {
         const message = decodeMessage(packet);
@@ -42,7 +43,7 @@ export class LobbyConnection {
     };
     this.send({ type: 'lobby-join', nickname, ...(hostToken ? { hostToken } : {}) });
   }
-  /** Disconnection has already been reported through onError, so sends on a dead socket are dropped. */
+  /** Disconnection has already been reported through onClosed, so sends on a dead socket are dropped. */
   send(message: Message): void {
     if (!this.closed && this.live) this.transport.send('reliableControl', encodeMessage(message));
   }

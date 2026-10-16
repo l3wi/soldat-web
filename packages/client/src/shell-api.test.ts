@@ -28,12 +28,12 @@ function withFakeSocket(run: () => void): void {
 
 test('leaving a lobby whose server already disconnected does not throw', () => {
   withFakeSocket(() => {
-    const errors: string[] = [];
-    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, message => errors.push(message));
+    const closed: string[] = [];
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, () => {}, message => closed.push(message));
     const socket = FakeSocket.last!;
     socket.open();
     socket.serverClose(1006, '');
-    assert.deepEqual(errors, ['Lobby disconnected (1006): ']);
+    assert.deepEqual(closed, ['Lobby disconnected (1006)']);
     assert.doesNotThrow(() => lobby.send({ type: 'lobby-ready', ready: true }));
     assert.doesNotThrow(() => lobby.close());
   });
@@ -41,7 +41,7 @@ test('leaving a lobby whose server already disconnected does not throw', () => {
 
 test('leaving a live lobby still tells the server', () => {
   withFakeSocket(() => {
-    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, () => {});
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, () => {}, () => {});
     const socket = FakeSocket.last!;
     socket.open();
     lobby.close();
@@ -51,7 +51,7 @@ test('leaving a live lobby still tells the server', () => {
 
 test('kicking a guest sends their roster id over the reliable lobby connection', () => {
   withFakeSocket(() => {
-    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', 'host-secret', () => {}, () => {});
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', 'host-secret', () => {}, () => {}, () => {});
     const socket = FakeSocket.last!;
     socket.open();
     lobby.send({ type: 'lobby-kick', id: 'guest-id' });
@@ -63,5 +63,17 @@ test('kicking a guest sends their roster id over the reliable lobby connection',
     lobby.send({ type: 'lobby-kick', id: 'other-guest' });
     assert.equal(socket.sent.length, 2);
     lobby.close();
+  });
+});
+
+test('a server close reports its reason as lobby closure, not as an inline error', () => {
+  withFakeSocket(() => {
+    const errors: string[] = [], closed: string[] = [];
+    new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, message => errors.push(message), message => closed.push(message));
+    const socket = FakeSocket.last!;
+    socket.open();
+    socket.serverClose(1008, 'Kicked by host; rejoin blocked for 10 minutes');
+    assert.deepEqual(errors, []);
+    assert.deepEqual(closed, ['Kicked by host; rejoin blocked for 10 minutes']);
   });
 });
