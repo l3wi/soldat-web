@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decodeMessage, encodeMessage, encodeTickRecords, encodeTicksMessage, readChannel, validateInput, ProtocolError, PROTOCOL_VERSION, LIMITS, MAX_STATE_BYTES, type Message, type ReliableEvent, type TickRecord } from "../src/index.ts";
+import { decodeMessage, encodeMessage, encodeTickRecords, encodeTicksMessage, readChannel, validateInput, ProtocolError, PROTOCOL_VERSION, LIMITS, MAX_CLIENT_PACKET_BYTES, MAX_STATE_BYTES, type Message, type ReliableEvent, type TickRecord } from "../src/index.ts";
 
 let seed = 0xa421f27;
 function random(): number { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0; }
@@ -45,6 +45,28 @@ function mustDecodeOrTyped(bytes: Uint8Array): void {
   try { const decoded = decodeMessage(bytes); expect(decodeMessage(encodeMessage(decoded))).toEqual(decoded); }
   catch (error) { expect(error).toBeInstanceOf(ProtocolError); }
 }
+
+test("every maximum legal client message fits the direction-specific limit of at most 4 KiB", () => {
+  const clientTypes: Partial<Record<Message["type"], true>> = { hello: true, input: true, eventAck: true, chat: true, ping: true, pong: true, resync: true, disconnect: true, "weapon-choice": true };
+  const messages: Message[] = [
+    ...maximum.filter(message => clientTypes[message.type]),
+    { type: "lobby-join", nickname: "n".repeat(LIMITS.nickname), hostToken: "h".repeat(LIMITS.hostToken) },
+    { type: "lobby-update", mode: "ctf", map: "m".repeat(LIMITS.map), targetPlayers: 32 },
+    { type: "lobby-ready", ready: true }, { type: "lobby-start" }, { type: "lobby-leave" },
+    { type: "lobby-kick", id: "i".repeat(LIMITS.lobbyId) },
+  ];
+  const packets = messages.map(message => encodeMessage(message));
+  const largest = Math.max(...packets.map(packet => packet.byteLength));
+  expect(largest).toBe(8 + 2 + LIMITS.chat);
+  expect(MAX_CLIENT_PACKET_BYTES).toBe(Math.ceil(largest / 1024) * 1024);
+  expect(MAX_CLIENT_PACKET_BYTES).toBeLessThanOrEqual(4096);
+  for (let i = 0; i < packets.length; i++) {
+    expect(packets[i]!.byteLength).toBeLessThanOrEqual(MAX_CLIENT_PACKET_BYTES);
+    expect(decodeMessage(packets[i]!)).toEqual(messages[i]);
+  }
+  const state = maximum.find(message => message.type === "state")!;
+  expect(encodeMessage(state).byteLength).toBeGreaterThan(MAX_CLIENT_PACKET_BYTES);
+});
 
 describe("versioned little-endian codec", () => {
   for (const [label, messages] of [["minimum", minimum], ["maximum", maximum]] as const) {

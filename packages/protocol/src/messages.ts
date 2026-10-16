@@ -7,6 +7,7 @@ export const LIMITS = {
   nickname: 48, map: 128, rules: 4096, chat: 1024, reason: 256,
   frames: 3, events: 64, eventPayload: 65535, eventBatch: 1024 * 1024,
   tickRecords: 128, commands: 64, commandBytes: 4096, tickBatch: 1024 * 1024,
+  lobbyId: 32, hostToken: 64, lobbyCode: 8, matchId: 64, matchWsUrl: 1024,
 } as const;
 
 export interface InputFrame { seq: number; tick: number; viewTick: number; input: Uint8Array }
@@ -29,6 +30,7 @@ export type LobbyMessage =
   | { type: "lobby-join"; nickname: string; hostToken?: string }
   | { type: "lobby-update"; mode?: GameMode; map?: string; targetPlayers?: number }
   | { type: "lobby-ready"; ready: boolean }
+  | { type: "lobby-kick"; id: string }
   | { type: "lobby-start" | "lobby-leave" }
   | { type: "lobby-state"; selfId: string; state: LobbyState }
   | { type: "lobby-error"; reason: string };

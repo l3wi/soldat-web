@@ -1,11 +1,15 @@
-import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, MAX_STATE_BYTES, PROTOCOL_VERSION, ProtocolError, type Message, type ReliableEvent, type SlotInput, type TickRecord, type WeaponSelection } from "./messages.ts";
+import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, MAX_STATE_BYTES, PROTOCOL_VERSION, ProtocolError, type LobbyState, type Message, type ReliableEvent, type SlotInput, type TickRecord, type WeaponSelection } from "./messages.ts";
 import type { TransportChannel } from "./transport/types.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const TYPES = ["hello", "welcome", "input", "ticks", "state", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error"] as const;
-const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.tickBatch, MAX_STATE_BYTES + 20, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 0, LIMITS.reason + 4, 3, 116, 133, 1, 0, 0, 8192, 258];
+const TYPES = ["hello", "welcome", "input", "ticks", "state", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error", "lobby-kick"] as const;
+const MAX_PAYLOAD = [0, 42 + LIMITS.nickname, 21 + LIMITS.map + LIMITS.rules, 1 + LIMITS.frames * (12 + INPUT_BYTES), LIMITS.tickBatch, MAX_STATE_BYTES + 20, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 0, LIMITS.reason + 4, 3, 4 + LIMITS.nickname + LIMITS.hostToken, 5 + LIMITS.map, 1, 0, 0, 8192, LIMITS.reason + 2, LIMITS.lobbyId + 2];
 const HEADER_BYTES = 8;
+/** Client-originated packets only; state/tick/event decoder limits remain unchanged. */
+export const MAX_CLIENT_PACKET_BYTES = Math.ceil((HEADER_BYTES + Math.max(
+  ...(["hello", "input", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-kick"] as const).map(type => MAX_PAYLOAD[TYPES.indexOf(type) + 1]!),
+)) / 1024) * 1024;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
 }
@@ -205,28 +209,61 @@ function validateEvent(event: ReliableEvent): void {
 function modeId(mode: unknown): number { check(mode === "dm" || mode === "ctf", "Invalid mode"); return mode === "dm" ? 0 : 1; }
 function readMode(r: Reader): "dm" | "ctf" { const id = r.u8(); integer(id, 1); return id === 0 ? "dm" : "ctf"; }
 function readBool(r: Reader): boolean { const value = r.u8(); integer(value, 1); return value === 1; }
+function writeLobbyState(w: Writer, s: LobbyState): void {
+  check(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(s.code), "Invalid lobby code");
+  w.text(s.code, LIMITS.lobbyCode, true); w.u8(modeId(s.mode)); w.text(s.map, LIMITS.map, true);
+  integer(s.targetPlayers, 32, 1); w.u8(s.targetPlayers); integer(s.players.length, 32); w.u8(s.players.length);
+  for (const p of s.players) { w.text(p.id, LIMITS.lobbyId, true); w.text(p.nickname, LIMITS.nickname, true); check(typeof p.ready === "boolean" && typeof p.host === "boolean", "Invalid roster flags"); w.u8(p.ready ? 1 : 0); w.u8(p.host ? 1 : 0); }
+  check(typeof s.started === "boolean", "Invalid started"); w.u8(s.started ? 1 : 0);
+  if (s.started) w.text(s.matchId!, LIMITS.matchId, true);
+}
+
+/** Encode common state once per broadcast; the leading started flag is helper metadata, not wire data. */
+export function encodeLobbyStateShared(state: LobbyState): Uint8Array {
+  return typed(() => {
+    const measure = new Writer(); writeLobbyState(measure, state);
+    const bytes = new Uint8Array(1 + measure.offset), w = new Writer(bytes);
+    w.u8(state.started ? 1 : 0); writeLobbyState(w, state);
+    return bytes;
+  });
+}
+
+/** stateBytes must come from encodeLobbyStateShared for this broadcast. */
+export function encodeLobbyStateMessage(selfId: string, stateBytes: Uint8Array, matchWsUrl?: string): Uint8Array {
+  return typed(() => {
+    check(stateBytes.length > 1 && (stateBytes[0] === 0 || stateBytes[0] === 1), "Invalid shared lobby state");
+    check((stateBytes[0] === 1) === (matchWsUrl !== undefined), "Started lobby requires a match URL");
+    const personalized = new Writer(); personalized.text(selfId, LIMITS.lobbyId, true);
+    if (matchWsUrl !== undefined) personalized.text(matchWsUrl, LIMITS.matchWsUrl, true);
+    const payloadBytes = personalized.offset + stateBytes.length - 1;
+    const id = TYPES.indexOf("lobby-state") + 1;
+    if (payloadBytes > MAX_PAYLOAD[id]!) throw new ProtocolError("OVERSIZED", "Payload exceeds message type limit");
+    const bytes = new Uint8Array(HEADER_BYTES + payloadBytes), w = new Writer(bytes);
+    w.u16(PROTOCOL_VERSION); w.u8(id); w.u8(0); w.u32(payloadBytes);
+    w.text(selfId, LIMITS.lobbyId, true); w.bytes(stateBytes.subarray(1));
+    if (matchWsUrl !== undefined) w.text(matchWsUrl, LIMITS.matchWsUrl, true);
+    return bytes;
+  });
+}
+
 function writePayload(w: Writer, m: Message): void {
   switch (m.type) {
-    case "lobby-join": w.text(m.nickname, 48, true); w.text(m.hostToken ?? "", 64); break;
+    case "lobby-join": w.text(m.nickname, LIMITS.nickname, true); w.text(m.hostToken ?? "", LIMITS.hostToken); break;
     case "lobby-update": {
       const flags = (m.mode !== undefined ? 1 : 0) | (m.map !== undefined ? 2 : 0) | (m.targetPlayers !== undefined ? 4 : 0);
       integer(flags, 7, 1); w.u8(flags);
       if (m.mode !== undefined) w.u8(modeId(m.mode));
-      if (m.map !== undefined) w.text(m.map, 128, true);
+      if (m.map !== undefined) w.text(m.map, LIMITS.map, true);
       if (m.targetPlayers !== undefined) { integer(m.targetPlayers, 32, 1); w.u8(m.targetPlayers); }
       break;
     }
     case "lobby-ready": check(typeof m.ready === "boolean", "Invalid ready"); w.u8(m.ready ? 1 : 0); break;
+    case "lobby-kick": w.text(m.id, LIMITS.lobbyId, true); break;
     case "lobby-start": case "lobby-leave": break;
-    case "lobby-error": w.text(m.reason, 256, true); break;
+    case "lobby-error": w.text(m.reason, LIMITS.reason, true); break;
     case "lobby-state": {
-      const s = m.state;
-      check(/^[A-Z0-9]{6}$/.test(s.code), "Invalid lobby code");
-      w.text(m.selfId, 32, true); w.text(s.code, 6, true); w.u8(modeId(s.mode)); w.text(s.map, 128, true);
-      integer(s.targetPlayers, 32, 1); w.u8(s.targetPlayers); integer(s.players.length, 32); w.u8(s.players.length);
-      for (const p of s.players) { w.text(p.id, 32, true); w.text(p.nickname, 48, true); check(typeof p.ready === "boolean" && typeof p.host === "boolean", "Invalid roster flags"); w.u8(p.ready ? 1 : 0); w.u8(p.host ? 1 : 0); }
-      check(typeof s.started === "boolean", "Invalid started"); w.u8(s.started ? 1 : 0);
-      if (s.started) { w.text(s.matchId!, 64, true); w.text(s.matchWsUrl!, 1024, true); }
+      w.text(m.selfId, LIMITS.lobbyId, true); writeLobbyState(w, m.state);
+      if (m.state.started) w.text(m.state.matchWsUrl!, LIMITS.matchWsUrl, true);
       break;
     }
     case "hello":
@@ -294,24 +331,25 @@ export function decodeMessage(bytes: Uint8Array): Message {
     const { type } = header(bytes), r = new Reader(bytes);
     let message: Message;
     switch (type) {
-      case "lobby-join": { const nickname = r.text(48, true), hostToken = r.text(64); message = { type, nickname, ...(hostToken ? { hostToken } : {}) }; break; }
+      case "lobby-join": { const nickname = r.text(LIMITS.nickname, true), hostToken = r.text(LIMITS.hostToken); message = { type, nickname, ...(hostToken ? { hostToken } : {}) }; break; }
       case "lobby-update": {
         const flags = r.u8(); integer(flags, 7, 1);
-        const mode = flags & 1 ? readMode(r) : undefined, map = flags & 2 ? r.text(128, true) : undefined;
+        const mode = flags & 1 ? readMode(r) : undefined, map = flags & 2 ? r.text(LIMITS.map, true) : undefined;
         const targetPlayers = flags & 4 ? r.u8() : undefined;
         if (targetPlayers !== undefined) integer(targetPlayers, 32, 1);
         message = { type, ...(mode !== undefined ? { mode } : {}), ...(map !== undefined ? { map } : {}), ...(targetPlayers !== undefined ? { targetPlayers } : {}) }; break;
       }
       case "lobby-ready": message = { type, ready: readBool(r) }; break;
+      case "lobby-kick": message = { type, id: r.text(LIMITS.lobbyId, true) }; break;
       case "lobby-start": case "lobby-leave": message = { type }; break;
-      case "lobby-error": message = { type, reason: r.text(256, true) }; break;
+      case "lobby-error": message = { type, reason: r.text(LIMITS.reason, true) }; break;
       case "lobby-state": {
-        const selfId = r.text(32, true), code = r.text(6, true), mode = readMode(r), map = r.text(128, true), targetPlayers = r.u8(), count = r.u8();
-        check(/^[A-Z0-9]{6}$/.test(code), "Invalid lobby code"); integer(targetPlayers, 32, 1); integer(count, 32);
+        const selfId = r.text(LIMITS.lobbyId, true), code = r.text(LIMITS.lobbyCode, true), mode = readMode(r), map = r.text(LIMITS.map, true), targetPlayers = r.u8(), count = r.u8();
+        check(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(code), "Invalid lobby code"); integer(targetPlayers, 32, 1); integer(count, 32);
         const players = [];
-        for (let i = 0; i < count; i++) players.push({ id: r.text(32, true), nickname: r.text(48, true), ready: readBool(r), host: readBool(r) });
+        for (let i = 0; i < count; i++) players.push({ id: r.text(LIMITS.lobbyId, true), nickname: r.text(LIMITS.nickname, true), ready: readBool(r), host: readBool(r) });
         const started = readBool(r);
-        message = { type, selfId, state: { code, mode, map, targetPlayers, players, started, ...(started ? { matchId: r.text(64, true), matchWsUrl: r.text(1024, true) } : {}) } }; break;
+        message = { type, selfId, state: { code, mode, map, targetPlayers, players, started, ...(started ? { matchId: r.text(LIMITS.matchId, true), matchWsUrl: r.text(LIMITS.matchWsUrl, true) } : {}) } }; break;
       }
       case "hello": message = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true), weapon: r.u8(), secondaryWeapon: r.u8() }; break;
       case "welcome": {
