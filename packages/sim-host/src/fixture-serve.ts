@@ -19,7 +19,7 @@ await mkdir(args.out, { recursive: true });
 const results: { runtime?: string; fixture?: string; accepted: boolean; error?: string; mismatch?: ReceiptDifference }[] = [];
 let serial = 0;
 const server = Bun.serve({
-  hostname: "127.0.0.1", port: Number(process.env.PORT ?? 4174), maxRequestBodySize: 32 * 1024 * 1024,
+  hostname: "127.0.0.1", port: Number(process.env.PORT ?? 4174), maxRequestBodySize: 64 * 1024 * 1024,
   async fetch(request) {
     const path = new URL(request.url).pathname;
     try {
