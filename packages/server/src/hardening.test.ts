@@ -36,3 +36,14 @@ test("all public hardening defaults reject invalid config values", () => {
     assert.throws(() => hardeningLimits({ [key]: value }), new RegExp(key));
   }
 });
+
+test("F-07 exhausted failure buckets gate attempts until refill without charging successful lookups", () => {
+  const buckets = new BucketTable(2, 2, 1);
+  assert.equal(buckets.available("source", 0), true);
+  assert.equal(buckets.take("source", 0), true);
+  assert.equal(buckets.available("source", 0), true);
+  assert.equal(buckets.available("source", 0), true);
+  assert.equal(buckets.take("source", 0), true);
+  assert.equal(buckets.available("source", 999), false);
+  assert.equal(buckets.available("source", 1000), true);
+});

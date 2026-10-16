@@ -64,6 +64,8 @@ All hardening keys are validated positive safe integers no greater than 21474836
 
 Lobby updates coalesce to ten broadcasts per second and unchanged setup/readiness does not broadcast. Lobby admission includes joined and pending peers with two race slots; admission timeouts terminate after five seconds. TLS handshakes time out after five seconds. Match/lobby inbound WebSocket limits derive only from legal client messages; large server state decoder limits remain unchanged. Match control requests coalesce pending resync/ack work, and client pings are answered at most four times per second. Rewind budget exhaustion uses present-time fire and increments `replayBudgetFallbacks`/`uncompensatedShots`; RTT uses a 0.25 EWMA with each sample clamped to a 50 ms change before smoothing. Historical compensation remains capped at twelve ticks (200 ms at 60 Hz).
 
+Failed lobby HTTP lookups and rejected lobby upgrades/admissions share the failure buckets. Once a source or global failure budget is exhausted, further lookup/upgrade attempts are rejected before resolving the code until tokens refill; successful lookups do not consume failure tokens.
+
 SIGHUP re-reads the configured `tlsKeyPath`/`tlsCertPath` and calls `setSecureContext` without dropping existing connections. Read/validation failure logs an error and retains the previous TLS context; it never exits. SIGTERM/SIGINT retain graceful shutdown. The local launcher explicitly allows HTTP localhost/127.0.0.1 on ports **5195, 5198 and 5199**. API responses include HSTS (`max-age=31536000`) and `X-Content-Type-Options: nosniff`.
 
 ## API reference

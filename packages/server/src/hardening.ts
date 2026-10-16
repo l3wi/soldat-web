@@ -46,10 +46,13 @@ export class TokenBucket {
   constructor(capacity: number, perSecond: number, now = Date.now()) {
     this.capacity = capacity; this.perSecond = perSecond; this.tokens = capacity; this.at = now;
   }
-  take(amount = 1, now = Date.now()): boolean {
+  available(amount = 1, now = Date.now()): boolean {
     this.tokens = Math.min(this.capacity, this.tokens + Math.max(0, now - this.at) * this.perSecond / 1000);
     this.at = now;
-    if (amount > this.tokens) return false;
+    return amount <= this.tokens;
+  }
+  take(amount = 1, now = Date.now()): boolean {
+    if (!this.available(amount, now)) return false;
     this.tokens -= amount; return true;
   }
 }
@@ -73,6 +76,7 @@ export class BucketTable {
     entry.at = now; this.entries.set(key, entry);
     return entry.bucket.take(1, now);
   }
+  available(key: string, now = Date.now()): boolean { return this.entries.get(key)?.bucket.available(1, now) ?? true; }
   prune(now: number): void { for (const [key, entry] of this.entries) if (now - entry.at > 120_000) this.entries.delete(key); }
 }
 

@@ -241,6 +241,7 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
       if (request.method === "GET" && path === "/api/ping") result = { ok: true };
       else if (request.method === "GET" && path === "/api/regions") result = options.regions ?? [{ id: "local", name: "Local", url: origin }];
       else if (request.method === "GET" && path.startsWith("/api/lobbies/")) {
+        if (!globalFailures.available() || !failedLookups.available(address)) throw new HttpError(429, "Lobby lookup rate limit exceeded");
         const code = path.split("/").at(-1)!.toUpperCase();
         const lobby = /^[0-9A-HJKMNP-TV-Z]{8}$/.test(code) ? lobbies.get(code) : undefined;
         if (!lobby) failedLookup(address);
@@ -287,12 +288,14 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
       if (![...matches.values()].some(match => path === `/matches/${match.id}`)) socket.destroy();
       return;
     }
-    const code = path.match(/^\/lobbies\/([0-9A-HJKMNP-TV-Z]{8})$/i)?.[1]?.toUpperCase(), lobby = code ? lobbies.get(code) : undefined;
     const address = sourceIp(request.socket.remoteAddress);
-    if (!lobby) { try { failedLookup(address); } catch {} socket.destroy(); return; }
-    if (closing || lobby.peers.size + lobby.pending >= lobby.state.targetPlayers + 2 || (lobby.blocked.get(address) ?? 0) > Date.now()) { socket.destroy(); return; }
+    if (!globalFailures.available() || !failedLookups.available(address)) { socket.destroy(); return; }
+    const code = path.match(/^\/lobbies\/([0-9A-HJKMNP-TV-Z]{8})$/i)?.[1]?.toUpperCase(), lobby = code ? lobbies.get(code) : undefined;
+    if (!lobby || closing || lobby.peers.size + lobby.pending >= lobby.state.targetPlayers + 2 || (lobby.blocked.get(address) ?? 0) > Date.now()) {
+      try { failedLookup(address); } catch {} socket.destroy(); return;
+    }
     const permit = admission.acquire(address);
-    if (!permit) { socket.destroy(); return; }
+    if (!permit) { try { failedLookup(address); } catch {} socket.destroy(); return; }
     lobby.pending++;
     let pending = true;
     const joined = () => { if (pending) { pending = false; lobby.pending--; permit.joined(); } };
@@ -369,7 +372,10 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
       } catch (error) {
         const reason = error instanceof Error ? error.message : "Lobby request rejected";
         sendLobby(peer, encodeMessage({ type: "lobby-error", reason: reason.slice(0, 200) }));
-        if (!joined) peer.close(1008, "Lobby admission rejected");
+        if (!joined) {
+          try { failedLookup(address); } catch {}
+          peer.close(1008, "Lobby admission rejected");
+        }
       }
     }
   });

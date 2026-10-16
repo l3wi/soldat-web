@@ -352,7 +352,7 @@ test("F-03 global pending and per-IP websocket caps cover different lobbies and 
 });
 
 test("F-07 codes are case-insensitive, failed lookups throttle, host kick blocks the guest IP", async () => {
-  const server = await platform({ failedLookupsPerMinute: 2 }); const peers: LobbyPeer[] = [];
+  const server = await platform({ failedLookupsPerMinute: 3 }); const peers: LobbyPeer[] = [];
   try {
     const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" });
     assert.equal((await api(server.origin, `/api/lobbies/${created.value.code.toLowerCase()}`)).status, 200);
@@ -369,6 +369,7 @@ test("F-07 codes are case-insensitive, failed lookups throttle, host kick blocks
     assert.equal((await api(server.origin, "/api/lobbies/ABC123")).status, 404);
     assert.equal((await api(server.origin, "/api/lobbies/00000000")).status, 404);
     assert.equal((await api(server.origin, "/api/lobbies/11111111")).status, 429);
+    assert.equal((await api(server.origin, `/api/lobbies/${created.value.code}`)).status, 429, "exhausted failure budget gates even a later correct guess");
   } finally { await Promise.all(peers.map(peer => peer.close())); await server.close(); }
 });
 
