@@ -1,37 +1,39 @@
 # G5 — client practice bots and online bot fill
 
-> **Original-world cutover:** the coordinator subsequently required native initial/periodic flags, medikits, grenade kits and map-authored stationary guns. Product sandbox/server now explicitly use `world:"original"`; controlled combat/prediction and legacy network fixtures explicitly use `world:"fixture"`. The results below bind the preceding `e8c4fbe…` module, not the yet-to-be-refrozen original-world implementation. New world-mode browser/Node assertions require observed medikit/grenade-kit Things and CTF flags. Original-world verification must replace these receipts after the simulation owner announces its final artifact.
+> **Original world qualified:** product sandbox/server use `world:"original"`; controlled combat/prediction and legacy network fixtures use explicit `world:"fixture"`. All final results below were rerun on the original-world module, replacing the preceding `e8c4fbe…` receipts. Native stationary guns remain conditional on the original `stationaryGuns` rule (default false), not forced into maps or represented by fake Things.
 
 ## Client integration result — PASS, 2026-10-16
 
-Final module: **`e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1`**, ABI/state `0x00010004`. Raw content set: `5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64`. Earlier artifact checks below are defect history only.
+Final module: **`18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a`**, ABI/state `0x00010004`. Raw content set: `5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64`. Earlier artifact checks below are defect history only.
 
 Installed **Chrome 155.0.8059.80**, one disposable private headless profile and one page, passed **4/4** production-menu sandbox matches on this final artifact. Each ran at least 3,600 real simulation ticks. All runs observed original bot movement, shooting, death, automatic respawn and kill scores; every initial secondary→primary menu selection immediately equipped knife + M79 without a forced respawn. **Zero runtime/console/resource errors and zero dropped simulation ticks** were reported. The module remained byte-identical through capture.
 
 | Match | Final tick | Bots moved / total | Bots seen firing | Bots seen respawning | Bot kills / deaths | CTF captures Alpha:Bravo |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| Arena DM, 4 bots | 3,605 | 4/4 | 4 | 4 | 15 / 11 | N/A |
-| Arena DM, 8 bots | 3,607 | 8/8 | 8 | 8 | 38 / 33 | N/A |
-| ctf_Ash CTF, 4 bots | 3,605 | 4/4 | 4 | 3 | 8 / 6 | 1:0 |
-| ctf_Ash CTF, 8 bots | 3,608 | 8/8 | 7 | 6 | 14 / 14 | 0:0 in this bounded run |
+| Arena DM, 4 bots | 3,605 | 4/4 | 3 | 4 | 11 / 9 | N/A |
+| Arena DM, 8 bots | 3,605 | 8/8 | 8 | 8 | 39 / 34 | N/A |
+| ctf_Ash CTF, 4 bots | 3,606 | 4/4 | 4 | 4 | 8 / 8 | 1:0 |
+| ctf_Ash CTF, 8 bots | 3,608 | 8/8 | 7 | 7 | 15 / 12 | 0:0 in this bounded run |
 
 Final receipt: `build-out/client-g5/bots-browser.json`. Screenshots: `tests/fixtures/render/bots-dm-{4,8}-arena.png` and `bots-ctf-{4,8}-ctf_ash.png`. F1 scoreboard screenshots show original profile display names, native team colors and live scores/kill feed. Visual review also found and corrected a team-header/last-player row overlap; the final CTF screenshot and focused canvas-command test show distinct rows.
+
+Every row observed original medical-kit (Thing style 16) and grenade-kit (17) instances; both CTF rows observed native flags (1/2). The original-world Node check also asserts these Things. These observations establish the product world is populated; exact native startup/periodic kit lifecycle and bot kit pickup remain covered by the simulation owner's original-world fixtures rather than inferred from a static screenshot.
 
 ```sh
 bun run --cwd packages/client dev --port 5199 --strictPort
 CLIENT_URL=http://127.0.0.1:5199 \
-WASM_SHA256=e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1 \
+WASM_SHA256=18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a \
 node packages/client/scripts/bot-capture.mjs
 ```
 
-`memory_pressure` was checked before heavy jobs (54% system-wide memory free before the final code/browser runs). All Node/browser work was serial; only the owned private Chrome and port-5199 dev server were closed afterward. The coordinator's user dev server on 5195 was not stopped. No Docker objects or user's browser windows were touched.
+`memory_pressure` was checked before heavy jobs (55% system-wide memory free before final code checks, 56% before Chrome). All Node/browser work was serial; only the owned private Chrome and port-5199 dev server were closed afterward. The coordinator's user dev server on 5195 was not stopped. No Docker objects or user's browser windows were touched.
 
 
 ## Scope
 
 The React practice menu selects DM/CTF, 0–31 bots, original difficulty (300 stupid, 200 poor, 100 normal, 50 hard, 10 impossible), human CTF team, and balanced/all-Alpha/all-Bravo bot teams. Balanced assignment counts the local human; DM uses solo team zero. Bot profiles are the 16 pinned original server profiles. Maps with `botCapable:false` warn **bots need waypoints on this map** before launch.
 
-Offline practice initializes the real original-mechanics module with `ai:true`, keyed RNG and the selected difficulty, mounts SHA-256-verified raw bot profiles, joins the human through the explicit input-authoritative path, and joins opponents with `control:"bot"`. The Phaser renderer, original-scoreboard projection and genuine death-event feed consume original bot names/teams/scores. ABI4's explicit bot flag distinguishes true AI ownership from input-authoritative human players (both use the upstream internal BOT control method).
+Offline practice initializes the real original-mechanics module with `ai:true`, `world:"original"`, keyed RNG and the selected difficulty, mounts SHA-256-verified raw bot profiles, joins the human through the explicit input-authoritative path, and joins opponents with `control:"bot"`. The Phaser renderer, original-scoreboard projection and genuine death-event feed consume original bot names/teams/scores. ABI4's explicit bot flag distinguishes true AI ownership from input-authoritative human players (both use the upstream internal BOT control method).
 
 The original limbo menu stores next-respawn choices and attempts immediate `weapon-apply` without spawning/healing/teleporting. Secondary selection applies slot two while leaving limbo open; primary applies the chosen pair and closes the original once-per-spawn eligibility window. Rejected immediate application preserves next-respawn fallback. Online choices use reliable protocol `weapon-choice {primary,secondary,selection}` and authoritative server commands; prediction never grants itself weapons.
 
@@ -56,13 +58,13 @@ The serial browser harness is `packages/client/scripts/bot-capture.mjs`. It requ
 
 ## Online bot-fill check
 
-On the final frozen ABI4 WASM `e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1`, `node --experimental-transform-types --test packages/server/scripts/bots.test.ts` passed **3/3**: two real headless production-session clients plus four original bots in Arena DM and ctf_Ash CTF, and the direct secondary/primary/fallback/rate-validation worker check. The final run compared **359 DM** and **358 CTF** shared authoritative tick hashes between peers, with zero mismatches, across 737/736 collected bot-snapshot observations. It also checked all raw bot input fields against loaded authoritative render controls, original names, team assignments, waypoint movement and firing; invalid/flooding weapon-choice peers were rejected without stopping synchronized clients. `build-out/net-bots/{dm,ctf}/bots.json` binds the module/ABI/content identities and retains compact observations, not scratch full tick traces.
+On the final original-world ABI4 WASM `18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a`, `node --experimental-transform-types --test packages/server/scripts/bots.test.ts` passed **3/3**: two real headless production-session clients plus four original bots in Arena DM and ctf_Ash CTF, and the direct secondary/primary/fallback/rate-validation worker check. The final run compared **359 DM** and **358 CTF** shared authoritative tick hashes between peers, with zero mismatches, across 736/736 collected bot-snapshot observations. It also checked all raw bot input fields against loaded authoritative render controls, original names, team assignments, waypoint movement, firing, medikits, grenade kits and both CTF flags; invalid/flooding weapon-choice peers were rejected without stopping synchronized clients. `build-out/net-bots/{dm,ctf}/bots.json` binds the module/ABI/content/world identities and retains compact observations, not scratch full tick traces.
 
 Node 24 requires `--experimental-transform-types` for the existing parameter-property-based harness. The initial strip-only invocation failed before running tests and is not counted as qualification.
 
 ## Final code checks
 
-On the final frozen module, all three package typechecks passed, the selected client/protocol Bun suite passed **92/92**, server unit tests passed **19/19**, the real-WASM production prediction suite passed **9/9** in Node, client invariant checks passed, and the Vite production build passed. Vite retains its ordinary large-chunk warning (2,049.37 kB JavaScript before gzip); it is not a failure or a measured runtime performance claim.
+On the final frozen module, all three package typechecks passed, the selected client/protocol Bun suite passed **92/92**, server unit tests passed **19/19**, the real-WASM production prediction suite passed **9/9** in Node, client invariant checks passed, and the Vite production build passed. Vite retains its ordinary large-chunk warning (2,049.48 kB JavaScript before gzip); it is not a failure or a measured runtime performance claim.
 
 ```sh
 bun run --cwd packages/client check

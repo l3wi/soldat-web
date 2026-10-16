@@ -3,7 +3,7 @@ import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message, type Reli
 import { connectWss, type MessageTransport } from "@soldat-web/protocol/transport";
 import { OnlineSession, type OnlineMetrics } from "./session.ts";
 
-const FROZEN_WASM = "e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1";
+const FROZEN_WASM = "18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a";
 export interface OnlineHook {
   readonly metrics: OnlineMetrics;
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */
