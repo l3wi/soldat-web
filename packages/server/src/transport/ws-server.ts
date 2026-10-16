@@ -8,7 +8,7 @@ import type { MessageTransport, TransportChannel } from '@soldat-web/protocol/tr
  * Adapts an already-open ws socket. The WebSocketServer must also configure
  * maxPayload: MAX_PACKET_BYTES, perMessageDeflate: false, to bound receive-time
  * allocation. send copies caller bytes, retaining at most one write in flight,
- * a bounded reliable FIFO and the newest unsent snapshot. Socket listeners and
+ * a bounded cross-channel FIFO without replacing timeline records. Socket listeners and
  * retry timers are removed on close; this adapter exclusively owns the socket.
  */
 export function createNodeTransport(socket: WebSocket): MessageTransport {

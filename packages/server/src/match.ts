@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { encodeDelta, validateWeaponChoice, validateWeaponSelection, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
+import { encodeTickRecords, validateWeaponChoice, validateWeaponSelection, type TickRecord, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
 import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@soldat-web/sim-host";
 import type { SimHost, SimManifest } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
@@ -9,9 +9,8 @@ import { BOT_PROFILES, configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WE
 
 interface Player {
   inputs: PlayerInputBuffer;
-  baselineId: number;
-  baseline: Uint8Array | undefined;
-  sent: Map<number, Uint8Array>;
+  syncTick: number | undefined;
+  nextStateTick: number;
   events: Map<number, ReliableEvent>;
   lastEventAck: number;
   lastSentEvent: number;
@@ -27,15 +26,15 @@ interface History {
 }
 const HISTORY_TICKS = 30;
 const REWIND_TICKS = 12;
-const emptyProfile = (): TickWorkProfile => ({ tick: 0, stepMs: 0, saveMs: 0, hashMs: 0, deltaMs: 0, postMs: 0, deltaEncodes: 0, recipients: 0, ...(process.env.NET_G4_INPUT_DIAGNOSTICS === "1" ? { controls: [] } : {}) });
+const emptyProfile = (): TickWorkProfile => ({ tick: 0, stepMs: 0, saveMs: 0, hashMs: 0, recordsMs: 0, postMs: 0, recordEncodes: 0, recipients: 0, ...(process.env.NET_G4_INPUT_DIAGNOSTICS === "1" ? { controls: [] } : {}) });
 
 /** One worker, one instance. History and all uncommitted effects share its timeline. */
 export class AuthoritativeMatch {
   private readonly players = new Map<number, Player>();
   private readonly history = new Map<number, History>();
   private readonly pendingEvents = new Map<number, Uint8Array>();
-  private readonly lastInputs = new Map<number, Uint8Array>();
-  private snapshotId = 0;
+  private records: TickRecord[] = [];
+  private commands: Uint8Array[] = [];
   private eventId = 0;
   private lastRewindTick = -1;
   private inputPtr: number;
@@ -96,14 +95,13 @@ export class AuthoritativeMatch {
       if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || (this.targetPlayers === undefined && this.bots.includes(message.slot)) || (this.targetPlayers !== undefined && this.players.size >= this.targetPlayers)) throw new Error("Invalid player slot");
       if (this.targetPlayers !== undefined && this.bots.length) {
         const bot = this.bots.includes(message.slot) ? message.slot : this.bots.at(-1)!;
-        requireStatus(this.host.command(this.tick, { kind: "leave", slot: bot }), "sim_command(bot replacement)");
+        requireStatus(this.command({ kind: "leave", slot: bot }), "sim_command(bot replacement)");
         this.bots.splice(this.bots.indexOf(bot), 1);
-        this.lastInputs.delete(bot);
       }
-      requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
-      requireStatus(this.host.command(this.tick, { kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
+      requireStatus(this.command({ kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
+      requireStatus(this.command({ kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
-      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), baselineId: 0, baseline: undefined, sent: new Map(), events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now });
+      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now });
       // Never rewind across membership commands (their ownership is not input).
       this.history.clear();
       this.emit({ type: "joined", slot: message.slot, serverTick: this.tick });
@@ -112,13 +110,13 @@ export class AuthoritativeMatch {
     const player = this.players.get(message.slot);
     if (message.type === "leave") {
       if (player) {
-        requireStatus(this.host.command(this.tick, { kind: "leave", slot: message.slot }), "sim_command(leave)");
+        requireStatus(this.command({ kind: "leave", slot: message.slot }), "sim_command(leave)");
         this.captureCommandEvents();
-        this.players.delete(message.slot); this.lastInputs.delete(message.slot); this.history.clear();
+        this.players.delete(message.slot); this.history.clear();
         if (this.targetPlayers !== undefined) {
           let slot = 32;
           while (this.players.has(slot) || this.bots.includes(slot)) slot--;
-          requireStatus(this.host.command(this.tick, { kind: "join", slot, control: "bot", bot: BOT_PROFILES[this.nextBotProfile++ % BOT_PROFILES.length]!, team: this.joinTeam() }), "sim_command(bot refill)");
+          requireStatus(this.command({ kind: "join", slot, control: "bot", bot: BOT_PROFILES[this.nextBotProfile++ % BOT_PROFILES.length]!, team: this.joinTeam() }), "sim_command(bot refill)");
           this.bots.push(slot);
           this.captureCommandEvents();
         }
@@ -143,27 +141,14 @@ export class AuthoritativeMatch {
         const choice = { slot: message.slot, weapon: message.primary, secondaryWeapon: message.secondary };
         // Always retain the next-respawn choice even when original limbo rules
         // do not permit changing the currently equipped weapons.
-        const saved = this.host.command(this.tick, { kind: "weapon-choice", ...choice });
-        const applied = saved < 0 ? saved : this.host.command(this.tick, { kind: "weapon-apply", ...choice, selection: message.selection });
+        const saved = this.command({ kind: "weapon-choice", ...choice });
+        const applied = saved < 0 ? saved : this.command({ kind: "weapon-apply", ...choice, selection: message.selection });
         this.captureCommandEvents();
         this.history.clear();
         if (saved < 0 || (applied < 0 && applied !== -4)) this.emit({ type: "reject", slot: message.slot, reason: "Weapon choice rejected by simulation" });
         break;
       }
       case "rtt": player.rttMs = Math.max(0, Math.min(1000, message.milliseconds)); break;
-      case "snapshotAck": {
-        if (message.snapshotId <= player.baselineId) break;
-        const baseline = player.sent.get(message.snapshotId);
-        if (!baseline) {
-          if (message.snapshotId > this.snapshotId) this.emit({ type: "reject", slot: message.slot, reason: "Unknown snapshot acknowledgement" });
-          break;
-        }
-        const synchronized = player.baselineId === 0;
-        player.baselineId = message.snapshotId; player.baseline = baseline;
-        for (const id of player.sent.keys()) if (id <= message.snapshotId) player.sent.delete(id);
-        if (synchronized) this.emit({ type: "baseline", slot: message.slot, snapshotId: message.snapshotId });
-        break;
-      }
       case "eventAck":
         if (message.eventId <= player.lastEventAck) break;
         if (!player.events.has(message.eventId)) { this.emit({ type: "reject", slot: message.slot, reason: "Unknown event acknowledgement" }); break; }
@@ -171,9 +156,11 @@ export class AuthoritativeMatch {
         for (const id of player.events.keys()) if (id <= message.eventId) player.events.delete(id);
         break;
       case "resync":
+        if (player.syncTick === undefined) break;
         player.inputs.resync(this.tick);
-        if (player.baselineId === 0 && player.sent.size !== 0) break;
-        player.baselineId = 0; player.baseline = undefined; player.sent.clear();
+        // Queue one state even inside the rate window: dropping the request
+        // would strand a client that correctly keeps only one resync in flight.
+        player.syncTick = undefined;
         break;
     }
   }
@@ -189,6 +176,12 @@ export class AuthoritativeMatch {
       else if (sprite.team === 2) bravo++;
     }
     return alpha <= bravo ? 1 : 2;
+  }
+
+  private command(command: Parameters<SimHost["command"]>[1]): number {
+    const bytes = new TextEncoder().encode(JSON.stringify(command));
+    this.commands.push(bytes);
+    return this.host.command(this.tick, command);
   }
 
   private save(): Uint8Array {
@@ -219,7 +212,11 @@ export class AuthoritativeMatch {
 
   step(): void {
     if (this.tick === 0xffffffff) throw new Error("Network tick space exhausted; restart match");
-    if (!this.players.size) { this.tick = requireStatus(this.host.step(), "sim_step"); this.events(); return; }
+    if (!this.players.size) {
+      this.tick = requireStatus(this.host.step(), "sim_step"); this.events();
+      this.commands = []; this.records = [];
+      return;
+    }
     const inputs = new Map<number, Uint8Array>(), weapons = new Map<number, number>();
     const render = this.host.renderView();
     if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
@@ -230,9 +227,12 @@ export class AuthoritativeMatch {
       this.profile?.controls?.push({ slot, seq: consumed.seq, repeated: consumed.repeated, bits: new DataView(input.buffer, input.byteOffset, 12).getUint16(0, true), rejected: { ...player.inputs.rejected } });
       inputs.set(slot, input); weapons.set(slot, render.sprite(slot - 1).weapon);
     }
-    this.history.set(this.tick, { state: this.save(), inputs, weapons });
+    const anchor = this.tick % 4 === 0 || ![...this.history.values()].some(entry => entry.state);
+    this.history.set(this.tick, { state: anchor ? this.save() : undefined, inputs, weapons });
     while (this.history.size > HISTORY_TICKS + 1) this.history.delete(this.history.keys().next().value!);
-    for (const [slot, input] of inputs) { this.apply(slot, this.tick, input); this.lastInputs.set(slot, input); }
+    for (const [slot, input] of inputs) this.apply(slot, this.tick, input);
+    this.records.push({ type: "step", tick: this.tick, commands: this.commands, inputs: [...inputs].sort((a, b) => a[0] - b[0]).map(([slot, input]) => ({ slot, input })) });
+    this.commands = [];
     const stepStart = this.profile ? performance.now() : 0;
     const advanced = requireStatus(this.host.step(), "sim_step");
     if (this.profile) this.profile.stepMs += performance.now() - stepStart;
@@ -240,7 +240,16 @@ export class AuthoritativeMatch {
     this.tick = advanced;
     this.pendingEvents.set(this.tick, this.events());
     this.commitEvents();
-    if (this.tick % 2 === 0) this.snapshot();
+    if (this.tick % 30 === 0) this.records.push({ type: "hash", tick: this.tick, hash: this.hash() });
+    const syncing = [...this.players].filter(([, player]) => player.syncTick === undefined && this.tick >= player.nextStateTick);
+    if (this.tick % 2 === 0 || syncing.length) this.flushRecords();
+    if (syncing.length) {
+      const bytes = this.save(), hash = this.hash();
+      for (const [slot, player] of syncing) {
+        player.syncTick = this.tick; player.nextStateTick = this.tick + 30;
+        this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "state", tick: this.tick, hash, lastConsumedInputSeq: player.inputs.lastConsumedSequence, bytes } });
+      }
+    }
     if (this.tick % 30 === 0) this.retransmitEvents();
   }
 
@@ -251,6 +260,11 @@ export class AuthoritativeMatch {
     if (this.tick - frame.tick > allowance || frame.tick - frame.viewTick > viewAllowance || (late && !this.history.has(frame.tick))) {
       this.uncompensatedShots++;
       return "present";
+    }
+    if (late) {
+      let anchorTick = frame.tick;
+      while (anchorTick >= this.tick - HISTORY_TICKS && !this.history.get(anchorTick)?.state) anchorTick--;
+      if (!this.history.get(anchorTick)?.state) { this.uncompensatedShots++; return "present"; }
     }
     if (!late) return "present";
     return this.rewindFire(slot, player, frame) ? "rewound" : "reject";
@@ -275,7 +289,7 @@ export class AuthoritativeMatch {
     let restoreTick = frame.tick;
     while (restoreTick >= this.tick - HISTORY_TICKS && !this.history.get(restoreTick)?.state) restoreTick--;
     const anchor = this.history.get(restoreTick)?.state;
-    if (!anchor) throw new Error("Missing retained rewind state");
+    if (!anchor) { this.uncompensatedShots++; return false; }
     const start = performance.now();
     const corrected = previous.slice();
     const view = new DataView(corrected.buffer);
@@ -301,53 +315,33 @@ export class AuthoritativeMatch {
       if (tick + 1 > this.tick - REWIND_TICKS) this.pendingEvents.set(tick + 1, this.events());
       else this.events(); // Already committed prefix: drain, never confirm twice.
     }
-    const latest = this.history.get(this.tick - 1)!;
-    for (const [owner, input] of latest.inputs) this.lastInputs.set(owner, input);
     this.lastRewindTick = this.tick; player.lastRewind = this.tick;
     this.replayTicks += this.tick - restoreTick; this.replayMs.push(performance.now() - start);
+    this.records.push({ type: "correct", tick: frame.tick, slot, input: corrected });
+    this.records.push({ type: "hash", tick: this.tick, hash: this.hash() });
+    for (const recipient of this.players.values()) if (recipient.syncTick !== undefined && recipient.syncTick > frame.tick) {
+      recipient.syncTick = undefined; recipient.nextStateTick = this.tick;
+    }
     return true;
   }
 
-  private snapshot(): void {
-    if (this.snapshotId === 0xffffffff) throw new Error("Snapshot ID space exhausted");
-    const state = this.save(), hashStart = this.profile ? performance.now() : 0;
-    const stateHash = BigInt.asUintN(64, this.host.exports.sim_hash_state());
-    if (this.profile) this.profile.hashMs += performance.now() - hashStart;
-    const id = ++this.snapshotId;
-    if (this.bots.length) {
-      const render = this.host.renderView();
-      if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
-      for (const slot of this.bots) {
-        const sprite = render.sprite(slot - 1);
-        const input = new Uint8Array(12), view = new DataView(input.buffer);
-        view.setUint16(0, sprite.controlBits, true);
-        view.setInt16(2, sprite.aimX, true); view.setInt16(4, sprite.aimY, true);
-        view.setInt16(6, sprite.mouseDist, true);
-        this.lastInputs.set(slot, input);
-      }
+  private hash(): bigint {
+    const start = this.profile ? performance.now() : 0;
+    const hash = BigInt.asUintN(64, this.host.exports.sim_hash_state());
+    if (this.profile) this.profile.hashMs += performance.now() - start;
+    return hash;
+  }
+
+  private flushRecords(): void {
+    if (!this.records.length) return;
+    const recipients = [...this.players].filter(([, player]) => player.syncTick !== undefined).map(([slot, player]) => ({ slot, lastConsumedInputSeq: player.inputs.lastConsumedSequence }));
+    if (recipients.length) {
+      const start = this.profile ? performance.now() : 0;
+      const records = encodeTickRecords(this.records);
+      if (this.profile) { this.profile.recordsMs += performance.now() - start; this.profile.recordEncodes++; this.profile.recipients += recipients.length; }
+      this.emit({ type: "ticks", serverTick: this.tick, records, recipients });
     }
-    const inputs = [...this.lastInputs].sort((a, b) => a[0] - b[0]).map(([slot, input]) => ({ slot, input }));
-    // Recipients acknowledging the same immutable snapshot share its bytes.
-    // Encode once per distinct baseline, not once per player. Each IPC post
-    // still owns its structured-cloned packet; no ACK or state is fabricated.
-    const deltas = new Map<Uint8Array | undefined, Uint8Array>();
-    for (const [slot, player] of this.players) {
-      // A missing/never-acked baseline is an explicit full-state recovery.
-      if (player.sent.size >= 128) { player.baselineId = 0; player.baseline = undefined; player.sent.clear(); }
-      // WSS already delivers this fullstate reliably. Requeueing 30 copies/s
-      // before its ACK only multiplies TCP HOL and can starve the handshake.
-      if (player.baselineId === 0 && player.sent.size !== 0) continue;
-      player.sent.set(id, state);
-      let delta = deltas.get(player.baseline);
-      if (!delta) {
-        const deltaStart = this.profile ? performance.now() : 0;
-        delta = encodeDelta(state, player.baseline);
-        deltas.set(player.baseline, delta);
-        if (this.profile) { this.profile.deltaMs += performance.now() - deltaStart; this.profile.deltaEncodes++; }
-      }
-      if (this.profile) this.profile.recipients++;
-      this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "snapshot", serverTick: this.tick, lastConsumedInputSeq: player.inputs.lastConsumedSequence, snapshotId: id, baselineId: player.baselineId, stateHash, inputs, state: delta } });
-    }
+    this.records = [];
   }
 
   private commitEvents(): void {

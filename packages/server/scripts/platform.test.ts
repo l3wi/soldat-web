@@ -16,7 +16,7 @@ import { qualificationConfig, RawPeer, delay } from "./support.ts";
 const maps = [{ name: "Arena", mode: "dm", botCapable: true }, { name: "ctf_Ash", mode: "ctf", botCapable: true }] as const;
 const config = await qualificationConfig(resolve("build-out/platform-tests"));
 interface ApiResponse extends LobbyState { matchId: string; wsUrl: string; hostToken: string; bots: number }
-interface ClientSample { type: string; player: number; error?: string; metrics?: { snapshotTick: number; snapshotHash: string; hashMismatches: number; hashMatches: number; snapshots: number; lastConsumedInputSeq: number } }
+interface ClientSample { type: string; player: number; error?: string; metrics?: { confirmedTick: number; hashTick: number; confirmedHash: string; hashMismatches: number; hashMatches: number; ticks: number; records: number; lastConsumedInputSeq: number } }
 async function api<T = ApiResponse>(origin: string, path: string, data?: unknown, raw?: string, requestOrigin?: string): Promise<{ status: number; value: T; cors: string | undefined }> {
   const result = Promise.withResolvers<{ status: number; value: T; cors: string | undefined }>();
   const req = request(`${origin}${path}`, { rejectUnauthorized: false, method: data === undefined && raw === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json", ...(requestOrigin ? { Origin: requestOrigin } : {}) } }, response => {
@@ -104,7 +104,14 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
     await lateGame.close(); await late.close(); await host.state(state => state.players.length === 2 && state.started);
     const replacement = new LobbyPeer(created.value.wsUrl); lobbyPeers.push(replacement); const rejoined = await replacement.join("Replacement");
     const replacementGame = new RawPeer(rejoined.state.matchWsUrl!); gamePeers.push(replacementGame); await replacementGame.connect(config.match.contentSetHash, "Replacement");
-    await replacementGame.waitFor((message): message is Extract<Message, { type: "snapshot" }> => message.type === "snapshot");
+    const state = await replacementGame.waitFor((message): message is Extract<Message, { type: "state" }> => message.type === "state");
+    const relay = await replacementGame.waitFor((message): message is Extract<Message, { type: "ticks" }> =>
+      message.type === "ticks" && message.records.some(record => record.type === "step"));
+    assert.equal(relay.records.find(record => record.type === "step")!.tick, state.tick);
+    for (const record of relay.records) if (record.type === "step") {
+      assert.equal(record.inputs.length, 3, "all three humans must appear in the expanded relay roster");
+      assert.deepEqual(record.inputs.map(input => input.slot), [...record.inputs.map(input => input.slot)].sort((a, b) => a - b));
+    }
     const fetched = await api(server.origin, `/api/lobbies/${created.value.code}`); assert.equal(fetched.value.started, true); assert.equal(fetched.value.hostToken, undefined);
     assert.equal(fetched.value.wsUrl, created.value.wsUrl);
     assert.ok(fetched.value.wsUrl.startsWith("wss://"));
@@ -215,21 +222,28 @@ test("three production headless clients share a real worker/WASM authoritative t
       workers.push(worker); worker.on("message", sample => samples.push(sample));
       while (true) { const [sample] = await once(worker, "message", { signal: context.signal }); if (sample.type === "failure") throw new Error(sample.error); if (sample.type === "ready") break; }
     }
-    while (!workers.every((_, index) => samples.filter(sample => sample.type === "snapshot" && sample.player === index + 1).length >= 15)) {
+    while (!workers.every((_, index) => (samples.filter(sample => sample.type === "ticks" && sample.player === index + 1).at(-1)?.metrics?.ticks ?? 0) >= 180)) {
       const [sample] = await once(workers[2]!, "message", { signal: context.signal }); if (sample.type === "failure") throw new Error(sample.error);
     }
     for (let player = 1; player <= 3; player++) {
-      const last = samples.filter(sample => sample.type === "snapshot" && sample.player === player).at(-1);
+      const last = samples.filter(sample => sample.type === "ticks" && sample.player === player).at(-1);
       assert.ok(last?.metrics);
-      assert.equal(last.metrics.hashMismatches, 0); assert.equal(last.metrics.hashMatches, last.metrics.snapshots); assert.ok(last.metrics.lastConsumedInputSeq > 0);
+      assert.equal(last.metrics.hashMismatches, 0);
+      assert.ok(last.metrics.hashMatches >= 6, "confirmed replay must verify periodic server hashes");
+      assert.ok(last.metrics.records >= last.metrics.ticks);
+      assert.ok(last.metrics.lastConsumedInputSeq > 0);
     }
     const byTick = new Map<number, Map<number, string>>();
-    for (const sample of samples) if (sample.type === "snapshot" && sample.metrics) {
-      const peers = byTick.get(sample.metrics.snapshotTick) ?? new Map<number, string>();
-      peers.set(sample.player, sample.metrics.snapshotHash); byTick.set(sample.metrics.snapshotTick, peers);
+    for (const sample of samples) if (sample.type === "ticks" && sample.metrics) {
+      // confirmedHash belongs to the last verified boundary, not necessarily
+      // the current confirmed tick; never attach it to a later replayed step.
+      const peers = byTick.get(sample.metrics.hashTick) ?? new Map<number, string>();
+      peers.set(sample.player, sample.metrics.confirmedHash); byTick.set(sample.metrics.hashTick, peers);
     }
-    const shared = [...byTick.values()].filter(peers => peers.size === 3);
-    assert.ok(shared.length >= 5, "three peers must observe common authoritative ticks");
+    const settledBefore = Math.min(...[1, 2, 3].map(player =>
+      samples.filter(sample => sample.type === "ticks" && sample.player === player).at(-1)!.metrics!.confirmedTick));
+    const shared = [...byTick.entries()].filter(([tick, peers]) => tick < settledBefore && peers.size === 3).map(([, peers]) => peers);
+    assert.ok(shared.length >= 5, "three peers must verify common settled authoritative boundaries");
     for (const peers of shared) assert.equal(new Set(peers.values()).size, 1);
     assert.deepEqual(server.errors, []);
   } finally { await Promise.all(workers.map(worker => worker.terminate())); await server.close(); }

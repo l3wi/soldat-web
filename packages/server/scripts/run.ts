@@ -9,7 +9,7 @@ import { distribution } from "./workload.ts";
 import type { OnlineMetrics } from "../../client/src/net/session.ts";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
 
-export interface RigOptions { players: number; seconds: number; out: string; impaired: boolean; combat: boolean; browserPlayers: number; port: number; gatewayPort: number; profile?: PacketProfile; stackedCombat?: boolean; pickupCombat?: boolean }
+export interface RigOptions { players: number; targetPlayers?: number; seconds: number; out: string; impaired: boolean; combat: boolean; browserPlayers: number; port: number; gatewayPort: number; profile?: PacketProfile; stackedCombat?: boolean; pickupCombat?: boolean }
 export interface ClientSample { type: string; player: number; at?: number; measurementElapsedMs?: number; metrics?: OnlineMetrics; bytesSent?: number; bytesReceived?: number; inputsSent?: number; visibility?: string; renders?: number; error?: string; duplicate?: boolean; id?: number; tick?: number; kind?: number }
 interface ClientSeries {
   corrections: number[]; receiptAge: number[]; estimatedAge: number[]; rtt: number[];
@@ -17,10 +17,10 @@ interface ClientSeries {
 }
 
 export async function runRig(options: RigOptions) {
-  if (![2, 8].includes(options.players) || options.browserPlayers < 0 || options.browserPlayers > options.players || !Number.isFinite(options.seconds) || options.seconds <= 0) throw new Error("Require 2/8 players, positive seconds, and valid browser player count");
+  if (!Number.isInteger(options.players) || options.players < 2 || options.players > 32 || options.browserPlayers < 0 || options.browserPlayers > options.players || !Number.isFinite(options.seconds) || options.seconds <= 0) throw new Error("Require 2..32 humans, positive seconds, and valid browser player count");
   await mkdir(options.out, { recursive: true });
   const raw = new Evidence(resolve(options.out, "clients.jsonl"));
-  const rig = await qualificationServer(options.out, options.port);
+  const rig = await qualificationServer(options.out, options.port, options.targetPlayers);
   const errors: string[] = [], workers: Worker[] = [];
   const series = new Map<number, ClientSeries>();
   const finals: ClientSample[] = [];
@@ -36,15 +36,15 @@ export async function runRig(options: RigOptions) {
   const collect = (message: ClientSample) => {
     raw.record(message);
     if (message.type === "failure") errors.push(message.error ?? "Unknown headless failure");
-    if ((message.type === "snapshot" || message.type === "render-age") && message.metrics && (message.measurementElapsedMs === undefined ? startAt > 0 : message.measurementElapsedMs > 2000)) {
+    if ((message.type === "ticks" || message.type === "render-age") && message.metrics && (message.measurementElapsedMs === undefined ? startAt > 0 : message.measurementElapsedMs > 2000)) {
       const data: ClientSeries = series.get(message.player) ?? { corrections: [], receiptAge: [], estimatedAge: [], rtt: [], first: message, visibleSamples: 0, hiddenSamples: 0 };
       if (message.visibility === "visible") data.visibleSamples++;
       else if (message.visibility !== undefined) data.hiddenSamples++;
       if (message.renders !== undefined && data.firstRenders === undefined) data.firstRenders = message.renders;
-      if (message.type === "snapshot") data.corrections.push(message.metrics.correction);
+      if (message.type === "ticks") data.corrections.push(message.metrics.correction);
       else {
-        data.receiptAge.push(message.metrics.snapshotAgeMs);
-        data.estimatedAge.push(message.metrics.snapshotAgeMs + message.metrics.rttMs / 2); data.rtt.push(message.metrics.rttMs);
+        data.receiptAge.push(message.metrics.stateAgeMs);
+        data.estimatedAge.push(message.metrics.stateAgeMs + message.metrics.rttMs / 2); data.rtt.push(message.metrics.rttMs);
       }
       series.set(message.player, data);
     }
@@ -128,7 +128,7 @@ export async function runRig(options: RigOptions) {
       const largeCorrections = corrections.filter(value => value > 10).length;
       const seconds = Math.max(1, elapsed);
       return { player, samples: corrections.length, corrections: distribution(corrections), correctionsOver10: largeCorrections, correctionsOver10PerMinute: largeCorrections * 60 / seconds,
-        snapshotReceiptAgeMs: distribution(data?.receiptAge ?? []), estimatedSnapshotAgeMs: distribution(data?.estimatedAge ?? []), rttMs: distribution(data?.rtt ?? []),
+        relayReceiptAgeMs: distribution(data?.receiptAge ?? []), estimatedRelayAgeMs: distribution(data?.estimatedAge ?? []), rttMs: distribution(data?.rtt ?? []),
         bytesPerSecondSent: last?.bytesSent === undefined || first?.bytesSent === undefined ? null : (last.bytesSent - first.bytesSent) / seconds,
         bytesPerSecondReceived: last?.bytesReceived === undefined || first?.bytesReceived === undefined ? null : (last.bytesReceived - first.bytesReceived) / seconds,
         inputFramesPerSecond: last?.inputsSent === undefined || first?.inputsSent === undefined ? null : (last.inputsSent - first.inputsSent) / seconds,
@@ -137,7 +137,7 @@ export async function runRig(options: RigOptions) {
         observedRendersPerSecond: last?.renders === undefined || data?.firstRenders === undefined ? null : (last.renders - data.firstRenders) / seconds,
         final: m ?? null };
     });
-    const cutoffTick = Math.min(...perPlayer.map(player => player.final?.snapshotTick ?? 0)) - 120;
+    const cutoffTick = Math.min(...perPlayer.map(player => player.final?.confirmedTick ?? 0)) - 120;
     const serverKinds: Record<string, number> = {};
     let serverEnqueuedLogicalEvents = 0, missingAppliedEvents = 0;
     for (const player of perPlayer) {
@@ -165,8 +165,8 @@ export async function runRig(options: RigOptions) {
       diagnosticProfiling: process.env.NET_G4_PROFILE === "1",
       inputBufferOccupancy: distribution(measuredMetrics.flatMap(sample => sample.inputBufferOccupancy)),
       inputBufferLeadTicks: distribution(measuredMetrics.flatMap(sample => sample.inputBufferLeadTicks)),
-      metricDefinitions: { simEncodeMs: "Per server tick, worker sim+save+delta and main-thread wire encode CPU work summed; not cross-thread elapsed time", wireEncodeMs: "Individual protocol packet encoding CPU cost", snapshotReceiptAgeMs: "Latest real presentation's elapsed time since snapshot arrival, sampled at 4 Hz", estimatedSnapshotAgeMs: "Presentation receipt age + smoothed RTT/2; assumes symmetric delay, not synchronized server/client clocks", bytesPerSecond: "Binary protocol payload bytes; excludes WebSocket/TLS/IP overhead", memory: "Process RSS includes server/client workers; raw JSONL streamed, only numeric quantile samples retained by harness" },
-      logicalEvents, duplicateApplications, eventGaps, serverEnqueuedLogicalEvents, missingAppliedEvents, eventEvidence: { cutoffTick, cutoffDefinition: "Oldest final client snapshot tick minus 120 ticks; later event delivery is not claimed complete", serverEnqueuedKindHistogram: serverKinds, appliedKindHistogram: appliedKinds, note: "Per-slot server transport enqueue including retransmissions, deduplicated by ID, compared to client logical callback IDs in this committed prefix" }, players: perPlayer, errors: [...errors, ...rig.errors],
+      metricDefinitions: { simEncodeMs: "Per server tick, worker sim+sparse-save+record encoding and main-thread wire encode CPU work summed; not cross-thread elapsed time", wireEncodeMs: "Individual protocol packet encoding CPU cost", relayReceiptAgeMs: "Latest real presentation's elapsed time since ordered relay arrival, sampled at 4 Hz", estimatedRelayAgeMs: "Presentation receipt age + smoothed RTT/2; assumes symmetric delay, not synchronized server/client clocks", bytesPerSecond: "Binary protocol payload bytes; excludes WebSocket/TLS/IP overhead", memory: "Process RSS includes server/client workers; raw JSONL streamed, only numeric quantile samples retained by harness" },
+      logicalEvents, duplicateApplications, eventGaps, serverEnqueuedLogicalEvents, missingAppliedEvents, eventEvidence: { cutoffTick, cutoffDefinition: "Oldest final confirmed tick minus 120 ticks; later event delivery is not claimed complete", serverEnqueuedKindHistogram: serverKinds, appliedKindHistogram: appliedKinds, note: "Per-slot server transport enqueue including retransmissions, deduplicated by ID, compared to client logical callback IDs in this committed prefix" }, players: perPlayer, errors: [...errors, ...rig.errors],
       gates: {
         correctionP95Under2: options.combat ? null : perPlayer.every(player => player.corrections.p95 !== null && player.corrections.p95 < 2),
         correctionOver10UnderOnePerMinuteEachPlayer: options.combat ? null : perPlayer.every(player => player.samples > 0 && player.correctionsOver10PerMinute < 1),
@@ -214,5 +214,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   }
   if (values.has("--outage-ms")) profile.outage = { durationMs: Number(values.get("--outage-ms")), atSeconds: Number(values.get("--outage-at-seconds") ?? 10) };
   const options: RigOptions = { players: Number(values.get("--players") ?? 2), seconds: Number(values.get("--seconds") ?? 60), out: resolve(values.get("--out") ?? "build-out/net-g4/lan-2"), impaired: values.has("--impaired") || values.has("--profile"), combat: values.has("--combat") || values.has("--stacked-combat") || values.has("--pickup-combat"), stackedCombat: values.has("--stacked-combat"), pickupCombat: values.has("--pickup-combat"), browserPlayers: Number(values.get("--browser-players") ?? 0), port: Number(values.get("--port") ?? 9443), gatewayPort: Number(values.get("--gateway-port") ?? 9444), profile };
+  if (values.has("--target-players")) options.targetPlayers = Number(values.get("--target-players"));
   await runRig(options);
 }

@@ -3,7 +3,7 @@ import { after, before, test } from "node:test";
 import { resolve } from "node:path";
 import { readFile, writeFile } from "node:fs/promises";
 import { encodeInput, loadSim, loadSimContent, requireStatus, type SimHost } from "@soldat-web/sim-host";
-import { decodeDelta, type Message } from "@soldat-web/protocol";
+import { type Message } from "@soldat-web/protocol";
 import { AuthoritativeMatch } from "../src/match.ts";
 import type { WorkerResponse } from "../src/worker-messages.ts";
 import { FROZEN_WASM_SHA256, qualificationConfig, type QualificationConfig } from "./support.ts";
@@ -22,7 +22,7 @@ before(async () => {
 });
 after(async () => { inspector?.dispose(); await writeFile(resolve(out, "firing-evidence.json"), JSON.stringify({ wasmSha256: FROZEN_WASM_SHA256, evidence: firingEvidence }, null, 2)); });
 
-interface Timeline { match: AuthoritativeMatch; responses: WorkerResponse[]; now: bigint; sequence: number; lastSnapshot?: Extract<Message, { type: "snapshot" }>; state?: Uint8Array }
+interface Timeline { match: AuthoritativeMatch; responses: WorkerResponse[]; now: bigint; sequence: number; boundary?: { stateHash: bigint; lastConsumedInputSeq: number }; state?: Uint8Array }
 async function timeline(weapon = 4, players = 2, diagnostics = false): Promise<Timeline> {
   const responses: WorkerResponse[] = [];
   const match = await AuthoritativeMatch.start(diagnostics ? { ...config.match, rules: { ...config.match.rules, traceCombat: true } } : config.match, response => responses.push(response));
@@ -36,16 +36,22 @@ function stepTo(timeline: Timeline, target: number): void {
     timeline.now += 16_666_667n;
     timeline.match.step();
     for (const response of timeline.responses.splice(0)) {
-      if (response.type !== "send") continue;
-      if (response.message.type === "snapshot") {
-        if (response.slot === 1) {
-          timeline.state = decodeDelta(response.message.state, response.message.baselineId ? timeline.state : undefined);
-          timeline.lastSnapshot = response.message;
-        }
-        timeline.match.receive({ type: "snapshotAck", slot: response.slot, snapshotId: response.message.snapshotId }, timeline.now);
-      } else if (response.message.type === "events") timeline.match.receive({ type: "eventAck", slot: response.slot, eventId: response.message.events.at(-1)!.id }, timeline.now);
+      if (response.type === "ticks") {
+        const recipient = response.recipients.find(player => player.slot === 1);
+        if (recipient) timeline.boundary = { stateHash: 0n, lastConsumedInputSeq: recipient.lastConsumedInputSeq };
+      } else if (response.type === "send" && response.message.type === "state" && response.slot === 1) {
+        timeline.boundary = { stateHash: response.message.hash, lastConsumedInputSeq: response.message.lastConsumedInputSeq };
+      } else if (response.type === "send" && response.message.type === "events") timeline.match.receive({ type: "eventAck", slot: response.slot, eventId: response.message.events.at(-1)!.id }, timeline.now);
     }
   }
+  // This suite compares the actual authoritative boundary after each scripted
+  // advance; end-to-end relay fidelity is covered by relay.test.ts.
+  // Test-only access to the actual host: simulation state is not sent per tick.
+  const internals = timeline.match as unknown as { host: SimHost };
+  const host = internals.host;
+  const bytes = host.saveState(); if (typeof bytes === "number") throw new Error(`save ${bytes}`);
+  timeline.state = bytes;
+  timeline.boundary = { stateHash: BigInt(`0x${host.hash()}`), lastConsumedInputSeq: timeline.boundary?.lastConsumedInputSeq ?? 0 };
 }
 
 function warmSeparatedPlayers(value: Timeline, shotTick: number): void {
@@ -87,7 +93,7 @@ for (const weapon of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 13]) {
       const metrics = late.match.takeLagMetrics();
       assert.equal(metrics.replayTicks, 12); assert.equal(metrics.rejectedShots, 0); assert.equal(metrics.replayMs.length, 1);
       stepTo(timely, shotTick + 14); stepTo(late, shotTick + 14);
-      assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash, `weapon ${weapon} late/timely state differs`);
+      assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash, `weapon ${weapon} late/timely state differs`);
     } finally { timely.match.dispose(); late.match.dispose(); }
   });
 }
@@ -104,7 +110,7 @@ test("historical grenade intent replays the original throwing animation", async 
     late.match.receive({ type: "input", slot: 1, frames: [frame] }, late.now);
     assert.equal(late.match.takeLagMetrics().replayTicks, 12);
     stepTo(timely, 74); stepTo(late, 74);
-    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+    assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash);
   } finally { timely.match.dispose(); late.match.dispose(); }
 });
 
@@ -139,10 +145,10 @@ test("delayed grenade plus genuine current held frames produces a real grenade w
     if (typeof after === "number") throw new Error("Launched grenade view unavailable");
     let grenades = 0;
     for (let index = 0; index < after.bulletCount; index++) if (after.bullet(index).owner === 1 && [2, 9, 10].includes(after.bullet(index).style)) grenades++;
-    const result = { wasmSha256: FROZEN_WASM_SHA256, beforeAmmo, afterAmmo: after.sprite(0).grenades, grenadeProjectiles: grenades, equal: timely.lastSnapshot?.stateHash === late.lastSnapshot?.stateHash, timelyHash: timely.lastSnapshot?.stateHash.toString(16), lateHash: late.lastSnapshot?.stateHash.toString(16), initialTick: 60, insertedAtTick: 72, actualHeldFromTick: 72, actualHeldThroughTick: 90, note: "Repeat gaps clear ThrowNade; actual held frames, not fake held repeats, complete the native animation" };
+    const result = { wasmSha256: FROZEN_WASM_SHA256, beforeAmmo, afterAmmo: after.sprite(0).grenades, grenadeProjectiles: grenades, equal: timely.boundary?.stateHash === late.boundary?.stateHash, timelyHash: timely.boundary?.stateHash.toString(16), lateHash: late.boundary?.stateHash.toString(16), initialTick: 60, insertedAtTick: 72, actualHeldFromTick: 72, actualHeldThroughTick: 90, note: "Repeat gaps clear ThrowNade; actual held frames, not fake held repeats, complete the native animation" };
     await writeFile(resolve(out, "delayed-held-grenade.json"), JSON.stringify(result, null, 2));
     assert.ok(result.afterAmmo < beforeAmmo || grenades > 0, "No real original grenade was launched");
-    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+    assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash);
   } finally { timely.match.dispose(); late.match.dispose(); }
 });
 
@@ -178,10 +184,10 @@ for (const weapon of [8, 10, 13]) {
       if (typeof after === "number") throw new Error("Startup projectile view unavailable");
       let projectiles = 0;
       for (let index = 0; index < after.bulletCount; index++) if (after.bullet(index).owner === 1) projectiles++;
-      const result = { wasmSha256: FROZEN_WASM_SHA256, weapon, beforeAmmo, afterAmmo: after.sprite(0).ammo, ownedProjectiles: projectiles, equal: timely.lastSnapshot?.stateHash === late.lastSnapshot?.stateHash, timelyHash: timely.lastSnapshot?.stateHash.toString(16), lateHash: late.lastSnapshot?.stateHash.toString(16), initialTick: shotTick, insertedAtTick: shotTick + 12, genuineHeldThroughTick: shotTick + 102, stance: weapon === 13 ? "original grounded crouch via Down control" : "original standing", note: "No startup override; explicit initial release, then genuine received held-fire frames complete original startup" };
+      const result = { wasmSha256: FROZEN_WASM_SHA256, weapon, beforeAmmo, afterAmmo: after.sprite(0).ammo, ownedProjectiles: projectiles, equal: timely.boundary?.stateHash === late.boundary?.stateHash, timelyHash: timely.boundary?.stateHash.toString(16), lateHash: late.boundary?.stateHash.toString(16), initialTick: shotTick, insertedAtTick: shotTick + 12, genuineHeldThroughTick: shotTick + 102, stance: weapon === 13 ? "original grounded crouch via Down control" : "original standing", note: "No startup override; explicit initial release, then genuine received held-fire frames complete original startup" };
       await writeFile(resolve(out, `startup-held-${weapon}.json`), JSON.stringify(result, null, 2));
       assert.ok(result.afterAmmo < beforeAmmo || projectiles > 0, `Startup weapon ${weapon} never actually fired`);
-      assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+      assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash);
     } finally { timely.match.dispose(); late.match.dispose(); }
   });
 }
@@ -195,7 +201,7 @@ for (const weapon of [11, 12, 255]) {
       assert.equal(value.match.tick, 72);
       const metrics = value.match.takeLagMetrics();
       assert.equal(metrics.replayTicks, 0); assert.equal(metrics.rejectedShots, 1);
-      stepTo(value, 74); assert.equal(value.lastSnapshot?.lastConsumedInputSeq, 0);
+      stepTo(value, 74); assert.equal(value.boundary?.lastConsumedInputSeq, 0);
     } finally { value.match.dispose(); }
   });
 }
@@ -210,7 +216,9 @@ test("trusted RTT, replay window and per-player rewind budget are enforced", asy
     assert.equal(expired.replayTicks, 0); assert.equal(expired.uncompensatedShots, 1);
     value.match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, value.now);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 2, tick: 61, viewTick: 57, input: encodeInput({ Fire: true }) }] }, value.now);
-    assert.equal(value.match.takeLagMetrics().replayTicks, 11);
+    const compensated = value.match.takeLagMetrics();
+    assert.equal(compensated.replayMs.length, 1); assert.equal(compensated.rejectedShots, 0);
+    assert.ok(compensated.replayTicks >= 11 && compensated.replayTicks <= 14, "11-tick shot plus at most three sparse-anchor prefix ticks");
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 3, tick: 62, viewTick: 58, input: encodeInput({ Fire: true }) }] }, value.now);
     assert.equal(value.match.takeLagMetrics().replayTicks, 0);
     assert.equal(value.match.tick, 72);
@@ -252,7 +260,8 @@ test("eight-player worst-window replay benchmark records all projectile styles",
         const grenade = sample === 4;
         value.match.receive({ type: "input", slot: 1, frames: [{ seq: ++value.sequence, tick: tick - 12, viewTick: tick - 16, input: encodeInput({ Fire: !grenade, ThrowNade: grenade, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 }) }] }, value.now);
         const metrics = value.match.takeLagMetrics();
-        assert.equal(metrics.replayTicks, 12);
+        assert.equal(metrics.replayMs.length, 1); assert.equal(metrics.rejectedShots, 0);
+        assert.ok(metrics.replayTicks >= 12 && metrics.replayTicks <= 15, "12-tick shot plus at most three sparse-anchor prefix ticks");
         rows.push({ weapon, grenade, milliseconds: metrics.replayMs[0]!, replayTicks: metrics.replayTicks, rejectedShots: metrics.rejectedShots });
         stepTo(value, tick + 18);
       }
@@ -317,28 +326,27 @@ test("overlapping delayed shots rebuild from a retained coherent anchor", async 
     late.match.receive({ type: "input", slot: 1, frames: [second] }, late.now);
     assert.equal(late.match.takeLagMetrics().replayTicks, 30);
     stepTo(timely, 620); stepTo(late, 620);
-    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+    assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash);
     // Let all invalidated boundaries age out of the retained history.
     stepTo(timely, 660); stepTo(late, 660);
-    assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
+    assert.equal(late.boundary?.stateHash, timely.boundary?.stateHash);
   } finally { timely.match.dispose(); late.match.dispose(); }
 });
 
-test("eight recipients sharing an acknowledged state encode each baseline once", async () => {
+test("eight synced recipients share one record encoding per flush", async () => {
   const previous = process.env.NET_G4_PROFILE;
   process.env.NET_G4_PROFILE = "1";
   let value: Timeline | undefined;
   try {
     value = await timeline(4, 8);
     stepTo(value, 2);
-    const full = value.match.takeWorkProfile()!;
-    assert.equal(full.recipients, 8); assert.equal(full.deltaEncodes, 1);
+    const first = value.match.takeWorkProfile()!;
+    assert.equal(first.recipients, 8); assert.equal(first.recordEncodes, 1);
     stepTo(value, 4);
-    const delta = value.match.takeWorkProfile()!;
-    assert.equal(delta.recipients, 8); assert.equal(delta.deltaEncodes, 1);
-    assert.ok(value.lastSnapshot!.baselineId > 0);
-    requireStatus(inspector.loadState(value.state!), "inspect shared-baseline delta");
-    assert.equal(inspector.hash(), value.lastSnapshot!.stateHash.toString(16).padStart(16, "0"));
+    const next = value.match.takeWorkProfile()!;
+    assert.equal(next.recipients, 8); assert.equal(next.recordEncodes, 1);
+    requireStatus(inspector.loadState(value.state!), "inspect shared relay boundary");
+    assert.equal(inspector.hash(), value.boundary!.stateHash.toString(16).padStart(16, "0"));
   } finally {
     value?.match.dispose();
     if (previous === undefined) delete process.env.NET_G4_PROFILE;
@@ -367,8 +375,8 @@ for (const action of ["Fire", "ThrowNade"] as const) {
           stepTo(value, tick + 1);
         }
       }
-      assert.equal(expired.lastSnapshot?.lastConsumedInputSeq, current.seq + 39);
-      assert.equal(expired.lastSnapshot?.stateHash, present.lastSnapshot?.stateHash);
+      assert.equal(expired.boundary?.lastConsumedInputSeq, current.seq + 39);
+      assert.equal(expired.boundary?.stateHash, present.boundary?.stateHash);
       requireStatus(inspector.loadState(before), "inspect pre-expired action");
       const beforeView = inspector.renderView(); if (typeof beforeView === "number") throw new Error("Missing before view");
       const ammo = action === "Fire" ? beforeView.sprite(0).ammo : beforeView.sprite(0).grenades;
@@ -387,6 +395,6 @@ test("timely fire with an old genuine view is present-only and counted", async (
     const metrics = value.match.takeLagMetrics();
     assert.equal(metrics.uncompensatedShots, 1); assert.equal(metrics.replayTicks, 0);
     stepTo(value, 602);
-    assert.equal(value.lastSnapshot?.lastConsumedInputSeq, value.sequence + 1);
+    assert.equal(value.boundary?.lastConsumedInputSeq, value.sequence + 1);
   } finally { value.match.dispose(); }
 });

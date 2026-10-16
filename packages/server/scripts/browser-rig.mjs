@@ -62,7 +62,7 @@ export async function runBrowserRig({ taskSpace, clientUrl, out, players = 2, br
           online = hook; if (!hook) return;
           const originalSend = hook.session.options.send;
           hook.session.options.send = message => { if (message.type === 'input') window.__netG4InputsSent++; originalSend(message); };
-          hook.onSnapshot = metrics => window.__netG4Samples.push({ type: 'snapshot', player: ${i + 1}, at: performance.now(), measurementElapsedMs: window.__netG4MeasurementStart === undefined ? -1 : performance.now() - window.__netG4MeasurementStart, metrics: { ...metrics }, bytesSent: window.__netG4Bytes.sent, bytesReceived: window.__netG4Bytes.received, inputsSent: window.__netG4InputsSent, visibility: document.visibilityState, renders: window.__soldatClient?.renders ?? 0 });
+          hook.onTicks = metrics => window.__netG4Samples.push({ type: 'ticks', player: ${i + 1}, at: performance.now(), measurementElapsedMs: window.__netG4MeasurementStart === undefined ? -1 : performance.now() - window.__netG4MeasurementStart, metrics: { ...metrics }, bytesSent: window.__netG4Bytes.sent, bytesReceived: window.__netG4Bytes.received, inputsSent: window.__netG4InputsSent, visibility: document.visibilityState, renders: window.__soldatClient?.renders ?? 0 });
           const original = hook.session.options.onEvent, seen = new Set();
           hook.session.options.onEvent = event => {
             window.__netG4Events.push({ type: 'logical-event', player: ${i + 1}, id: event.id, tick: event.tick, kind: new DataView(event.header.buffer, event.header.byteOffset).getUint32(0, true), duplicate: seen.has(event.id) });

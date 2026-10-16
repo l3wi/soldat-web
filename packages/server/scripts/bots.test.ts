@@ -4,41 +4,41 @@ import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 import { Worker } from "node:worker_threads";
-import { decodeDelta, encodeMessage, type Message } from "@soldat-web/protocol";
+import { encodeMessage, type Message } from "@soldat-web/protocol";
 import { createGameServer } from "../src/server.ts";
 import { BOT_PROFILES, reservedBotSlots } from "../src/bots.ts";
 import { AuthoritativeMatch } from "../src/match.ts";
 import type { WorkerResponse } from "../src/worker-messages.ts";
-import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION } from "@soldat-web/sim-host";
+import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION, type SimHost } from "@soldat-web/sim-host";
 import { RawPeer, qualificationConfig, FROZEN_WASM_SHA256 } from "./support.ts";
 
 interface BotSample {
   slot: number; name: string; team: number; kills: number; deaths: number;
   x: number; y: number; fired: number; controlBits: number; aimX: number; aimY: number;
-  mouseDist: number; waypoint: number; input: number[] | null;
+  mouseDist: number; waypoint: number;
 }
-interface BotSnapshot {
+interface BotDiagnostic {
   type: "bots"; player: number; tick: number; hash: string; bots: BotSample[];
   projectiles: number[]; humanTeams: number[]; teamScores: number[]; thingStyles: number[];
 }
 interface ClientSample {
   type: string; player: number; slot?: number; error?: string;
-  metrics?: { snapshots: number; hashMatches: number; hashMismatches: number; lastConsumedInputSeq: number };
+  metrics?: { ticks: number; records: number; hashMatches: number; hashMismatches: number; lastConsumedInputSeq: number };
 }
 
-async function waitForClient(worker: Worker, predicate: (sample: ClientSample | BotSnapshot) => boolean, signal: AbortSignal): Promise<void> {
+async function waitForClient(worker: Worker, predicate: (sample: ClientSample | BotDiagnostic) => boolean, signal: AbortSignal): Promise<void> {
   while (true) {
-    const [sample] = await once(worker, "message", { signal }) as [ClientSample | BotSnapshot];
+    const [sample] = await once(worker, "message", { signal }) as [ClientSample | BotDiagnostic];
     if (sample.type === "failure") throw new Error((sample as ClientSample).error);
     if (predicate(sample)) return;
   }
 }
 
 for (const mode of ["dm", "ctf"] as const) {
-  test(`${mode}: two real headless clients receive four original bots and verified snapshots`, { timeout: 90_000 }, async context => {
+  test(`${mode}: two real headless clients deterministically replay four original bots and verify relay hashes`, { timeout: 90_000 }, async context => {
     const out = resolve(process.env.NET_BOTS_OUT ?? "build-out/net-bots", mode);
     const config = await qualificationConfig(out);
-    const errors: string[] = [], samples: BotSnapshot[] = [], clientSamples: ClientSample[] = [];
+    const errors: string[] = [], samples: BotDiagnostic[] = [], clientSamples: ClientSample[] = [];
     const workers: Worker[] = [], botSlots = reservedBotSlots(4);
     const server = await createGameServer({
       match: { ...config.match, map: mode === "ctf" ? "ctf_Ash" : "Arena", botCount: 4, rules: { rng: "keyed", mode, world: "original", botDifficulty: 100 } },
@@ -50,7 +50,7 @@ for (const mode of ["dm", "ctf"] as const) {
     const url = `wss://127.0.0.1:${address.port}`;
     try {
       // Each peer uses its own worker and the production OnlineSession, not a
-      // fabricated snapshot or a server-side input controller.
+      // fabricated state or a server-side input controller.
       for (let player = 1; player <= 2; player++) {
         const worker = new Worker(new URL("./headless-worker.ts", import.meta.url), { workerData: {
           url, wasmPath: config.match.wasmPath, contentRoot: config.match.contentRoot,
@@ -58,8 +58,8 @@ for (const mode of ["dm", "ctf"] as const) {
         } });
         workers.push(worker);
         worker.on("error", error => errors.push(error.stack ?? error.message));
-        worker.on("message", (sample: ClientSample | BotSnapshot) => {
-          if (sample.type === "bots") samples.push(sample as BotSnapshot);
+        worker.on("message", (sample: ClientSample | BotDiagnostic) => {
+          if (sample.type === "bots") samples.push(sample as BotDiagnostic);
           else clientSamples.push(sample);
           if (sample.type === "failure") errors.push((sample as ClientSample).error ?? "Unknown headless failure");
         });
@@ -74,20 +74,27 @@ for (const mode of ["dm", "ctf"] as const) {
       // can need longer than twelve seconds to traverse their native waypoints.
       // The test's finite timeout remains the bound; no fixed sleep proves fire.
       const startTick = samples.at(-1)!.tick;
-      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotSnapshot).tick >= startTick + 720 &&
+      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotDiagnostic).tick >= startTick + 720 &&
         samples.some(observed => observed.projectiles.length > 0 || observed.bots.some(bot => bot.fired > 0)), context.signal);
       assert.deepEqual(errors, []);
       for (const player of [1, 2]) {
-        const snapshots = clientSamples.filter(sample => sample.type === "snapshot" && sample.player === player);
-        assert.ok(snapshots.length >= 30, `player ${player} did not receive a sustained snapshot stream`);
-        const last = snapshots.at(-1)!.metrics!;
+        const batches = clientSamples.filter(sample => sample.type === "ticks" && sample.player === player);
+        assert.ok(batches.length >= 30, `player ${player} did not receive a sustained relay stream`);
+        const last = batches.at(-1)!.metrics!;
         assert.equal(last.hashMismatches, 0);
-        assert.equal(last.hashMatches, last.snapshots);
+        assert.ok(last.hashMatches >= 20, "sustained replay must verify periodic authoritative hashes");
+        assert.ok(last.ticks >= 600, "the confirmed simulation must actually consume the relayed steps");
+        assert.ok(last.records >= last.ticks, "step records cannot exceed the complete record stream");
         assert.ok(last.lastConsumedInputSeq > 0, "real human input should reach the authoritative worker");
       }
       let sharedHashes = 0;
       const first = new Map(samples.filter(sample => sample.player === 1).map(sample => [sample.tick, sample]));
-      for (const sample of samples.filter(sample => sample.player === 2)) {
+      const second = new Map(samples.filter(sample => sample.player === 2).map(sample => [sample.tick, sample]));
+      const settledBefore = Math.min(Math.max(...first.keys()), Math.max(...second.keys()));
+      // Corrections can publish another revision at the same boundary. Compare
+      // each peer's latest revision only after both have advanced beyond it.
+      for (const sample of second.values()) {
+        if (sample.tick >= settledBefore) continue;
         const other = first.get(sample.tick);
         if (!other) continue;
         assert.equal(sample.hash, other.hash, `clients disagree on authoritative tick ${sample.tick}`);
@@ -103,15 +110,8 @@ for (const mode of ["dm", "ctf"] as const) {
           assert.equal(bot.name, BOT_PROFILES[index]);
           assert.equal(bot.team, mode === "ctf" ? index % 2 + 1 : 0);
           assert.ok(Number.isInteger(bot.kills) && Number.isInteger(bot.deaths));
-          assert.ok(bot.input, "bot control record missing from the wire snapshot");
-          const bytes = Uint8Array.from(bot.input), input = new DataView(bytes.buffer);
-          assert.equal(bytes.length, 12);
-          assert.equal(input.getUint16(0, true), bot.controlBits,
-            `bot control mismatch player=${sample.player} tick=${sample.tick} slot=${bot.slot} hash=${sample.hash}: ${JSON.stringify(bot)}`);
-          assert.equal(input.getInt16(2, true), bot.aimX);
-          assert.equal(input.getInt16(4, true), bot.aimY);
-          assert.equal(input.getInt16(6, true), bot.mouseDist);
-          assert.equal(input.getUint32(8, true), 0, "bot press-order/reserved bytes must be zero");
+          assert.ok(Number.isInteger(bot.controlBits) && bot.controlBits >= 0 && bot.controlBits <= 0x0fff);
+          assert.ok([bot.aimX, bot.aimY, bot.mouseDist].every(value => Number.isInteger(value) && value >= -32768 && value <= 32767));
         }
       }
       const latest = samples.at(-1)!;
@@ -129,7 +129,16 @@ for (const mode of ["dm", "ctf"] as const) {
       // already synchronized peers. Mutate valid wire bytes past the encoder.
       const malformed = new RawPeer(url);
       try {
-        await malformed.connect(config.manifest.sha256, "Invalid-choice");
+        const welcome = await malformed.connect(config.manifest.sha256, "Invalid-choice");
+        const state = await malformed.waitFor((message): message is Extract<Message, { type: "state" }> => message.type === "state");
+        const relay = await malformed.waitFor((message): message is Extract<Message, { type: "ticks" }> =>
+          message.type === "ticks" && message.records.some(record => record.type === "step"));
+        const steps = relay.records.filter(record => record.type === "step");
+        assert.equal(steps[0]!.tick, state.tick, "join state must precede the first relayed step boundary");
+        for (const step of steps) {
+          assert.deepEqual(step.inputs.map(entry => entry.slot), [1, 2, welcome.slot].sort((a, b) => a - b));
+          assert.ok(step.inputs.every(entry => !botSlots.includes(entry.slot)), "bot controls must never be transmitted");
+        }
         const packet = encodeMessage({ type: "weapon-choice", primary: 4, secondary: 0, selection: "primary" });
         packet[8] = 255;
         const closed = once(malformed.socket, "close"); malformed.socket.send(packet);
@@ -143,8 +152,8 @@ for (const mode of ["dm", "ctf"] as const) {
         const [code] = await closed; assert.equal(code, 1008);
       } finally { await flood.close(); }
       const before = samples.at(-1)!.tick;
-      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotSnapshot).tick >= before + 12, context.signal);
-      assert.ok(samples.at(-1)!.tick > before, "healthy clients stopped receiving snapshots after attacker rejection");
+      await waitForClient(workers[1]!, sample => sample.type === "bots" && (sample as BotDiagnostic).tick >= before + 12, context.signal);
+      assert.ok(samples.at(-1)!.tick > before, "healthy clients stopped replaying confirmed ticks after attacker rejection");
       assert.deepEqual(errors, []);
       await writeFile(resolve(out, "bots.json"), JSON.stringify({ wasmSha256: FROZEN_WASM_SHA256, abiVersion: SIM_ABI_VERSION,
         contentSetHash: config.manifest.sha256, world: "original", mode, sharedHashes, slots: ready.map(sample => sample.slot), initial, latest,
@@ -161,20 +170,21 @@ test("worker applies secondary then primary once, retains fallback, and rejects 
   const responses: WorkerResponse[] = [];
   const match = await AuthoritativeMatch.start({ ...config.match, botCount: 4, rules: { ...config.match.rules, world: "original" } }, response => responses.push(response));
   const inspector = await loadSim(config.wasm);
+  // Tests inspect the existing private host; no production introspection API.
+  const testOnlyMatch = match as unknown as { readonly host: SimHost };
+  const testOnlyHost = testOnlyMatch.host;
   try {
     await loadSimContent(inspector, config.manifest, async path => new Uint8Array(await readFile(resolve(config.match.contentRoot, path))));
-    requireStatus(inspector.init({ ...config.match.rules, ai: false, world: "original" }, 123456789, 0, 0), "weapon-choice inspector init");
+    requireStatus(inspector.init({ ...config.match.rules, ai: true, world: "original" }, 123456789, 0, 0), "weapon-choice inspector init");
     requireStatus(inspector.loadMap("Arena"), "weapon-choice inspector map");
     assert.throws(() => match.receive({ type: "join", slot: 29, weapon: 4, secondaryWeapon: 0 }, 0n), /slot/);
     match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, 0n);
-    let state: Uint8Array | undefined;
     const inspect = () => {
       match.step(); match.step();
-      const snapshot = responses.filter((response): response is Extract<WorkerResponse, { type: "send" }> => response.type === "send" && response.message.type === "snapshot").at(-1)!.message as Extract<Message, { type: "snapshot" }>;
-      state = decodeDelta(snapshot.state, snapshot.baselineId ? state : undefined);
-      requireStatus(inspector.loadState(state), "weapon-choice snapshot load");
-      assert.equal(inspector.hash(), snapshot.stateHash.toString(16).padStart(16, "0"));
-      match.receive({ type: "snapshotAck", slot: 1, snapshotId: snapshot.snapshotId }, BigInt(match.tick) * 16_666_667n);
+      const bytes = testOnlyHost.saveState();
+      if (typeof bytes === "number") throw new Error(`Authoritative weapon-choice save failed: ${bytes}`);
+      requireStatus(inspector.loadState(bytes), "weapon-choice authoritative boundary load");
+      assert.equal(inspector.hash(), testOnlyHost.hash());
       const render = inspector.renderView();
       if (typeof render === "number") throw new Error("Missing weapon-choice render view");
       return render.sprite(0);

@@ -11,7 +11,7 @@ export interface OnlineHook {
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */
   input?: Uint8Array;
   readonly session: OnlineSession;
-  onSnapshot?: (metrics: Readonly<OnlineMetrics>) => void;
+  onTicks?: (metrics: Readonly<OnlineMetrics>) => void;
   /** Confirmed gameplay only, deduplicated before delivery; first ID may exceed one. */
   onGameplayEvent?: (event: ReliableEvent) => void;
 }
@@ -30,7 +30,7 @@ export async function connectOnline(options: {
   const code = await loadSimulationCode(options.signal);
   if (code.sha256 !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen ABI4 WASM");
   const manifest = await loadSimulationManifest(options.signal);
-  const prediction = await loadSim(code.module), extraction = await loadSim(code.module);
+  const prediction = await loadSim(code.module), confirmed = await loadSim(code.module);
   let session: OnlineSession | undefined, disposed = false;
   let overlay: HTMLElement | undefined;
   let transport: MessageTransport | undefined;
@@ -41,18 +41,18 @@ export async function connectOnline(options: {
     clearTimeout(timer); transport?.close(); overlay?.remove();
     options.signal.removeEventListener("abort", aborted);
     if (window.__soldatOnline === hook) delete window.__soldatOnline;
-    if (session) session.dispose(); else { prediction.dispose(); extraction.dispose(); }
+    if (session) session.dispose(); else { prediction.dispose(); confirmed.dispose(); }
   };
   const aborted = () => dispose();
   try {
     // Server mounts the complete manifest. The VFS identity is gameplay state,
     // so a selected-map-only mount cannot safely restore server fullstates.
     await mountSimulationPack(prediction, null, options.signal);
-    await mountSimulationPack(extraction, null, options.signal);
+    await mountSimulationPack(confirmed, null, options.signal);
     if (options.signal.aborted) throw new DOMException("Online admission cancelled", "AbortError");
     options.signal.addEventListener("abort", aborted, { once: true });
     transport = connectWss(options.url);
-    const send = (message: Message) => transport!.send(message.type === "snapshot" ? "latestState" : "reliableControl", encodeMessage(message));
+    const send = (message: Message) => transport!.send("reliableControl", encodeMessage(message));
     const admitted = await new Promise<OnlineSession>((resolve, reject) => {
       timer = window.setTimeout(() => { reject(new Error("Online admission timed out")); dispose(); }, 15_000);
       const failed = (error: Error) => {
@@ -70,16 +70,16 @@ export async function connectOnline(options: {
             if (message.map.toLowerCase() !== options.map.toLowerCase()) throw new Error(`Server map is ${message.map}; select that map in the URL`);
             const rules: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.rules));
             if (!rules || typeof rules !== "object" || Array.isArray(rules)) throw new Error("Invalid welcome rules");
-            for (const host of [prediction, extraction]) {
-              requireStatus(host.init({ ...Object.fromEntries(Object.entries(rules)), ai: false }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
+            for (const host of [prediction, confirmed]) {
+              requireStatus(host.init({ ...Object.fromEntries(Object.entries(rules)), ai: true }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
               requireStatus(host.loadMap(message.map), "sim_load_map(welcome)");
             }
-            session = new OnlineSession({ prediction, extraction, slot: message.slot, send,
+            session = new OnlineSession({ prediction, confirmed, slot: message.slot, send,
               onEvent(event) { options.onEvent(event); hook?.onGameplayEvent?.(event); },
               onPresentation: options.onPresentation, onLiveStep: (tick, bytes) => options.onLiveStep(tick, bytes, message.slot),
-              onSnapshot: metrics => hook?.onSnapshot?.(metrics) });
+              onTicks: metrics => hook?.onTicks?.(metrics) });
             clearTimeout(timer); resolve(session);
-          } else if (session) session.receive(message);
+          } else if (session) { session.metrics.bytes += packet.byteLength; session.receive(message); }
           else if (message.type === "ping") send({ type: "pong", timestamp: message.timestamp });
           else if (message.type === "disconnect") throw new Error(message.reason);
           else throw new Error(`Unexpected ${message.type} before welcome`);
@@ -103,7 +103,7 @@ export async function connectOnline(options: {
       },
       updateOverlay() {
         const m = admitted.metrics;
-        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.serverTick}\nRTT ${m.rttMs.toFixed(1)}ms · snapshot gaps ${(m.loss * 100).toFixed(1)}% · snapshot age ≈${(m.snapshotAgeMs + m.rttMs / 2).toFixed(1)}ms (receipt ${m.snapshotAgeMs.toFixed(1)}ms)\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash @${m.snapshotTick}: ${m.loadedHash} ${m.loadedHash === m.snapshotHash ? "=" : "≠"} ${m.snapshotHash}`;
+        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.confirmedTick}\nRTT ${m.rttMs.toFixed(1)}ms · relay age ≈${(m.stateAgeMs + m.rttMs / 2).toFixed(1)}ms\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash matches ${m.hashMatches} · mismatches ${m.hashMismatches}\nrecords ${m.records} · reloads ${m.reloads} · skipped ${m.skippedReloads}`;
       } };
   } catch (error) { dispose(); throw error; }
 }

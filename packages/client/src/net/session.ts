@@ -1,9 +1,8 @@
 import { requireStatus, type RenderView, type SimHost } from "@soldat-web/sim-host";
-import { decodeDelta, type InputFrame, type Message, type ReliableEvent } from "@soldat-web/protocol";
+import { type InputFrame, type Message, type ReliableEvent, type TickRecord } from "@soldat-web/protocol";
 import { SimWorldView, type WorldSprite, type WorldView } from "../world.ts";
-import { SnapshotBaselines } from "./baselines.ts";
 
-type Snapshot = Extract<Message, { type: "snapshot" }>;
+type StepRecord = Extract<TickRecord, { type: "step" }>;
 export const INPUT_HISTORY = 128;
 export const REPLAY = 1;
 const STEP_MS = 1000 / 60;
@@ -17,11 +16,12 @@ export function heldInput(input: Uint8Array): Uint8Array {
 }
 export interface OnlineMetrics {
   status: string; slot: number; serverTick: number; predictedTick: number; viewTick: number;
-  rttMs: number; loss: number; snapshotAgeMs: number; interpolationMs: number;
+  rttMs: number; loss: number; stateAgeMs: number; interpolationMs: number;
   correction: number; corrections: number; replayTicks: number; resyncs: number;
-  snapshotId: number; snapshotTick: number; snapshotHash: string; loadedHash: string;
-  hashMatches: number; hashMismatches: number; snapshots: number; events: number;
-  pendingInputs: number; baselineBytes: number; extractionMs: number; reconcileMs: number;
+  confirmedTick: number; hashTick: number; confirmedHash: string; loadedHash: string;
+  hashMatches: number; hashMismatches: number; ticks: number; records: number; bytes: number; events: number;
+  pendingInputs: number; anchorBytes: number; confirmedMs: number; reconcileMs: number;
+  rollbacks: number; reloads: number; skippedReloads: number;
   lastConsumedInputSeq: number; replayLength: number; duplicateEvents: number; eventGaps: number;
   predictionLeadTicks: number; targetPredictionLeadTicks: number; rttDeviationMs: number; predictionClockRate: number;
 }
@@ -30,7 +30,7 @@ export interface CorrectionSprite {
 }
 export interface CorrectionDiagnostic {
   slot: number; correction: number; previousServerTick: number; serverTick: number; predictedTick: number;
-  viewTick: number; snapshotAgeMs: number; rttMs: number; previousConsumedInputSeq: number; consumedInputSeq: number;
+  viewTick: number; stateAgeMs: number; rttMs: number; previousConsumedInputSeq: number; consumedInputSeq: number;
   sequence: number; replayGaps: number[];
   before: CorrectionSprite[]; authoritative: CorrectionSprite[]; after: CorrectionSprite[];
   ring: { seq: number; tick: number; viewTick: number; bits: number; input: number[] }[];
@@ -45,9 +45,9 @@ function diagnosticInput(input: Uint8Array): { bits: number; input: number[] } {
   return { bits: input[0]! | (input[1]! << 8), input: Array.from(input) };
 }
 export interface OnlineOptions {
-  prediction: SimHost; extraction: SimHost; slot: number; send(message: Message): void;
+  prediction: SimHost; confirmed: SimHost; slot: number; send(message: Message): void;
   now?: () => number; onEvent?: (event: ReliableEvent) => void;
-  onSnapshot?: (metrics: Readonly<OnlineMetrics>) => void;
+  onTicks?: (metrics: Readonly<OnlineMetrics>) => void;
   /** Opt-in reconciliation evidence; no diagnostic copies are made when absent. */
   onCorrection?: (diagnostic: Readonly<CorrectionDiagnostic>) => void;
   /** Borrowed event records, presentation kinds only; never emitted on REPLAY. */
@@ -59,23 +59,26 @@ interface Pose { tick: number; sprites: WorldSprite[] }
 function copySprite(sprite: WorldSprite): WorldSprite {
   return { ...sprite, previous: sprite.previous.slice(), current: sprite.current.slice() };
 }
-/** A bounded full-state rollback client. Hosts are real, separately initialized
- * WASM instances; extraction never steps and prediction never invents poses. */
+/** Two AI-on instances: confirmed follows the ordered server timeline while
+ * prediction holds remote human controls and replays local unacknowledged intent. */
 export class OnlineSession {
   readonly predictionWorld: SimWorldView;
   readonly world: { sprites: WorldSprite[]; tick: number; ceaseFireTime?: number; sync(): void };
   readonly metrics: OnlineMetrics;
-  private readonly extractionWorld: SimWorldView;
+  private readonly confirmedWorld: SimWorldView;
   private readonly now: () => number;
   private readonly ring: (InputFrame | undefined)[] = new Array(INPUT_HISTORY);
   private readonly recent: InputFrame[] = [];
-  private readonly baselines = new SnapshotBaselines();
+  private readonly anchors = new Map<number, Uint8Array>();
+  private readonly timeline = new Map<number, StepRecord>();
+  private readonly predictedInputs = new Map<number, { slot: number; input: Uint8Array }[]>();
+  private confirmedInputPtr: number;
   private readonly poses: Pose[] = [];
   private remote: { slot: number; input: Uint8Array }[] = [];
   private seq = 0;
   private resyncSequence = 0;
   private lastEvent = 0;
-  private lastSnapshotAt = 0;
+  private lastStateAt = 0;
   private lastPresentAt = 0;
   private lastPingAt = -Infinity;
   private ping: bigint | undefined;
@@ -92,7 +95,6 @@ export class OnlineSession {
   private inputPtr: number;
   private eventPtr: number;
   private readonly eventCapacity = 1_048_576;
-  private gapSnapshots = 0;
   private fraction = 1;
   private disposed = false;
   private readonly options: OnlineOptions;
@@ -100,15 +102,18 @@ export class OnlineSession {
     this.options = options;
     this.now = options.now ?? (() => performance.now());
     this.predictionWorld = new SimWorldView(options.prediction);
-    this.extractionWorld = new SimWorldView(options.extraction);
+    this.confirmedWorld = new SimWorldView(options.confirmed);
     this.world = { sprites: this.predictionWorld.sprites.map(copySprite), tick: 0, sync() {} };
     this.inputPtr = requireStatus(options.prediction.exports.sim_alloc(12), "sim_alloc(online input)");
     this.eventPtr = requireStatus(options.prediction.exports.sim_alloc(this.eventCapacity), "sim_alloc(online events)");
     if (!this.inputPtr || !this.eventPtr) throw new Error("Online buffer allocation failed");
-    this.metrics = { status: "awaiting snapshot", slot: options.slot, serverTick: 0, predictedTick: 0, viewTick: 0,
-      rttMs: 0, loss: 0, snapshotAgeMs: 0, interpolationMs: 50, correction: 0, corrections: 0,
-      replayTicks: 0, resyncs: 0, snapshotId: 0, snapshotTick: 0, snapshotHash: "", loadedHash: "",
-      hashMatches: 0, hashMismatches: 0, snapshots: 0, events: 0, pendingInputs: 0, baselineBytes: 0, extractionMs: 0, reconcileMs: 0,
+    this.confirmedInputPtr = requireStatus(options.confirmed.exports.sim_alloc(12), "sim_alloc(confirmed input)");
+    if (!this.confirmedInputPtr) throw new Error("Confirmed input allocation failed");
+    this.metrics = { status: "awaiting state", slot: options.slot, serverTick: 0, predictedTick: 0, viewTick: 0,
+      rttMs: 0, loss: 0, stateAgeMs: 0, interpolationMs: 50, correction: 0, corrections: 0,
+      replayTicks: 0, resyncs: 0, confirmedTick: 0, hashTick: 0, confirmedHash: "", loadedHash: "",
+      hashMatches: 0, hashMismatches: 0, ticks: 0, records: 0, bytes: 0, events: 0, pendingInputs: 0, anchorBytes: 0, confirmedMs: 0, reconcileMs: 0,
+      rollbacks: 0, reloads: 0, skippedReloads: 0,
       lastConsumedInputSeq: 0, replayLength: 0, duplicateEvents: 0, eventGaps: 0,
       predictionLeadTicks: 2, targetPredictionLeadTicks: 2, rttDeviationMs: 0, predictionClockRate: 1 };
   }
@@ -142,107 +147,173 @@ export class OnlineSession {
       }
       return;
     }
-    if (message.type === "snapshot") this.snapshot(message);
+    if (message.type === "state") this.state(message);
+    if (message.type === "ticks" && !this.waiting) this.ticks(message);
   }
-  private resync(baselineId = 0): void {
+  private resync(): void {
     if (!this.resyncRequested) {
       this.resyncRequested = true; this.metrics.resyncs++;
-      this.options.send({ type: "resync", baselineId });
+      this.options.send({ type: "resync" });
     }
     this.waiting = true; this.metrics.status = "resynchronizing";
     this.resyncSequence = this.seq;
     this.ring.fill(undefined); this.recent.length = 0; this.metrics.pendingInputs = 0;
   }
-  private snapshot(message: Snapshot): void {
+  private saved(): Uint8Array {
+    const bytes = this.options.confirmed.saveState();
+    if (typeof bytes === "number") throw new Error(`Confirmed save failed: ${bytes}`);
+    return bytes;
+  }
+  private verify(tick: number, hash: bigint): boolean {
     const m = this.metrics;
-    if (message.snapshotId <= m.snapshotId) return;
-    // All deltas already queued before the recovery request belong to the old
-    // baseline epoch. Only the requested fullstate can reopen prediction.
-    if (this.resyncRequested && message.baselineId !== 0) return;
-    const baseline = this.baselines.get(message.baselineId);
-    if (message.baselineId && !baseline) {
-      this.resync(message.baselineId); return;
+    if (tick !== m.confirmedTick) throw new Error(`Hash boundary ${tick} != confirmed ${m.confirmedTick}`);
+    const actual = this.options.confirmed.hash(), expected = hash.toString(16).padStart(16, "0");
+    m.hashTick = tick; m.confirmedHash = expected; m.loadedHash = actual;
+    if (actual !== expected) {
+      m.hashMismatches++; this.resync(); return false;
     }
-    const started = this.now();
-    const state = decodeDelta(message.state, baseline);
+    m.hashMatches++; return true;
+  }
+  private state(message: Extract<Message, { type: "state" }>): void {
+    requireStatus(this.options.confirmed.loadState(message.bytes), "confirmed state load");
+    this.metrics.confirmedTick = message.tick;
+    this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
+    this.anchors.set(message.tick, message.bytes.slice());
+    if (!this.verify(message.tick, message.hash)) return;
+    this.remote = [];
+    this.resyncRequested = false;
+    this.finish(message.lastConsumedInputSeq, true);
+  }
+  private stepConfirmed(record: StepRecord): void {
+    const host = this.options.confirmed;
+    if (record.tick !== this.metrics.confirmedTick) throw new Error(`Out-of-order confirmed step ${record.tick}`);
+    for (const bytes of record.commands) {
+      // Preserve the exact JSON bytes; negative command status can be the
+      // authoritative simulation's normal limbo rejection too.
+      const pointer = requireStatus(host.exports.sim_alloc(bytes.length), "sim_alloc(command)");
+      if (!pointer) throw new Error("Command allocation failed");
+      try {
+        new Uint8Array(host.exports.memory.buffer, pointer, bytes.length).set(bytes);
+        host.exports.sim_command(record.tick, pointer, bytes.length);
+      } finally { host.exports.sim_free(pointer); }
+    }
+    for (const { slot, input } of record.inputs) {
+      new Uint8Array(host.exports.memory.buffer, this.confirmedInputPtr, 12).set(input);
+      requireStatus(host.exports.sim_set_input(slot, record.tick, this.confirmedInputPtr), "sim_set_input(confirmed)");
+    }
+    requireStatus(host.step(REPLAY), "sim_step(confirmed)");
+    host.events(); // No confirmed presentation is ever sent to the UI.
+    this.metrics.confirmedTick++;
+    if (this.metrics.confirmedTick % 8 === 0) this.anchors.set(this.metrics.confirmedTick, this.saved());
+  }
+  private ticks(message: Extract<Message, { type: "ticks" }>): void {
+    const m = this.metrics, started = this.now();
+    let reload = false;
+    for (const record of message.records) {
+      m.records++;
+      if (record.type === "step") {
+        const used = this.predictedInputs.get(record.tick);
+        const matching = used && used.length === record.inputs.length && used.every((entry, index) =>
+          entry.slot === record.inputs[index]!.slot && entry.input.every((byte, offset) => byte === record.inputs[index]!.input[offset]));
+        if (record.commands.length || (record.tick < this.predictionWorld.tick && !matching)) reload = true;
+        this.timeline.set(record.tick, record);
+        this.stepConfirmed(record); m.ticks++;
+        this.remote = record.inputs.map(({ slot, input }) => ({ slot, input: heldInput(input) }));
+      } else if (record.type === "correct") {
+        const step = this.timeline.get(record.tick);
+        let anchorTick = -1;
+        for (const tick of this.anchors.keys()) if (tick <= record.tick && tick > anchorTick) anchorTick = tick;
+        const anchor = this.anchors.get(anchorTick);
+        const entry = step?.inputs.find(input => input.slot === record.slot);
+        if (!anchor || !entry) { this.resync(); return; }
+        entry.input = record.input.slice();
+        const target = m.confirmedTick;
+        requireStatus(this.options.confirmed.loadState(anchor), "confirmed correction restore");
+        for (const tick of this.anchors.keys()) if (tick > anchorTick) this.anchors.delete(tick);
+        m.confirmedTick = anchorTick;
+        for (let tick = anchorTick; tick < target; tick++) {
+          const historical = this.timeline.get(tick);
+          if (!historical) { this.resync(); return; }
+          this.stepConfirmed(historical);
+        }
+        const latest = this.timeline.get(target - 1);
+        if (latest) this.remote = latest.inputs.map(({ slot, input }) => ({ slot, input: heldInput(input) }));
+        m.rollbacks++; reload = true;
+      } else if (!this.verify(record.tick, record.hash)) return;
+    }
+    // Retain the anchor immediately before the 32-tick window as well as all
+    // newer ones, so any legal 12-tick rewind has complete replay coverage.
+    const cutoff = m.confirmedTick - 40;
+    for (const tick of this.anchors.keys()) if (tick < cutoff) this.anchors.delete(tick);
+    const oldest = Math.min(...this.anchors.keys());
+    for (const tick of this.timeline.keys()) if (tick < oldest) this.timeline.delete(tick);
+    for (const tick of this.predictedInputs.keys()) if (tick < oldest) this.predictedInputs.delete(tick);
+    m.confirmedMs = this.now() - started;
+    this.finish(message.lastConsumedInputSeq, reload);
+  }
+  private finish(consumed: number, reload: boolean): void {
+    const m = this.metrics, started = this.now(), boundary = m.confirmedTick;
     const old = this.predictionWorld.sprites[this.options.slot - 1]!;
-    const oldX = old.x, oldY = old.y, oldTick = this.predictionWorld.tick;
+    const oldX = old.x, oldY = old.y, oldActive = old.active, oldTick = this.predictionWorld.tick;
     const diagnostic: CorrectionDiagnostic | undefined = this.options.onCorrection ? {
-      slot: this.options.slot, correction: 0, previousServerTick: m.serverTick, serverTick: message.serverTick,
-      predictedTick: oldTick, viewTick: m.viewTick, snapshotAgeMs: this.now() - this.lastSnapshotAt,
-      rttMs: m.rttMs, previousConsumedInputSeq: m.lastConsumedInputSeq, consumedInputSeq: message.lastConsumedInputSeq,
+      slot: this.options.slot, correction: 0, previousServerTick: m.serverTick, serverTick: boundary,
+      predictedTick: oldTick, viewTick: m.viewTick, stateAgeMs: this.now() - this.lastStateAt,
+      rttMs: m.rttMs, previousConsumedInputSeq: m.lastConsumedInputSeq, consumedInputSeq: consumed,
       sequence: this.seq, replayGaps: [], before: correctionSprites(this.predictionWorld.sprites),
       authoritative: [], after: [],
-      ring: this.ring.filter((frame): frame is InputFrame => !!frame).map(frame =>
-        ({ seq: frame.seq, tick: frame.tick, viewTick: frame.viewTick, ...diagnosticInput(frame.input) })).sort((a, b) => a.tick - b.tick),
-      previousInputs: this.remote.map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
-      authoritativeInputs: message.inputs.map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
+      ring: this.ring.filter((frame): frame is InputFrame => !!frame).map(frame => ({ seq: frame.seq, tick: frame.tick, viewTick: frame.viewTick, ...diagnosticInput(frame.input) })).sort((a, b) => a.tick - b.tick),
+      previousInputs: (this.predictedInputs.get(boundary) ?? []).map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
+      authoritativeInputs: this.remote.map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
     } : undefined;
-    requireStatus(this.options.extraction.loadState(state), "snapshot extraction load");
-    const extractedHash = this.options.extraction.hash();
-    requireStatus(this.options.prediction.loadState(state), "prediction restore");
-    const hash = this.options.prediction.hash(), expected = message.stateHash.toString(16).padStart(16, "0");
-    m.snapshotHash = expected; m.loadedHash = hash; m.snapshotTick = message.serverTick;
-    if (hash !== expected || extractedHash !== expected) {
-      m.hashMismatches++; this.resync();
-      throw new Error(`Authoritative snapshot hash mismatch at tick ${message.serverTick}: ${hash}/${extractedHash} != ${expected}`);
-    }
-    m.hashMatches++;
-    this.extractionWorld.sync();
-    if (this.extractionWorld.tick !== message.serverTick) throw new Error("Snapshot/render tick mismatch");
-    if (diagnostic) diagnostic.authoritative = correctionSprites(this.extractionWorld.sprites);
-    this.poses.push({ tick: message.serverTick, sprites: this.extractionWorld.sprites.map(copySprite) });
+    this.confirmedWorld.sync();
+    if (diagnostic) diagnostic.authoritative = correctionSprites(this.confirmedWorld.sprites);
+    this.poses.push({ tick: boundary, sprites: this.confirmedWorld.sprites.map(copySprite) });
     if (this.poses.length > 16) this.poses.shift();
-    m.extractionMs = this.now() - started;
-    if (this.resyncRequested) this.baselines.clear();
-    const acknowledge = this.baselines.retain(message.snapshotId, message.baselineId, state);
-    m.baselineBytes = this.baselines.bytes;
-    this.remote = message.inputs.map(entry => ({ slot: entry.slot, input: heldInput(entry.input) }));
     for (let i = 0; i < this.ring.length; i++) {
       const frame = this.ring[i];
-      if (frame && (frame.seq <= message.lastConsumedInputSeq || frame.tick < message.serverTick)) this.ring[i] = undefined;
+      if (frame && (frame.seq <= consumed || frame.tick < boundary)) this.ring[i] = undefined;
     }
-    this.predictionWorld.sync();
-    const target = this.waiting ? message.serverTick : Math.max(message.serverTick, oldTick);
-    if (target - message.serverTick > INPUT_HISTORY) { this.resync(); return; }
-    for (let tick = message.serverTick; tick < target; tick++) {
-      const frame = this.ring[tick % INPUT_HISTORY];
-      if (diagnostic && frame?.tick !== tick) diagnostic.replayGaps.push(tick);
-      this.controls(tick, frame?.tick === tick ? frame.input : undefined);
-      requireStatus(this.options.prediction.step(REPLAY), "sim_step(REPLAY)"); m.replayTicks++;
-    }
-    this.predictionWorld.sync();
+    const target = this.waiting ? boundary : Math.max(boundary, oldTick);
+    if (target - boundary >= INPUT_HISTORY) { this.resync(); return; }
+    if (reload || this.waiting || oldTick < boundary) {
+      const bytes = this.saved();
+      requireStatus(this.options.prediction.loadState(bytes), "prediction confirmed restore");
+      m.reloads++;
+      for (const tick of this.predictedInputs.keys()) if (tick >= boundary) this.predictedInputs.delete(tick);
+      for (let tick = boundary; tick < target; tick++) {
+        const frame = this.ring[tick % INPUT_HISTORY];
+        if (diagnostic && frame?.tick !== tick) diagnostic.replayGaps.push(tick);
+        this.controls(tick, frame?.tick === tick ? frame.input : undefined);
+        requireStatus(this.options.prediction.step(REPLAY), "sim_step(REPLAY)"); m.replayTicks++;
+      }
+      this.predictionWorld.sync();
+    } else m.skippedReloads++;
     const local = this.predictionWorld.sprites[this.options.slot - 1]!;
-    if (!this.waiting && oldTick === target && old.active && local.active) {
+    m.correction = 0;
+    if (!this.waiting && oldTick === target && oldActive && local.active) {
       const dx = oldX - local.x, dy = oldY - local.y;
       m.correction = Math.hypot(dx, dy);
-      if (diagnostic) diagnostic.correction = m.correction;
       if (m.correction > 0.001) { m.corrections++; this.correctionX += dx; this.correctionY += dy; }
     }
     const at = this.now();
-    if (m.snapshots) {
-      const elapsed = at - this.lastSnapshotAt, expectedMs = (message.serverTick - m.serverTick) * STEP_MS;
+    if (!this.waiting) {
+      const elapsed = at - this.lastStateAt, expectedMs = (boundary - m.serverTick) * STEP_MS;
       this.jitter = this.jitter * 0.9 + Math.abs(elapsed - expectedMs) * 0.1;
-      const desiredDelay = Math.max(33, Math.min(100, 33 + this.jitter * 2));
-      m.interpolationMs += (desiredDelay - m.interpolationMs) * 0.1;
-      this.gapSnapshots += Math.max(0, message.snapshotId - m.snapshotId - 1);
+      m.interpolationMs += (Math.max(33, Math.min(100, 33 + this.jitter * 2)) - m.interpolationMs) * 0.1;
     }
-    m.snapshotId = message.snapshotId; m.serverTick = message.serverTick; m.snapshots++;
-    m.loss = this.gapSnapshots / Math.max(1, this.gapSnapshots + m.snapshots);
-    // Fullstate recovery rebases the clock, not the sequence or sampled intent.
     if (this.waiting) {
-      this.clockPhase = message.serverTick + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
-        m.rttMs / 2 / STEP_MS + m.predictionLeadTicks); this.clockAt = at;
+      this.clockPhase = boundary + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, m.rttMs / 2 / STEP_MS + m.predictionLeadTicks);
+      this.clockAt = at; m.viewTick = boundary;
     } else this.clockPhase = Math.max(this.clockPhase, this.predictionWorld.tick);
-    this.lastSnapshotAt = at; this.waiting = false; this.resyncRequested = false; m.status = "online";
+    m.serverTick = boundary;
+    this.lastStateAt = at; this.waiting = false; this.resyncRequested = false; m.status = "online";
     m.predictedTick = this.predictionWorld.tick; m.pendingInputs = this.ring.filter(Boolean).length;
-    if (m.snapshots === 1) m.viewTick = message.serverTick;
-    m.lastConsumedInputSeq = message.lastConsumedInputSeq; m.replayLength = target - message.serverTick;
+    m.lastConsumedInputSeq = consumed; m.replayLength = target - boundary;
+    m.anchorBytes = [...this.anchors.values()].reduce((sum, bytes) => sum + bytes.length, 0);
     m.reconcileMs = this.now() - started;
-    if (acknowledge) this.options.send({ type: "snapshotAck", snapshotId: message.snapshotId });
-    this.options.onSnapshot?.(m);
-    if (diagnostic && diagnostic.correction > 0.001) {
-      diagnostic.after = correctionSprites(this.predictionWorld.sprites);
+    this.options.onTicks?.(m);
+    if (diagnostic && m.correction > 0.001) {
+      diagnostic.correction = m.correction; diagnostic.after = correctionSprites(this.predictionWorld.sprites);
       this.options.onCorrection!(diagnostic);
     }
   }
@@ -257,6 +328,9 @@ export class OnlineSession {
       new Uint8Array(host.exports.memory.buffer, this.inputPtr, 12).set(local);
       requireStatus(host.exports.sim_set_input(this.options.slot, tick, this.inputPtr), "sim_set_input(local)");
     }
+    this.predictedInputs.set(tick, this.remote.map(entry => ({ slot: entry.slot, input: entry.slot === this.options.slot && local ? local.slice() : entry.input.slice() })));
+    if (local && !this.remote.some(entry => entry.slot === this.options.slot)) this.predictedInputs.get(tick)!.push({ slot: this.options.slot, input: local.slice() });
+    this.predictedInputs.get(tick)!.sort((a, b) => a.slot - b.slot);
   }
   /** Called per display frame. Clock debt never becomes variable simulation dt. */
   advance(sample: () => Uint8Array, beforeStep?: () => void, afterStep?: () => void): void {
@@ -266,14 +340,13 @@ export class OnlineSession {
       this.lastPingAt = at; this.ping = BigInt(Math.floor(at * 1000)); this.options.send({ type: "ping", timestamp: this.ping });
     }
     if (this.waiting) return;
-    // Snapshots can keep arriving while every input is rejected (for example,
-    // an initial TCP backlog can exhaust the bounded sequence jump). Tick-
-    // indexed ring retirement alone cannot detect this sequence deadlock.
+    // A reliable stream can keep arriving while all local inputs are rejected.
+    // Detect sequence deadlock independently of tick-indexed retirement.
     if (this.seq - Math.max(m.lastConsumedInputSeq, this.resyncSequence) >= INPUT_HISTORY) { this.resync(); return; }
-    m.snapshotAgeMs = at - this.lastSnapshotAt;
-    if (m.snapshotAgeMs > INPUT_HISTORY * STEP_MS) { this.resync(); return; }
+    m.stateAgeMs = at - this.lastStateAt;
+    if (m.stateAgeMs > INPUT_HISTORY * STEP_MS) { this.resync(); return; }
     this.present();
-    const serverNow = m.serverTick + (m.snapshotAgeMs + m.rttMs / 2) / STEP_MS;
+    const serverNow = m.serverTick + (m.stateAgeMs + m.rttMs / 2) / STEP_MS;
     const elapsed = Math.max(0, at - this.clockAt);
     this.clockAt = at;
     // Increase lead slowly; shed surplus lead faster. Clock corrections change
@@ -323,8 +396,8 @@ export class OnlineSession {
     const latest = this.poses[this.poses.length - 1];
     if (!latest) return this.world;
     const target = Math.max(this.poses[0]!.tick, Math.min(latest.tick,
-      m.serverTick + (at - this.lastSnapshotAt + m.rttMs / 2 - m.interpolationMs) / STEP_MS));
-    m.viewTick = Math.floor(target); m.snapshotAgeMs = at - this.lastSnapshotAt;
+      m.serverTick + (at - this.lastStateAt + m.rttMs / 2 - m.interpolationMs) / STEP_MS));
+    m.viewTick = Math.floor(target); m.stateAgeMs = at - this.lastStateAt;
     let a = this.poses[0]!, b = latest;
     for (const pose of this.poses) { if (pose.tick <= target) a = pose; if (pose.tick >= target) { b = pose; break; } }
     const alpha = a.tick === b.tick ? 1 : (target - a.tick) / (b.tick - a.tick);
@@ -345,13 +418,13 @@ export class OnlineSession {
       }
     }
     this.world.tick = m.viewTick;
-    this.world.ceaseFireTime = this.extractionWorld.ceaseFireTime;
+    this.world.ceaseFireTime = this.confirmedWorld.ceaseFireTime;
     return this.world;
   }
   /** Latest authoritative (not predicted) bullets/Things, borrowed until the
-   * next snapshot load. Consume synchronously and never write these arrays. */
+   * next confirmed step. Consume synchronously and never write these arrays. */
   authoritativeRenderView(): RenderView {
-    const view = this.options.extraction.renderView();
+    const view = this.options.confirmed.renderView();
     if (typeof view === "number") throw new Error(`Authoritative render view unavailable: ${view}`);
     return view;
   }
@@ -359,7 +432,8 @@ export class OnlineSession {
     if (this.disposed) return;
     this.disposed = true;
     this.options.prediction.exports.sim_free(this.inputPtr); this.options.prediction.exports.sim_free(this.eventPtr);
-    this.options.prediction.dispose(); this.options.extraction.dispose();
-    this.baselines.clear(); this.poses.length = 0; this.ring.fill(undefined); this.metrics.status = "closed";
+    this.options.confirmed.exports.sim_free(this.confirmedInputPtr);
+    this.options.prediction.dispose(); this.options.confirmed.dispose();
+    this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0; this.ring.fill(undefined); this.metrics.status = "closed";
   }
 }

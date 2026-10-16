@@ -55,8 +55,9 @@ export async function qualificationConfig(out: string): Promise<QualificationCon
   return { wasm, manifest, tls: { key, cert }, match: { wasmPath, contentRoot, contentSetHash: manifest.sha256, map: "Arena", rules: { rng: "keyed", ai: false, world: "fixture" }, matchSeed: "123456789" } };
 }
 
-export async function qualificationServer(out: string, port = 0): Promise<QualificationServer> {
+export async function qualificationServer(out: string, port = 0, targetPlayers?: number): Promise<QualificationServer> {
   const config = await qualificationConfig(out);
+  if (targetPlayers !== undefined) config.match = { ...config.match, targetPlayers, rules: { ...config.match.rules, world: "original" } };
   const evidence = new Evidence(resolve(out, "server.jsonl"));
   const metrics: Extract<WorkerResponse, { type: "metrics" }>[] = [];
   const errors: string[] = [];
@@ -82,7 +83,7 @@ export class RawPeer {
   readonly packets: Buffer[] = [];
   closed: { code: number; reason: string } | undefined;
   error: Error | undefined;
-  constructor(url: string, readonly acknowledgeSnapshots = true) {
+  constructor(url: string) {
     this.socket = new WebSocket(url, { rejectUnauthorized: false, perMessageDeflate: false });
     this.socket.on("error", error => { this.error = error; });
     this.socket.on("close", (code, reason) => { this.closed = { code, reason: reason.toString() }; });
@@ -91,7 +92,6 @@ export class RawPeer {
       this.packets.push(packet);
       const message = decodeMessage(packet); this.messages.push(message);
       if (message.type === "ping") this.send({ type: "pong", timestamp: message.timestamp });
-      if (message.type === "snapshot" && this.acknowledgeSnapshots) this.send({ type: "snapshotAck", snapshotId: message.snapshotId });
       if (message.type === "events") this.send({ type: "eventAck", eventId: message.events.at(-1)!.id });
     });
   }

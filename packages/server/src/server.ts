@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
-import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, validateWeaponChoice } from "@soldat-web/protocol";
+import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, encodeTicksMessage, validateWeaponChoice } from "@soldat-web/protocol";
 import type { Message, ReliableEvent } from "@soldat-web/protocol";
 import type { MessageTransport } from "@soldat-web/protocol/transport";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
@@ -45,8 +45,6 @@ interface Session {
   lastWeaponChoice: bigint;
   probe?: bigint;
   probeTimer?: NodeJS.Timeout;
-  awaitingBaseline: boolean;
-  expectedFullSnapshot?: number;
   probeDeadline?: bigint;
 }
 
@@ -110,22 +108,10 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     }
     session.transport.close(code, reason);
   };
-  const awaitBaseline = (slot: number, session: Session) => {
-    if (session.awaitingBaseline) return;
-    session.awaitingBaseline = true;
-    delete session.expectedFullSnapshot;
+  const stateReady = (slot: number, session: Session) => {
     clearTimeout(session.timer);
-    session.timer = setTimeout(() => disconnect(slot, 1008, "Full snapshot acknowledgement timed out"), 60_000);
-    session.timer.unref();
-  };
-  const baselineReady = (slot: number, session: Session, snapshotId: number) => {
-    if (!session.awaitingBaseline || snapshotId !== session.expectedFullSnapshot) return;
-    session.awaitingBaseline = false;
-    clearTimeout(session.timer);
-    if (session.probe !== undefined) session.probeDeadline = process.hrtime.bigint() + 10_000_000_000n;
     if (session.probeTimer) return;
     session.probeTimer = setInterval(() => {
-      if (session.awaitingBaseline) return;
       const now = process.hrtime.bigint();
       if (session.probe !== undefined) {
         if (session.probeDeadline !== undefined && now > session.probeDeadline) disconnect(slot, 1008, "Timing probe timed out");
@@ -151,6 +137,21 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       for (const tick of wireByTick.keys()) if (tick <= response.serverTick) wireByTick.delete(tick);
       return;
     }
+    if (response.type === "ticks") {
+      for (const recipient of response.recipients) {
+        const session = sessions.get(recipient.slot);
+        if (!session || session.state !== "active") continue;
+        try {
+          const start = performance.now();
+          const packet = encodeTicksMessage(recipient.lastConsumedInputSeq, response.records);
+          const encodingMs = performance.now() - start;
+          wireEncodeMs.push(encodingMs);
+          wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
+          session.transport.send("latestState", packet);
+        } catch (error) { report(error instanceof Error ? error : new Error(String(error))); disconnect(recipient.slot, 1011, "Server packet failure"); }
+      }
+      return;
+    }
     if (!("slot" in response)) return;
     if (response.type === "left") {
       occupiedSlots.delete(response.slot);
@@ -167,20 +168,14 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       if (response.type === "joined" && session.state === "joining") {
         session.transport.send("reliableControl", encodeMessage({ type: "welcome", slot: response.slot, serverTick: response.serverTick, tickRate: 60, matchSeed, map: options.match.map, rules }));
         session.state = "active";
-        awaitBaseline(response.slot, session);
-      } else if (response.type === "baseline" && session.state === "active") {
-        baselineReady(response.slot, session, response.snapshotId);
       } else if (response.type === "send" && session.state === "active") {
-        if (response.message.type === "snapshot" && response.message.baselineId === 0) {
-          awaitBaseline(response.slot, session);
-          session.expectedFullSnapshot = response.message.snapshotId;
-        }
         const start = performance.now();
         const packet = encodeMessage(response.message);
         const encodingMs = performance.now() - start;
         wireEncodeMs.push(encodingMs);
         wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
-        session.transport.send(response.message.type === "snapshot" ? "latestState" : "reliableControl", packet);
+        session.transport.send(response.message.type === "state" ? "latestState" : "reliableControl", packet);
+        if (response.message.type === "state") stateReady(response.slot, session);
         if (response.message.type === "events") for (const event of response.message.events) options.onReliableEvent?.(response.slot, event);
       } else if (response.type === "reject") disconnect(response.slot, 1008, response.reason);
     } catch (error) { report(error instanceof Error ? error : new Error(String(error))); disconnect(response.slot, 1011, "Server packet failure"); }
@@ -192,7 +187,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     occupiedSlots.add(slot);
     const transport = createNodeTransport(socket);
     const now = process.hrtime.bigint();
-    const session: Session = { transport, state: "hello", timer: setTimeout(() => disconnect(slot, 1008, "Admission timed out"), 5000), inputTokens: INPUT_PACKET_BURST, lastInput: now, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, awaitingBaseline: false };
+    const session: Session = { transport, state: "hello", timer: setTimeout(() => disconnect(slot, 1008, "Admission timed out"), 5000), inputTokens: INPUT_PACKET_BURST, lastInput: now, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now };
     sessions.set(slot, session);
     transport.onClose = (code, reason) => disconnect(slot, code, reason || "Connection closed");
     transport.onError = error => { report(error); disconnect(slot, 1002, "Transport error"); };
@@ -231,12 +226,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
             controller.send({ type: "weapon-choice", slot, primary: message.primary, secondary: message.secondary, selection: message.selection });
             break;
           }
-          case "snapshotAck": controller.send({ type: "snapshotAck", slot, snapshotId: message.snapshotId }); break;
           case "eventAck": controller.send({ type: "eventAck", slot, eventId: message.eventId }); break;
-          case "resync":
-            awaitBaseline(slot, session);
-            controller.send({ type: "resync", slot, baselineId: message.baselineId });
-            break;
+          case "resync": controller.send({ type: "resync", slot }); break;
           case "ping": transport.send("reliableControl", encodeMessage({ type: "pong", timestamp: message.timestamp })); break;
           case "pong":
             if (session.probe === undefined || message.timestamp !== session.probe / 1000n) throw new ProtocolError("VALUE", "Unknown timing probe");

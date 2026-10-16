@@ -62,6 +62,26 @@ Dynamic targets start full of original waypoint bots. A human join removes a bot
 
 `createGameServer` remains the lower-level single-match API used by existing capture/security qualification. Its fixed `botCount` configuration is unchanged when `targetPlayers` is absent. Both APIs require TLS; there is no insecure WebSocket fallback.
 
+## Input relay reference (protocol v4)
+
+Admission sends `welcome`, then one full `state` at a completed step boundary; subsequent `ticks` messages start with that boundary's step. No ACK gates input relay or timing probes. Every two ticks the worker encodes one shared ordered record buffer and the listener adds each recipient's consumed-input sequence header. Human input rosters are self-contained per message; later steps compress unchanged controls. Bots never appear in the input roster.
+
+All runtime membership and weapon commands are retained as exact JSON bytes and replayed before their corresponding step. A successful lag-compensation insertion sends `correct`, then a boundary `hash`; recipients synchronized after that historical tick receive fresh state instead. Periodic hashes occur every 30 ticks. Server rewind anchors are sparse (every four ticks plus the first boundary after history clear); absent retained anchors use present-time uncompensated action policy.
+
+Resync requests coalesce while a full state is pending. A request inside the 30-tick rate window is deferred rather than dropped, so a client with one request in flight always gets a response. Recovery required by a pre-sync historical correction bypasses that deferral.
+
+The DOM-free client runs both confirmed and prediction simulations with AI on. Confirmed follows records and verifies hashes; prediction holds remote humans and reloads only when newly confirmed intent differs. See [client network reference](../client/README.md) and [wire reference](../protocol/README.md). Historical G4 delta measurements remain in [the retained gate report](../../docs/gates/G4.md), not current-protocol qualification.
+
+For a serial LAN measurement with three headless humans and five original bots:
+
+```sh
+node --experimental-transform-types packages/server/scripts/run.ts --players 3 --target-players 8 --seconds 60 --port 9443 --out build-out/net-v4/lan-3
+```
+
+The summary reports `bytesPerSecondReceived` per client (binary payload, excluding WebSocket/TLS/IP overhead), confirmed hash counts and server CPU metrics. No full state is sent during steady-state unless resynchronization is requested.
+
+Measured on 2026-10-16 with that command: **60.002 s**, **3 humans + 5 bots**, **3,523 B/s received per client**, **125 verified hashes per client**, **zero mismatches/resyncs/errors**. Server sim+encode p99 was **2.520 ms** and tick lateness p99 **2.404 ms**. Raw receipts are under `build-out/net-v4/lan-3/` (`summary.json`, `clients.jsonl`, `server.jsonl`). This automated LAN result is not an impairment-matrix, browser, physical-input-latency or human-play qualification.
+
 ## Acceptance commands
 
 Run serially to keep worker/WASM memory bounded:
