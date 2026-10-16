@@ -426,7 +426,10 @@ test("F-01 consumed-input AFK rejects once and leaving refills the original bot 
   const match = await AuthoritativeMatch.start({ ...config.match, targetPlayers: 2, afkMs: 100 }, response => responses.push(response));
   try {
     match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, 0n);
-    for (let tick = 0; tick < 10; tick++) match.step();
+    // Inject monotonic time: AFK must expire even if an overloaded worker advances few ticks.
+    const nowMs = performance.now();
+    match.step(nowMs + 101);
+    match.step(nowMs + 102);
     const rejects = responses.filter(response => response.type === "reject");
     assert.equal(rejects.length, 1); assert.match(rejects[0]!.reason, /AFK/);
     match.receive({ type: "leave", slot: 1 }, 200_000_000n);

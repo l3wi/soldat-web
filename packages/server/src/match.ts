@@ -20,7 +20,7 @@ interface Player {
   weaponTokens: number;
   lastWeaponChoice: bigint;
   lastInput: Uint8Array;
-  changedAtTick: number;
+  changedAtMs: number;
   afkRejected: boolean;
 }
 interface History {
@@ -49,7 +49,7 @@ export class AuthoritativeMatch {
   private replayBudgetFallbacks = 0;
   private readonly replayBudget: TokenBucket;
   private replayNow = 0;
-  private readonly afkTicks: number;
+  private readonly afkMs: number;
   private inputBufferOccupancy: number[] = [];
   private inputBufferLeadTicks: number[] = [];
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
@@ -65,7 +65,7 @@ export class AuthoritativeMatch {
     this.host = host;
     const limits = hardeningLimits(config);
     this.replayBudget = new TokenBucket(60, limits.replayTicksPerSecond, 0);
-    this.afkTicks = Math.max(1, Math.ceil(limits.afkMs * 60 / 1000));
+    this.afkMs = limits.afkMs;
     this.targetPlayers = config.targetPlayers;
     this.bots = reservedBotSlots(config.targetPlayers ?? config.botCount);
     this.teamMode = config.rules.mode === "ctf";
@@ -112,7 +112,7 @@ export class AuthoritativeMatch {
       requireStatus(this.command({ kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
       requireStatus(this.command({ kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
-      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, lastInput: new Uint8Array(12), changedAtTick: this.tick, afkRejected: false });
+      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, lastInput: new Uint8Array(12), changedAtMs: performance.now(), afkRejected: false });
       // Never rewind across membership commands (their ownership is not input).
       this.history.clear();
       this.emit({ type: "joined", slot: message.slot, serverTick: this.tick });
@@ -228,7 +228,7 @@ export class AuthoritativeMatch {
     this.pendingEvents.set(this.tick, combined);
   }
 
-  step(): void {
+  step(nowMs = performance.now()): void {
     if (this.tick === 0xffffffff) throw new Error("Network tick space exhausted; restart match");
     if (!this.players.size) {
       this.tick = requireStatus(this.host.step(), "sim_step"); this.events();
@@ -245,8 +245,8 @@ export class AuthoritativeMatch {
       let changed = false;
       for (let index = 0; index < input.length; index++) if (input[index] !== player.lastInput[index]) { changed = true; break; }
       if (changed) {
-        player.lastInput.set(input); player.changedAtTick = this.tick;
-      } else if (!player.afkRejected && this.tick - player.changedAtTick >= this.afkTicks) {
+        player.lastInput.set(input); player.changedAtMs = nowMs;
+      } else if (!player.afkRejected && nowMs - player.changedAtMs >= this.afkMs) {
         player.afkRejected = true;
         this.emit({ type: "reject", slot, reason: "AFK: consumed input unchanged for too long" });
       }
