@@ -1,0 +1,118 @@
+{
+  "version": 1,
+  "map": "ctf_Laos",
+  "mapSha256": "72a98a6c338f14b5f25c14123dea6c6a2c3d9c458fd5b591d903f6a1f649d273",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
+  "seed": 123456789,
+  "ticks": 1500,
+  "traceStages": "tick",
+  "botDirectory": "/sim-content/bots",
+  "rules": {
+    "mode": "ctf",
+    "rng": "original",
+    "ai": true,
+    "botDifficulty": 100,
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 1,
+      "spawnpoint": 6,
+      "control": "authoritative",
+      "weapon": 3,
+      "secondaryWeapon": 0
+    },
+    {
+      "team": 2,
+      "spawnpoint": 3,
+      "control": "bot",
+      "bot": "Billy"
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 360,
+      "control": {
+        "Right": true,
+        "Fire": true,
+        "MouseAimX": -1243,
+        "MouseAimY": 135
+      }
+    },
+    {
+      "player": 1,
+      "start": 421,
+      "ticks": 60,
+      "control": {
+        "Up": true,
+        "Right": true,
+        "Jetpack": true,
+        "MouseAimX": -1243,
+        "MouseAimY": 135
+      }
+    },
+    {
+      "player": 1,
+      "start": 601,
+      "ticks": 360,
+      "control": {
+        "Left": true,
+        "Fire": true,
+        "MouseAimX": -2443,
+        "MouseAimY": 135
+      }
+    },
+    {
+      "player": 1,
+      "start": 1101,
+      "ticks": 180,
+      "control": {
+        "Reload": true,
+        "MouseAimX": -1243,
+        "MouseAimY": 135
+      }
+    }
+  ],
+  "commands": [
+    {
+      "tick": 0,
+      "kind": "weapon-apply",
+      "slot": 1,
+      "weapon": 3,
+      "secondaryWeapon": 11,
+      "selection": "secondary"
+    },
+    {
+      "tick": 0,
+      "kind": "weapon-apply",
+      "slot": 1,
+      "weapon": 2,
+      "selection": "primary"
+    }
+  ],
+  "metadata": {
+    "purpose": "human-and-bot: original stock bot profiles and unmodified waypoint AI on ctf_Laos",
+    "source": "reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest",
+    "botJoin": "team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots",
+    "controls": "Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.",
+    "weaponMenu": "Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); original active/WeaponSel/alive/non-bow guards apply.",
+    "chat": false,
+    "activeWaypoints": 376,
+    "connectedWaypoints": 369,
+    "profileSha256": {
+      "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435"
+    },
+    "requiredObservations": [
+      "complete-ticks",
+      "bot-roster",
+      "bot-movement",
+      "bot-waypoint",
+      "bot-controls"
+    ],
+    "limitations": [
+      "Authoring is not capture evidence. Combat, deaths, respawns, flag interactions and scores are reported only if observed; none are presumed."
+    ]
+  }
+}

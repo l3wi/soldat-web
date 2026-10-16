@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "map": "Arena",
+  "mapSha256": "bb0d2ba2ace3db2e22d62909d12d956acc46954f4df9c6d6c0b6eac2dd54fa30",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
+  "seed": 123456789,
+  "ticks": 10000,
+  "traceStages": "tick",
+  "botDirectory": "/sim-content/bots",
+  "rules": {
+    "mode": "dm",
+    "rng": "original",
+    "ai": true,
+    "botDifficulty": 100,
+    "traceCombat": true
+  },
+  "players": [
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Billy"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Commando"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Dutch"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "John"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Danko"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Kruger"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Poncho"
+    },
+    {
+      "team": 0,
+      "spawnpoint": 1,
+      "control": "bot",
+      "bot": "Roach"
+    }
+  ],
+  "inputs": [],
+  "commands": [],
+  "metadata": {
+    "purpose": "eight-bot-dm-10000: original stock bot profiles and unmodified waypoint AI on Arena",
+    "source": "reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest",
+    "botJoin": "team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots",
+    "controls": "Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.",
+    "weaponMenu": "Bots choose weapons through original profiles/AI, never injected menu commands.",
+    "chat": false,
+    "activeWaypoints": 224,
+    "connectedWaypoints": 224,
+    "profileSha256": {
+      "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435",
+      "bots/commando.bot": "e679f457c7415a80e7cf281e1652df3ca3f3d47acd70c1d233071fddb757864f",
+      "bots/dutch.bot": "d0b3812b60a5b383e34a69a8681427e521d2675cd49611f0efd9eac1c62e00ef",
+      "bots/john.bot": "2b174b62318b4892c1f573e20ca1dbee2597ad0796e6aa807e7a70776ebd28f0",
+      "bots/danko.bot": "368d357b290ed539d6b187f5ec3861d60ad09b2da8fda9aa1e93da4c77852e80",
+      "bots/kruger.bot": "0d4612183dd0ca777f26fe0be185592bad0ef27b274cc0e4a5a6d1168b241c1d",
+      "bots/poncho.bot": "b819aac9e00728c8e1dc9805c3fbe9a336f15309590c9ed338c401d3182fb420",
+      "bots/roach.bot": "13724e20d4f16983ee47743856cfd113e2bc236ed75a2416bf691774b2fb83e1"
+    },
+    "requiredObservations": [
+      "complete-ticks",
+      "bot-roster",
+      "bot-movement",
+      "bot-waypoint",
+      "bot-controls"
+    ],
+    "limitations": [
+      "Authoring is not capture evidence. Combat, deaths, respawns, flag interactions and scores are reported only if observed; none are presumed."
+    ]
+  }
+}

@@ -123,6 +123,27 @@ begin
       end;
       S.Add('team', Sprite[I].Player.Team);
       S.Add('standingPolyType', Sprite[I].Player.StandingPolyType);
+      if (Sprite[I].Player.ControlMethod = BOT) and not Sprite[I].Dummy then
+      begin
+        B := TJSONObject.Create;
+        S.Add('bot', B);
+        B.Add('name', Sprite[I].Player.Name);
+        B.Add('accuracy', Sprite[I].Brain.Accuracy);
+        B.Add('target', Sprite[I].Brain.TargetNum);
+        B.Add('path', Sprite[I].Brain.PathNum);
+        B.Add('waypoint', Sprite[I].Brain.CurrentWaypoint);
+        B.Add('nextWaypoint', Sprite[I].Brain.NextWaypoint);
+        B.Add('favWeapon', Sprite[I].Brain.FavWeapon);
+        B.Add('left', Sprite[I].Control.Left);
+        B.Add('right', Sprite[I].Control.Right);
+        B.Add('up', Sprite[I].Control.Up);
+        B.Add('down', Sprite[I].Control.Down);
+        B.Add('fire', Sprite[I].Control.Fire);
+        B.Add('jetpack', Sprite[I].Control.Jetpack);
+        B.Add('throwNade', Sprite[I].Control.ThrowNade);
+        B.Add('aimX', Sprite[I].Control.MouseAimX);
+        B.Add('aimY', Sprite[I].Control.MouseAimY);
+      end;
       S.Add('heldThing', Sprite[I].HoldedThing);
       S.Add('backgroundStatus', Sprite[I].BGState.BackgroundStatus);
       S.Add('backgroundPoly', Sprite[I].BGState.BackgroundPoly);

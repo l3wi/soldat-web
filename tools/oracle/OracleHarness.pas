@@ -10,7 +10,7 @@ implementation
 uses
   Classes, SysUtils, Math, fpjson, jsonparser, PhysFS,
   Anims, Constants, Cvar, Demo, Game, LogFile, Net, Parts, PolyMap, Server,
-  ServerLoop, Sprites, Things, Bullets, Util, Vector, Weapons, CombatDiagnostics;
+  ServerLoop, SharedConfig, Sprites, Things, Bullets, Util, Vector, Weapons, CombatDiagnostics;
 
 var
   Fixture: TJSONObject;
@@ -19,8 +19,10 @@ var
   CurrentTick: Integer = 0;
   WasRunningLeft, WasJumping: array[1..MAX_PLAYERS] of Boolean;
   Authoritative: array[1..MAX_PLAYERS] of Boolean;
+  BotPlayer: array[1..MAX_PLAYERS] of Boolean;
   ChosenPrimary, ChosenSecondary: array[1..MAX_PLAYERS] of Byte;
   WasDead: array[1..MAX_PLAYERS] of Boolean;
+  LimboAvailable: array[1..MAX_PLAYERS] of Boolean;
 
 
 {$I OracleTrace.inc}
@@ -55,7 +57,8 @@ begin
   for I := 1 to MAX_SPRITES do
     if Sprite[I].Active then
     begin
-      Sprite[I].Control := Default(TControl);
+      if (I > MAX_PLAYERS) or not BotPlayer[I] then
+        Sprite[I].Control := Default(TControl);
       NoClientUpdateTime[I] := 0;
     end;
   for I := 1 to MAX_PLAYERS do Selected[I] := nil;
@@ -69,12 +72,13 @@ begin
       Slot := Input.Integers['player'];
       if (Slot < 1) or (Slot > MAX_PLAYERS) or not Sprite[Slot].Active then
         raise Exception.Create('Input references inactive player');
+      if BotPlayer[Slot] then raise Exception.Create('Cannot inject bot controls');
       Selected[Slot] := Input;
     end;
   end;
   // Resolve exactly once per player, including neutral ticks. Later segments win.
   for Slot := 1 to MAX_PLAYERS do
-    if Sprite[Slot].Active then
+    if Sprite[Slot].Active and not BotPlayer[Slot] then
     begin
       Input := Selected[Slot];
       Order := 0;
@@ -144,6 +148,47 @@ begin
         ChosenSecondary[Slot] := Cmd.Integers['secondaryWeapon'];
       end;
     end
+    else if Kind = 'weapon-apply' then
+    begin
+      Slot := Cmd.Integers['slot'];
+      if (Slot < 1) or (Slot > MAX_PLAYERS) or not Sprite[Slot].Active then
+        raise Exception.Create('Invalid weapon-apply sprite');
+      if not Authoritative[Slot] or not LimboAvailable[Slot] or Sprite[Slot].DeadMeat then
+        raise Exception.Create('Weapon menu unavailable');
+      if (Cmd.Get('selection','primary') <> 'primary') and
+         (Cmd.Get('selection','primary') <> 'secondary') then
+        raise Exception.Create('Invalid weapon menu selection');
+      if Cmd.Get('selection','primary') = 'primary' then
+      begin
+        if Sprite[Slot].Weapon.Num in [Guns[BOW].Num, Guns[BOW2].Num] then
+          raise Exception.Create('Weapon menu unavailable with bow');
+        Index := WeaponNumToIndex(Cmd.Integers['weapon']);
+        if (Index < 1) or (Index > PRIMARY_WEAPONS) then
+          raise Exception.Create('Invalid menu primary');
+        if (WeaponActive[Index] <> 1) or (WeaponSel[Slot][Index] <> 1) then
+          raise Exception.Create('Disabled menu primary');
+      end
+      else if Cmd.Find('secondaryWeapon') = nil then
+        raise Exception.Create('Secondary selection requires secondaryWeapon');
+      if Cmd.Find('secondaryWeapon') <> nil then
+      begin
+        Index := WeaponNumToIndex(Cmd.Integers['secondaryWeapon']);
+        if (Index < COLT) or (Index > LAW) then
+          raise Exception.Create('Invalid menu secondary');
+        if (WeaponActive[Index] <> 1) or (WeaponSel[Slot][Index] <> 1) then
+          raise Exception.Create('Disabled menu secondary');
+        ChosenSecondary[Slot] := Cmd.Integers['secondaryWeapon'];
+        Sprite[Slot].Player.SecWep := Index - COLT;
+        Sprite[Slot].ApplyWeaponByNum(ChosenSecondary[Slot],2);
+      end;
+      if Cmd.Get('selection','primary') = 'primary' then
+      begin
+        LimboAvailable[Slot] := False;
+        ChosenPrimary[Slot] := Cmd.Integers['weapon'];
+        Sprite[Slot].SelWeapon := ChosenPrimary[Slot];
+        Sprite[Slot].ApplyWeaponByNum(ChosenPrimary[Slot],1);
+      end;
+    end
     else if Kind = 'fixture-sprite' then
     begin
       Slot := Cmd.Integers['slot'];
@@ -204,7 +249,8 @@ var
   PlayerSpec, Header: TJSONObject;
   P: TPlayer;
   Pos, Velocity: TVector2;
-  I, Spawn, Slot, FlagSlot, FlagStyle, TickCount, Tick: Integer;
+  I, Spawn, Slot, FlagSlot, FlagStyle, TickCount, Tick, Difficulty: Integer;
+  Profile, BotDirectory: string;
 begin
   if ParamCount <> 4 then
     raise Exception.Create('Usage: opensoldatserver FIXTURE TRACE BASE-SMOD USER-DIR');
@@ -220,12 +266,23 @@ begin
   CombatDiagnostics.Reset;
   CvarInit;
   sv_gamemode.SetValue(GAMESTYLE_DEATHMATCH);
+  bots_chat.SetValue(False);
+  bots_difficulty.SetValue(100);
   if Fixture.Find('rules') <> nil then
   begin
     CombatDiagnostics.Enabled := Fixture.Objects['rules'].Get('traceCombat',False);
     if Fixture.Objects['rules'].Get('mode','dm') = 'ctf' then sv_gamemode.SetValue(GAMESTYLE_CTF);
     if Fixture.Objects['rules'].Get('rng','original') <> 'original' then
       raise Exception.Create('Oracle supports original RNG only');
+    if Fixture.Objects['rules'].Find('botDifficulty') <> nil then
+      if Fixture.Objects['rules'].Find('botDifficulty').JSONType <> jtNumber then
+        raise Exception.Create('botDifficulty must be an integer');
+    if Frac(Fixture.Objects['rules'].Get('botDifficulty',100.0)) <> 0 then
+      raise Exception.Create('botDifficulty must be an integer');
+    Difficulty := Fixture.Objects['rules'].Get('botDifficulty',100);
+    if (Difficulty < 0) or (Difficulty > 300) then
+      raise Exception.Create('botDifficulty must be in 0..300');
+    bots_difficulty.SetValue(Difficulty);
   end;
   sv_bonus_frequency.SetValue(0);
   sv_survivalmode.SetValue(False);
@@ -261,27 +318,51 @@ begin
   for I := 0 to Players.Count - 1 do
   begin
     PlayerSpec := TJSONObject(Players[I]);
-    Spawn := PlayerSpec.Integers['spawnpoint'];
-    if (Spawn < 1) or (Spawn > MAX_SPAWNPOINTS) then raise Exception.Create('Invalid spawnpoint');
-    if not Map.Spawnpoints[Spawn].Active then raise Exception.Create('Inactive spawnpoint');
-    Pos.X := Map.Spawnpoints[Spawn].X;
-    Pos.Y := Map.Spawnpoints[Spawn].Y;
-    if PlayerSpec.Find('x') <> nil then Pos.X := PlayerSpec.Floats['x'];
-    if PlayerSpec.Find('y') <> nil then Pos.Y := PlayerSpec.Floats['y'];
+    BotPlayer[I+1] := PlayerSpec.Get('control','human') = 'bot';
+    Authoritative[I+1] := PlayerSpec.Get('control','human') = 'authoritative';
+    Pos := Default(TVector2);
     Velocity := Default(TVector2);
     P := TPlayer.Create;
     P.Team := PlayerSpec.Integers['team'];
     P.ControlMethod := HUMAN;
-    Authoritative[I+1] := PlayerSpec.Get('control','human') = 'authoritative';
-    if Authoritative[I+1] then
+    if BotPlayer[I+1] then
     begin
-      P.ControlMethod := BOT;
-      bots_chat.SetValue(False);
-      bots_difficulty.SetValue(100);
+      if Fixture.Find('rules') = nil then raise Exception.Create('Bots require ai:true');
+      if not Fixture.Objects['rules'].Get('ai',False) then raise Exception.Create('Bots require ai:true');
+      P.ApplyShirtColorFromTeam;
+      RandomizeStart(Pos,P.Team);
+    end
+    else
+    begin
+      Spawn := PlayerSpec.Integers['spawnpoint'];
+      if (Spawn < 1) or (Spawn > MAX_SPAWNPOINTS) then raise Exception.Create('Invalid spawnpoint');
+      if not Map.Spawnpoints[Spawn].Active then raise Exception.Create('Inactive spawnpoint');
+      Pos.X := Map.Spawnpoints[Spawn].X;
+      Pos.Y := Map.Spawnpoints[Spawn].Y;
+      if PlayerSpec.Find('x') <> nil then Pos.X := PlayerSpec.Floats['x'];
+      if PlayerSpec.Find('y') <> nil then Pos.Y := PlayerSpec.Floats['y'];
+      if Authoritative[I+1] then P.ControlMethod := BOT;
     end;
     P.Name := 'oracle-' + IntToStr(I + 1);
     Slot := CreateSprite(Pos, Velocity, 1, I + 1, P, True);
     if Slot <> I + 1 then raise Exception.Create('Unexpected sprite slot');
+    LimboAvailable[Slot] := True;
+    if BotPlayer[Slot] then
+    begin
+      Profile := LowerCase(PlayerSpec.Strings['bot']);
+      if (Profile = '') or (ExtractFileName(Profile) <> Profile) or
+         (System.Pos('..',Profile) <> 0) or (System.Pos('\',Profile) <> 0) then
+        raise Exception.Create('Invalid bot profile');
+      BotDirectory := IncludeTrailingPathDelimiter(Fixture.Get('botDirectory','/sim-content/bots'));
+      if not LoadBotConfig(BotDirectory + Profile + '.bot',Sprite[Slot]) then
+        raise Exception.Create('Bot profile load failed: ' + Profile);
+      Sprite[Slot].Respawn;
+      Sprite[Slot].Player.ControlMethod := BOT;
+      Sprite[Slot].Player.ChatWarnings := 0;
+      Sprite[Slot].Player.GrabsPerSecond := 0;
+      SortPlayers;
+      Continue;
+    end;
     if Authoritative[Slot] then Sprite[Slot].Dummy := True;
     if PlayerSpec.Find('health') <> nil then Sprite[Slot].Health := PlayerSpec.Floats['health'];
     if PlayerSpec.Find('weapon') <> nil then Sprite[Slot].ApplyWeaponByNum(PlayerSpec.Integers['weapon'],1,PlayerSpec.Get('ammo',-1));
@@ -337,6 +418,7 @@ begin
       begin
         Sprite[Slot].ApplyWeaponByNum(ChosenPrimary[Slot],1);
         Sprite[Slot].ApplyWeaponByNum(ChosenSecondary[Slot],2);
+        LimboAvailable[Slot] := True;
       end;
     InjectCommands(Tick);
     OracleDump('tick', 0);

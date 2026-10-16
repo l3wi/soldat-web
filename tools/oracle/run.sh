@@ -15,6 +15,7 @@ fi
 docker run --rm --network none --read-only --platform "$platform" \
   -v "$root/build-out/oracle:/work:ro" -v "$fixture:/fixture.json:ro" \
   -v "$(dirname "$fixture"):/fixture-maps:ro" \
+  -v "$root/dist/content/sim:/sim-content:ro" \
   -v "$out_dir:/output" -w /output/home \
   -e TMPDIR=/output/tmp -e HOME=/output/home \
   -e LD_LIBRARY_PATH=/work/cmake/bin "$image" \

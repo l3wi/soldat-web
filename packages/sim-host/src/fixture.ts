@@ -10,7 +10,7 @@ export interface Fixture {
   seed: number;
   ticks: number;
   rules?: Record<string, unknown>;
-  players: { team: number; spawnpoint: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" }[];
+  players: { team: number; spawnpoint: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string }[];
   inputs: { player: number; start: number; ticks: number; control: Control; pressOrder?: number }[];
   commands?: (SimCommand & { tick: number })[];
 }
@@ -109,18 +109,23 @@ export async function runFixture(options: FixtureRunOptions): Promise<FixtureRec
       requireStatus(host.init({ ...fixture.rules, ...(options.rngPolicy ? { rng: options.rngPolicy } : {}) }, fixture.seed, 0, 0), "sim_init");
       requireStatus(host.loadMap(fixture.map), "sim_load_map");
       const activeSlots = Array.from({ length: 33 }, () => false);
+      const botSlots = Array.from({ length: 33 }, () => false);
       for (let i = 0; i < fixture.players.length; i++) {
         const player = fixture.players[i]!;
         const { spawnpoint, ...setup } = player;
         requireStatus(host.command(0, { kind: "join", slot: i + 1, ...setup, spawn: spawnpoint }), "sim_command(join)");
         activeSlots[i + 1] = true;
+        botSlots[i + 1] = player.control === "bot";
       }
       const hashes: HashRow[] = [];
       for (let tick = 0; tick <= fixture.ticks; tick++) {
         for (const command of fixture.commands ?? []) if (command.tick === tick) {
           const { tick: commandTick, ...payload } = command;
           requireStatus(host.command(commandTick, payload), `sim_command(${payload.kind})`);
-          if (payload.kind === "join") activeSlots[payload.slot] = true;
+          if (payload.kind === "join") {
+            activeSlots[payload.slot] = true;
+            botSlots[payload.slot] = payload.control === "bot";
+          }
           if (payload.kind === "leave") activeSlots[payload.slot] = false;
         }
         const hash = host.hash();
@@ -138,7 +143,7 @@ export async function runFixture(options: FixtureRunOptions): Promise<FixtureRec
         }
         if (tick === fixture.ticks) break;
         for (let slot = 1; slot <= 32; slot++) {
-          if (!activeSlots[slot]) continue;
+          if (!activeSlots[slot] || botSlots[slot]) continue;
           let control: Control = {};
           for (const input of fixture.inputs) if (input.player === slot && tick + 1 >= input.start && tick + 1 < input.start + input.ticks) control = { ...input.control, pressOrder: input.pressOrder ?? input.control.pressOrder ?? 0 };
           requireStatus(host.setInput(slot, tick, control), "sim_set_input");
