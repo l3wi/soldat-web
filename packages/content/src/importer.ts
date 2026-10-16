@@ -93,6 +93,11 @@ export async function importContent(options: { base: string; out: string; source
     simFiles[id] = { path: `sim/${id}`, sha256: sha256(bytes), object: await writer.put(bytes, 'ini', provenance(source, bytes, [])), bytes: bytes.length };
     await writer.file(`sim/${id}`, bytes);
   }
+  for (const source of files.filter(path => /^server\/configs\/bots\/[^/]+\.bot$/i.test(path))) {
+    const id = canonicalPath(source.slice('server/configs/'.length)), bytes = await readFile(join(options.base, source));
+    simFiles[id] = { path: `sim/${id}`, sha256: sha256(bytes), object: await writer.put(bytes, 'bot', provenance(source, bytes, [])), bytes: bytes.length };
+    await writer.file(`sim/${id}`, bytes);
+  }
   const simHash = sha256(Object.keys(simFiles).sort().map(id => `${id}\t${simFiles[id]!.sha256}\n`).join(''));
   await writer.json('sim/manifest.json', { schemaVersion: 1, sha256: simHash, files: simFiles });
   const weapons = parseWeaponsIni(await readFile(join(options.base, sourceFor('configs/weapons.ini'))));

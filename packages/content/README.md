@@ -30,6 +30,7 @@ Paths in JSON are relative to the output root. Object filenames are SHA-256 of t
 | `sim/maps/*.pms` | Original bytes, including trailers. |
 | `sim/anims/*.poa`, `sim/objects/*.po` | Original physical animation/skeleton inputs. |
 | `sim/configs/weapons.ini`, `sim/mod.ini` | Original configuration bytes. |
+| `sim/bots/<lowercase name>.bot` | All 16 original bot profiles from pinned `server/configs/bots/*.bot`, copied byte-for-byte; spaces and punctuation in names are retained. |
 | `gostek.json` | Full parsed source part table, resolved graphics table, and retained MIT notice. Also available as `core.gostek`, a hash-addressed JSON object. |
 | `animations.json` | Canonical POA IDs to `{frames: [[{index,x,y,z},…],…]}`. Coordinates are unprojected source data. |
 | `skeletons.json` | Canonical PO IDs to `{points:[{name,x,y,z}],constraints:[[p1,p2],…]}`; endpoints are one-based file-order indices. |
@@ -83,7 +84,9 @@ POA projection is `x=-3*sourceX/1.1`, `y=-3*sourceZ`; PO uses `x=-sourceX*loadSc
 
 ### Simulation identity and provenance
 
-`simContentSha256` hashes sorted `canonical-virtual-id<TAB>source-sha256<LF>` records for every raw PMS, POA, PO, mod.ini and weapons.ini. Client and server must compare that combined hash; it is not the original engine's nonstandard PMS CRC.
+`simContentSha256` hashes sorted `canonical-virtual-id<TAB>source-sha256<LF>` records for every raw PMS, POA, PO, mod.ini, weapons.ini and bot profile. The pinned corpus contains 174 raw simulation files, including all 16 bot profiles. Client and server must compare that combined hash; it is not the original engine's nonstandard PMS CRC.
+
+Bot profile IDs are `bots/<lowercase source basename>.bot` (for example, `bots/admiral.bot`, `bots/boogie man.bot` and `bots/sgt. mac.bot`), not `configs/bots/…`. Their source root is `reference/base/server/configs/bots/` by default, relative to the configured base checkout. The importer does not parse, re-encode, normalize newlines or rewrite profile contents. Their raw `.bot` objects retain the original source paths and base repository/commit provenance with no transformations. Adding these files changes the combined simulation identity; regenerate content before using bot-capable simulation builds.
 
 `objects[path]` contains `{sha256,bytes,provenance:[…]}`. Each provenance record retains repository URL, pinned commit, source path, source SHA-256, SPDX-style `licenseId`, credit and ordered transformation descriptions. Base content is CC-BY-4.0; the font is OFL-1.1; exported source-table contributions are MIT. Gostek data records its source include, graphics include and mod.ini contributions separately. Preserve the bundled notices and do not imply contributor endorsement.
 
