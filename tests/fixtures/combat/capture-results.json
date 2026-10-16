@@ -55838,7 +55838,7 @@
     },
     {
       "fixture": "self-boost.fixture.json",
-      "fixtureSha256": "7a7c20540eadc0e14dad6030625adc6b721fdb7be1f2b0ae53459d32e7c67b67",
+      "fixtureSha256": "92887398dc59d68ed7cf4b6e6196f244cb0a49e4edca01daa89c8f056310aa86",
       "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
       "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
       "oracleBinarySha256": "f1fc6bededb7a4495e9b2c2e1d00b5ff1254665de87305a0c71dd6349786d2bc",
