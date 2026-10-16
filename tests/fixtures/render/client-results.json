@@ -1,6 +1,6 @@
 {
-  "wasmSha256": "181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393",
-  "browser": "155.0.8059.79",
+  "wasmSha256": "a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88",
+  "browser": "155.0.8059.80",
   "runtime": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",
   "width": 1280,
   "height": 720,
@@ -14,7 +14,7 @@
     "pixels": 921600,
     "percent": 0,
     "maxDelta": 1,
-    "meanChannelDelta": 0.00005560980902777778,
+    "meanChannelDelta": 0.00002197265625,
     "pass": true
   },
   "nativeParity": {
@@ -28,7 +28,7 @@
       "pixels": 921600,
       "percent": 0.014973958333333332,
       "maxDelta": 57,
-      "meanChannelDelta": 0.004554036458333333,
+      "meanChannelDelta": 0.0045529513888888885,
       "pass": true
     },
     "Aero": {
@@ -41,7 +41,7 @@
       "pixels": 921600,
       "percent": 0.002387152777777778,
       "maxDelta": 38,
-      "meanChannelDelta": 0.00057861328125,
+      "meanChannelDelta": 0.0005794270833333334,
       "pass": true
     },
     "DesertWind": {
@@ -54,7 +54,7 @@
       "pixels": 921600,
       "percent": 0.004340277777777778,
       "maxDelta": 63,
-      "meanChannelDelta": 0.0008097330729166667,
+      "meanChannelDelta": 0.0008086480034722222,
       "pass": true
     },
     "Jungle": {
@@ -67,7 +67,7 @@
       "pixels": 921600,
       "percent": 0.011176215277777778,
       "maxDelta": 41,
-      "meanChannelDelta": 0.00176025390625,
+      "meanChannelDelta": 0.0017621527777777778,
       "pass": true
     },
     "inf_Biologic": {
@@ -80,7 +80,7 @@
       "pixels": 921600,
       "percent": 0.003146701388888889,
       "maxDelta": 17,
-      "meanChannelDelta": 0.0008742947048611111,
+      "meanChannelDelta": 0.00087646484375,
       "pass": true
     },
     "ctf_Death": {
@@ -93,12 +93,12 @@
       "pixels": 921600,
       "percent": 0.004340277777777778,
       "maxDelta": 16,
-      "meanChannelDelta": 0.0017743598090277778,
+      "meanChannelDelta": 0.0017678493923611112,
       "pass": true
     }
   },
   "maps": 99,
-  "mapsLoaded": 99,
+  "mapsLoaded": 0,
   "servedNotices": 4,
   "settingsPersisted": true,
   "audioGesture": true,
@@ -106,40 +106,40 @@
     {
       "ready": true,
       "map": "Airpirates",
-      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
-      "tick": 13,
-      "fraction": 0.002000000000002018,
+      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
+      "tick": 30,
+      "fraction": 0.9959999999999879,
       "droppedTicks": 0,
-      "renders": 20,
+      "renders": 38,
       "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 26,
-      "playedSounds": 1,
+      "soundEvents": 62,
+      "playedSounds": 2,
       "sparks": 0
     },
     {
       "ready": true,
       "map": "Airpirates",
-      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
-      "tick": 7,
-      "fraction": 0.002000000000002018,
+      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
+      "tick": 24,
+      "fraction": 0,
       "droppedTicks": 0,
-      "renders": 13,
+      "renders": 29,
       "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 14,
-      "playedSounds": 1,
+      "soundEvents": 50,
+      "playedSounds": 2,
       "sparks": 0
     },
     {
       "ready": true,
       "map": "Airpirates",
-      "simulation": "movement sandbox; cosmetics active; positional SFX ready",
-      "tick": 7,
-      "fraction": 0.9980000000000103,
+      "simulation": "combat sandbox; cosmetics active; positional SFX ready",
+      "tick": 24,
+      "fraction": 0.9899999999999933,
       "droppedTicks": 0,
-      "renders": 11,
+      "renders": 29,
       "soundMapping": "ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.",
-      "soundEvents": 14,
-      "playedSounds": 1,
+      "soundEvents": 50,
+      "playedSounds": 2,
       "sparks": 0
     }
   ],
