@@ -1,7 +1,7 @@
 import { Server as HttpsServer, createServer } from "node:https";
 import type { ServerOptions } from "node:https";
 import { WebSocketServer } from "ws";
-import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage } from "@soldat-web/protocol";
+import { MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, validateWeaponChoice } from "@soldat-web/protocol";
 import type { Message, ReliableEvent } from "@soldat-web/protocol";
 import type { MessageTransport } from "@soldat-web/protocol/transport";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
@@ -10,6 +10,7 @@ import { createNodeTransport } from "./transport/ws-server.ts";
 import type { MatchConfiguration } from "./worker-messages.ts";
 import type { WorkerResponse } from "./worker-messages.ts";
 import { INPUT_PACKET_BURST, INPUT_PACKETS_PER_SECOND } from "./input-buffer.ts";
+import { configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
 export interface GameServerOptions {
   match: MatchConfiguration;
   httpsServer?: HttpsServer;
@@ -31,6 +32,8 @@ interface Session {
   timer: NodeJS.Timeout;
   inputTokens: number;
   lastInput: bigint;
+  weaponTokens: number;
+  lastWeaponChoice: bigint;
   probe?: bigint;
   probeTimer?: NodeJS.Timeout;
   awaitingBaseline: boolean;
@@ -44,7 +47,7 @@ export function validateHello(message: Message, contentSetHash: string): void {
   if (message.simAbiVersion !== SIM_ABI_VERSION) throw new ProtocolError("VERSION", "Simulation ABI mismatch");
   if (Buffer.from(message.contentSetHash).toString("hex") !== contentSetHash) throw new ProtocolError("VALUE", "Content-set hash mismatch");
   if (!message.nickname.length || message.nickname !== message.nickname.trim() || /[\p{Cc}\p{Cf}]/u.test(message.nickname) || new TextEncoder().encode(message.nickname).length > 48) throw new ProtocolError("VALUE", "Invalid nickname");
-  if (!Number.isInteger(message.weapon) || message.weapon < 1 || message.weapon > 10 || ![0, 11, 12, 13].includes(message.secondaryWeapon)) throw new ProtocolError("VALUE", "Invalid loadout");
+  validateWeaponChoice(message.weapon, message.secondaryWeapon);
 }
 
 export async function createGameServer(options: GameServerOptions): Promise<GameServer> {
@@ -52,6 +55,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   if (options.httpsServer && !(options.httpsServer instanceof HttpsServer)) throw new Error("Attached server must be an HTTPS server");
   if (options.tls && !((options.tls.key && options.tls.cert) || options.tls.pfx)) throw new Error("TLS requires a certificate and private key (or PFX)");
   if (!/^[a-f0-9]{64}$/.test(options.match.contentSetHash)) throw new Error("Content-set hash must be lowercase SHA-256 hex");
+  options = { ...options, match: configureMatch(options.match) };
   const rules = new TextEncoder().encode(JSON.stringify(options.match.rules));
   if (rules.length > 4096) throw new Error("Rules exceed protocol limit");
   const matchSeed = BigInt(options.match.matchSeed);
@@ -70,7 +74,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   }
   const sessions = new Map<number, Session>();
   // A disconnected slot is not reusable until the worker confirms leave.
-  const occupiedSlots = new Set<number>();
+  const occupiedSlots = new Set<number>(reservedBotSlots(options.match.botCount!));
   let closing = false;
   let wireEncodeMs: number[] = [];
   const wireByTick = new Map<number, number>();
@@ -162,7 +166,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     while (occupiedSlots.has(slot)) slot++;
     occupiedSlots.add(slot);
     const transport = createNodeTransport(socket);
-    const session: Session = { transport, state: "hello", timer: setTimeout(() => disconnect(slot, 1008, "Admission timed out"), 5000), inputTokens: INPUT_PACKET_BURST, lastInput: process.hrtime.bigint(), awaitingBaseline: false };
+    const now = process.hrtime.bigint();
+    const session: Session = { transport, state: "hello", timer: setTimeout(() => disconnect(slot, 1008, "Admission timed out"), 5000), inputTokens: INPUT_PACKET_BURST, lastInput: now, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, awaitingBaseline: false };
     sessions.set(slot, session);
     transport.onClose = (code, reason) => disconnect(slot, code, reason || "Connection closed");
     transport.onError = error => { report(error); disconnect(slot, 1002, "Transport error"); };
@@ -187,6 +192,15 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
             if (session.inputTokens < 1) { disconnect(slot, 1008, "Input rate limit exceeded"); return; }
             session.inputTokens--;
             controller.send({ type: "input", slot, frames: message.frames });
+            break;
+          }
+          case "weapon-choice": {
+            const now = process.hrtime.bigint();
+            session.weaponTokens = Math.min(WEAPON_CHOICE_BURST, session.weaponTokens + Number(now - session.lastWeaponChoice) / 1e9 * WEAPON_CHOICES_PER_SECOND);
+            session.lastWeaponChoice = now;
+            if (session.weaponTokens < 1) { disconnect(slot, 1008, "Weapon choice rate limit exceeded"); return; }
+            session.weaponTokens--;
+            controller.send({ type: "weapon-choice", slot, primary: message.primary, secondary: message.secondary, selection: message.selection });
             break;
           }
           case "snapshotAck": controller.send({ type: "snapshotAck", slot, snapshotId: message.snapshotId }); break;

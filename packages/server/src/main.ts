@@ -19,6 +19,7 @@ try {
   const match: MatchConfiguration = {
     wasmPath: resolve(config.wasmPath as string), contentRoot, contentSetHash: manifest.sha256,
     map: config.map as string, matchSeed: config.matchSeed as string, rules: config.rules as Record<string, unknown>,
+    ...(config.botCount === undefined ? {} : { botCount: config.botCount as number }),
   };
   const [key, cert] = await Promise.all([readFile(config.tlsKeyPath as string), readFile(config.tlsCertPath as string)]);
   const server = await createGameServer({ match, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443, onMetrics: metrics => console.log(JSON.stringify({ ...metrics, type: "match-metrics" })) });

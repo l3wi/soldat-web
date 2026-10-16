@@ -21,6 +21,7 @@ const minimum: Message[] = [
   { type: "snapshotAck", snapshotId: 1 }, { type: "events", events: [event(1, 0)] }, { type: "eventAck", eventId: 1 },
   { type: "chat", text: "a" }, { type: "ping", timestamp: 0n }, { type: "pong", timestamp: 0n },
   { type: "resync", baselineId: 0 }, { type: "disconnect", code: 0, reason: "" },
+  { type: "weapon-choice", primary: 1, secondary: 0, selection: "primary" },
 ];
 const largestDelta = new Uint8Array(LIMITS.delta);
 new DataView(largestDelta.buffer).setUint32(1, MAX_STATE_BYTES, true);
@@ -34,6 +35,7 @@ const maximum: Message[] = [
   { type: "eventAck", eventId: 0xffffffff }, { type: "chat", text: "🙂".repeat(LIMITS.chat / 4) },
   { type: "ping", timestamp: 0xffffffffffffffffn }, { type: "pong", timestamp: 0xffffffffffffffffn },
   { type: "resync", baselineId: 0xffffffff }, { type: "disconnect", code: 65535, reason: "r".repeat(LIMITS.reason) },
+  { type: "weapon-choice", primary: 10, secondary: 13, selection: "secondary" },
 ];
 function mustDecodeOrTyped(bytes: Uint8Array): void {
   try { const decoded = decodeMessage(bytes); expect(decodeMessage(encodeMessage(decoded))).toEqual(decoded); }
@@ -77,6 +79,29 @@ describe("versioned little-endian codec", () => {
       expect(() => validateInput(invalid)).toThrow(ProtocolError);
       const packet = encodeMessage(minimum[2]!); packet.set(invalid, 21);
       expect(() => decodeMessage(packet)).toThrow(ProtocolError);
+    }
+  });
+  test("weapon choices validate both encoding and untrusted bytes", () => {
+    for (let primary = 1; primary <= 10; primary++) for (const secondary of [0, 11, 12, 13]) for (const selection of ["primary", "secondary"] as const) {
+      const message: Message = { type: "weapon-choice", primary, secondary, selection };
+      const packet = encodeMessage(message);
+      expect(packet[2]).toBe(13);
+      expect([...packet.subarray(8)]).toEqual([primary, secondary, selection === "primary" ? 0 : 1]);
+      expect(decodeMessage(packet)).toEqual(message);
+    }
+    for (const primary of [0, 11, 255, -1, NaN, Infinity, 1.5]) {
+      expect(() => encodeMessage({ type: "weapon-choice", primary, secondary: 0, selection: "primary" })).toThrow(ProtocolError);
+    }
+    for (const secondary of [1, 10, 14, 255, -1, NaN, Infinity, 0.5]) {
+      expect(() => encodeMessage({ type: "weapon-choice", primary: 4, secondary, selection: "secondary" })).toThrow(ProtocolError);
+    }
+    for (const [offset, value] of [[8, 0], [8, 11], [9, 1], [9, 255], [10, 2], [10, 255]] as const) {
+      const packet = encodeMessage({ type: "weapon-choice", primary: 4, secondary: 0, selection: "primary" });
+      packet[offset] = value;
+      expect(() => decodeMessage(packet)).toThrow(ProtocolError);
+    }
+    for (const selection of [undefined, null, 0, "other"]) {
+      expect(() => encodeMessage({ type: "weapon-choice", primary: 4, secondary: 0, selection } as Message)).toThrow(ProtocolError);
     }
   });
   test("bound every variable payload and reject invalid values", () => {

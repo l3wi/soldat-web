@@ -7,7 +7,7 @@ import { encodeInput, loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION, t
 import { OnlineSession } from "../../client/src/net/session.ts";
 import { arenaInput } from "./workload.ts";
 
-export interface HeadlessWorkerOptions { url: string; wasmPath: string; contentRoot: string; manifest: SimManifest; player: number; combat: boolean; stackedCombat: boolean; pickupCombat: boolean }
+export interface HeadlessWorkerOptions { url: string; wasmPath: string; contentRoot: string; manifest: SimManifest; player: number; combat: boolean; stackedCombat: boolean; pickupCombat: boolean; botDiagnostics?: number[] }
 const options = workerData as HeadlessWorkerOptions;
 const correctionDiagnostics = process.env.NET_G4_CORRECTION_DIAGNOSTICS === "1";
 if (!parentPort) throw new Error("Headless client must run in its own worker thread");
@@ -26,6 +26,7 @@ let inputsSent = 0;
 let lastAgeSample = 0;
 let session: OnlineSession | undefined;
 let timer: NodeJS.Timeout | undefined;
+let snapshotInputs: { slot: number; input: Uint8Array }[] = [];
 const socket = new WebSocket(options.url, { rejectUnauthorized: false, perMessageDeflate: false });
 const send = (message: Message) => { const bytes = encodeMessage(message); bytesSent += bytes.length; if (message.type === "input") inputsSent++; socket.send(bytes); };
 // An intent-only pickup exercise: drop the actual equipped weapon, then chase
@@ -65,13 +66,30 @@ socket.on("message", data => {
       if (session) throw new Error("Repeated welcome");
       const rules = JSON.parse(new TextDecoder().decode(message.rules)) as Record<string, unknown>;
       for (const host of [prediction, extraction]) {
-        requireStatus(host.init(rules, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(headless welcome)");
+        requireStatus(host.init({ ...rules, ai: false }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(headless welcome)");
         requireStatus(host.loadMap(message.map), "sim_load_map(headless welcome)");
       }
       const appliedEvents = new Set<number>();
       session = new OnlineSession({ prediction, extraction, slot: message.slot, send,
         onSnapshot: metrics => {
           port.postMessage({ type: "snapshot", player: options.player, at: performance.now(), metrics, bytesSent, bytesReceived, inputsSent });
+          if (options.botDiagnostics) {
+            const view = session!.authoritativeRenderView();
+            const bots = [];
+            for (let index = 0; index < 32; index++) {
+              const sprite = view.sprite(index);
+              if (!options.botDiagnostics.includes(sprite.slot)) continue;
+              const input = snapshotInputs.find(entry => entry.slot === sprite.slot)?.input;
+              bots.push({ slot: sprite.slot, name: sprite.playerName, team: sprite.team, kills: sprite.kills, deaths: sprite.deaths, x: sprite.posX, y: sprite.posY, fired: sprite.fired, controlBits: sprite.controlBits, aimX: sprite.aimX, aimY: sprite.aimY, mouseDist: sprite.mouseDist, waypoint: sprite.currentWaypoint, input: input ? [...input] : null });
+            }
+            const projectiles = [];
+            for (let index = 0; index < view.bulletCount; index++) {
+              const bullet = view.bullet(index);
+              if (options.botDiagnostics.includes(bullet.owner)) projectiles.push(bullet.owner);
+            }
+            const humanTeams = [view.sprite(0).team, view.sprite(1).team];
+            port.postMessage({ type: "bots", player: options.player, tick: view.tick, hash: metrics.snapshotHash, bots, projectiles, humanTeams, teamScores: [...view.globals.teamScores] });
+          }
           if (!ready) { ready = true; port.postMessage({ type: "ready", player: options.player, slot: message.slot }); }
         },
         onCorrection: correctionDiagnostics ? diagnostic => {
@@ -92,7 +110,10 @@ socket.on("message", data => {
           }
         } catch (error) { fail(error); }
       }, 4);
-    } else if (session) session.receive(message);
+    } else if (session) {
+      if (message.type === "snapshot") snapshotInputs = message.inputs;
+      session.receive(message);
+    }
     else if (message.type === "ping") send({ type: "pong", timestamp: message.timestamp });
     else throw new Error(`Unexpected ${message.type} before welcome`);
   } catch (error) { fail(error); }
@@ -100,6 +121,10 @@ socket.on("message", data => {
 socket.on("error", error => { if (!stopped) fail(error); });
 socket.on("close", (code, reason) => { if (!stopped) fail(new Error(`WSS closed ${code}: ${reason.toString()}`)); });
 port.on("message", message => {
+  if (message.type === "weapon-choice" && !stopped && ready) {
+    send({ type: "weapon-choice", primary: message.primary, secondary: message.secondary, selection: message.selection });
+    return;
+  }
   if (message.type !== "stop" || stopped) return;
   stopped = true; clearInterval(timer);
   port.postMessage({ type: "final", player: options.player, metrics: session?.metrics ?? null, bytesSent, bytesReceived, inputsSent, memory: process.memoryUsage() });

@@ -1,11 +1,11 @@
-import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, type Message, type ReliableEvent } from "./messages.ts";
+import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, type Message, type ReliableEvent, type WeaponSelection } from "./messages.ts";
 import { validateDelta } from "./delta.ts";
 import type { TransportChannel } from "./transport/types.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect"] as const;
-const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4];
+const TYPES = ["hello", "welcome", "input", "snapshot", "snapshotAck", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice"] as const;
+const MAX_PAYLOAD = [0, 90, 4245, 73, LIMITS.delta + 445, 4, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 4, LIMITS.reason + 4, 3];
 const HEADER_BYTES = 8;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
@@ -79,6 +79,14 @@ export function validateInput(input: Uint8Array): void {
   const order = view.getUint16(8, true);
   check((order & 0xfff0) === 0 && (order & 3) !== 3 && (order & 12) !== 12, "Invalid press-order bits");
 }
+/** Original selectable weapon numbers, shared by admission and reliable changes. */
+export function validateWeaponChoice(primary: number, secondary: number): void {
+  integer(primary, 10, 1);
+  check(Number.isInteger(secondary) && (secondary === 0 || secondary === 11 || secondary === 12 || secondary === 13), "Invalid secondary weapon");
+}
+export function validateWeaponSelection(selection: unknown): asserts selection is WeaponSelection {
+  check(selection === "primary" || selection === "secondary", "Invalid weapon selection");
+}
 function validateEvent(event: ReliableEvent): void {
   integer(event.id, 0xffffffff, 1); integer(event.tick, 0xffffffff);
   check(event.header.length === EVENT_HEADER_BYTES, "Event header must be 20 bytes");
@@ -114,6 +122,9 @@ function writePayload(w: Writer, m: Message): void {
     case "chat": w.text(m.text, LIMITS.chat, true); break;
     case "ping": case "pong": w.u64(m.timestamp); break;
     case "resync": w.u32(m.baselineId); break;
+    case "weapon-choice":
+      validateWeaponChoice(m.primary, m.secondary); validateWeaponSelection(m.selection);
+      w.u8(m.primary); w.u8(m.secondary); w.u8(m.selection === "primary" ? 0 : 1); break;
     case "disconnect": w.u16(m.code); w.text(m.reason, LIMITS.reason); break;
   }
 }
@@ -192,6 +203,11 @@ export function decodeMessage(bytes: Uint8Array): Message {
       case "chat": message = { type, text: r.text(LIMITS.chat, true) }; break;
       case "ping": case "pong": message = { type, timestamp: r.u64() }; break;
       case "resync": message = { type, baselineId: r.u32() }; break;
+      case "weapon-choice": {
+        const primary = r.u8(), secondary = r.u8(), selectionId = r.u8();
+        validateWeaponChoice(primary, secondary); integer(selectionId, 1);
+        message = { type, primary, secondary, selection: selectionId === 0 ? "primary" : "secondary" }; break;
+      }
       case "disconnect": message = { type, code: r.u16(), reason: r.text(LIMITS.reason) }; break;
     }
     if (r.offset !== bytes.length) throw new ProtocolError("TRAILING", "Trailing payload fields", r.offset);

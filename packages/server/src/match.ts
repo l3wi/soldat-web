@@ -1,10 +1,11 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { encodeDelta, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
+import { encodeDelta, validateWeaponChoice, validateWeaponSelection, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
 import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@soldat-web/sim-host";
 import type { SimHost, SimManifest } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
 import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
+import { BOT_PROFILES, configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
 
 interface Player {
   inputs: PlayerInputBuffer;
@@ -16,6 +17,8 @@ interface Player {
   lastSentEvent: number;
   rttMs: number;
   lastRewind: number;
+  weaponTokens: number;
+  lastWeaponChoice: bigint;
 }
 interface History {
   state: Uint8Array | undefined;
@@ -44,20 +47,28 @@ export class AuthoritativeMatch {
   private inputBufferLeadTicks: number[] = [];
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
   private readonly host: SimHost;
+  private readonly bots: number[];
+  private readonly teamMode: boolean;
   private readonly emit: (response: WorkerResponse) => void;
   tick = 0;
 
-  private constructor(host: SimHost, emit: (response: WorkerResponse) => void) {
+  private constructor(host: SimHost, config: MatchConfiguration & { botCount: number }, emit: (response: WorkerResponse) => void) {
     this.host = host;
+    this.bots = reservedBotSlots(config.botCount);
+    this.teamMode = config.rules.mode === "ctf";
     this.emit = this.profile ? response => {
       const start = performance.now(); emit(response);
       this.profile!.postMs += performance.now() - start;
     } : emit;
     this.inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
     if (!this.inputPtr) throw new Error("Input allocation failed");
+    for (const [index, slot] of this.bots.entries()) {
+      requireStatus(host.command(0, { kind: "join", slot, control: "bot", bot: BOT_PROFILES[index % BOT_PROFILES.length]!, team: this.teamMode ? index % 2 + 1 : 0 }), "sim_command(bot join)");
+    }
   }
 
   static async start(config: MatchConfiguration, emit: (response: WorkerResponse) => void): Promise<AuthoritativeMatch> {
+    const configured = configureMatch(config);
     const seed = BigInt(config.matchSeed);
     if (seed < 0n || seed > 0xffffffffffffffffn) throw new RangeError("Match seed must be u64");
     const manifest = JSON.parse(await readFile(resolve(config.contentRoot, "sim/manifest.json"), "utf8")) as SimManifest;
@@ -70,20 +81,20 @@ export class AuthoritativeMatch {
         if (isAbsolute(rel) || rel === ".." || rel.startsWith(`..${sep}`)) throw new Error("Content path escapes root");
         return new Uint8Array(await readFile(path));
       });
-      requireStatus(host.init(config.rules, Number(seed & 0xffffffffn), Number(seed >> 32n), 0), "sim_init");
+      requireStatus(host.init(configured.rules, Number(seed & 0xffffffffn), Number(seed >> 32n), 0), "sim_init");
       requireStatus(host.loadMap(config.map), "sim_load_map");
-      return new AuthoritativeMatch(host, emit);
+      return new AuthoritativeMatch(host, configured, emit);
     } catch (error) { host.dispose(); throw error; }
   }
 
   receive(message: WorkerRequest, now: bigint): void {
     if (message.type === "stop") return;
     if (message.type === "join") {
-      if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot)) throw new Error("Invalid player slot");
-      requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(join)");
+      if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || this.bots.includes(message.slot)) throw new Error("Invalid player slot");
+      requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam() }), "sim_command(join)");
       requireStatus(this.host.command(this.tick, { kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
-      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), baselineId: 0, baseline: undefined, sent: new Map(), events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6 });
+      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), baselineId: 0, baseline: undefined, sent: new Map(), events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now });
       // Never rewind across membership commands (their ownership is not input).
       this.history.clear();
       this.emit({ type: "joined", slot: message.slot, serverTick: this.tick });
@@ -104,6 +115,23 @@ export class AuthoritativeMatch {
       case "input": {
         const rejected = player.inputs.offer(message.frames, this.tick, now, frame => this.admitFire(message.slot, player, frame));
         if (rejected.includes("rate")) this.emit({ type: "reject", slot: message.slot, reason: "Input rate limit exceeded" });
+        break;
+      }
+      case "weapon-choice": {
+        try { validateWeaponChoice(message.primary, message.secondary); validateWeaponSelection(message.selection); }
+        catch { this.emit({ type: "reject", slot: message.slot, reason: "Invalid weapon choice" }); break; }
+        player.weaponTokens = Math.min(WEAPON_CHOICE_BURST, player.weaponTokens + Number(now - player.lastWeaponChoice) / 1e9 * WEAPON_CHOICES_PER_SECOND);
+        player.lastWeaponChoice = now;
+        if (player.weaponTokens < 1) { this.emit({ type: "reject", slot: message.slot, reason: "Weapon choice rate limit exceeded" }); break; }
+        player.weaponTokens--;
+        const choice = { slot: message.slot, weapon: message.primary, secondaryWeapon: message.secondary };
+        // Always retain the next-respawn choice even when original limbo rules
+        // do not permit changing the currently equipped weapons.
+        const saved = this.host.command(this.tick, { kind: "weapon-choice", ...choice });
+        const applied = saved < 0 ? saved : this.host.command(this.tick, { kind: "weapon-apply", ...choice, selection: message.selection });
+        this.captureCommandEvents();
+        this.history.clear();
+        if (saved < 0 || (applied < 0 && applied !== -4)) this.emit({ type: "reject", slot: message.slot, reason: "Weapon choice rejected by simulation" });
         break;
       }
       case "rtt": player.rttMs = Math.max(0, Math.min(1000, message.milliseconds)); break;
@@ -132,6 +160,19 @@ export class AuthoritativeMatch {
         player.baselineId = 0; player.baseline = undefined; player.sent.clear();
         break;
     }
+  }
+
+  private joinTeam(): number {
+    if (!this.teamMode) return 0;
+    const render = this.host.renderView();
+    if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+    let alpha = 0, bravo = 0;
+    for (let index = 0; index < 32; index++) {
+      const sprite = render.sprite(index);
+      if (sprite.team === 1) alpha++;
+      else if (sprite.team === 2) bravo++;
+    }
+    return alpha <= bravo ? 1 : 2;
   }
 
   private save(): Uint8Array {
@@ -257,6 +298,18 @@ export class AuthoritativeMatch {
     const stateHash = BigInt.asUintN(64, this.host.exports.sim_hash_state());
     if (this.profile) this.profile.hashMs += performance.now() - hashStart;
     const id = ++this.snapshotId;
+    if (this.bots.length) {
+      const render = this.host.renderView();
+      if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+      for (const slot of this.bots) {
+        const sprite = render.sprite(slot - 1);
+        const input = new Uint8Array(12), view = new DataView(input.buffer);
+        view.setUint16(0, sprite.controlBits, true);
+        view.setInt16(2, sprite.aimX, true); view.setInt16(4, sprite.aimY, true);
+        view.setInt16(6, sprite.mouseDist, true);
+        this.lastInputs.set(slot, input);
+      }
+    }
     const inputs = [...this.lastInputs].sort((a, b) => a[0] - b[0]).map(([slot, input]) => ({ slot, input }));
     // Recipients acknowledging the same immutable snapshot share its bytes.
     // Encode once per distinct baseline, not once per player. Each IPC post

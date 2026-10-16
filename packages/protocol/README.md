@@ -38,6 +38,7 @@ Only snapshots use channel 1. Every other type uses channel 0; a mismatch is inv
 | 10 | pong | reply to ping | 8 |
 | 11 | resync | client → server | 4 |
 | 12 | disconnect | either | 260 |
+| 13 | weapon-choice | client → server | 3 |
 
 The direction column describes application policy, not a different wire encoding. The authoritative server rejects messages inappropriate to its admission/session state.
 
@@ -71,6 +72,12 @@ The outer wire version is checked before admission fields. Content identity must
 | 17 | N bytes | Map name |
 | 17+N | u32 | Rules byte length R, 0–4,096 |
 | 21+N | R bytes | Opaque rules bytes |
+
+## In-match weapon choice
+
+`{type:"weapon-choice", primary, secondary, selection}` uses `reliableControl`, only after welcome. Its exact three-byte payload is u8 `primary` at offset 0 (original weapon numbers 1–10), u8 `secondary` at offset 1 (0 = USSOCOM, 11 = knife, 12 = chainsaw, 13 = LAW), then u8 selection at offset 2 (0 = `"primary"`, 1 = `"secondary"`). `selection` is required; both encoder and decoder reject other values. The message carries intent only: no slot, ammo, position, health, or eligibility assertion.
+
+The server derives the slot from the admitted connection. A separate token bucket permits a burst of four choices and refills at two per second, checked before worker IPC and again by the worker. Invalid bytes or rate abuse close only that connection. Every valid choice is stored with the sim's `weapon-choice` command for the next respawn. The server also attempts `weapon-apply` with the requested selection; original limbo rules determine eligibility. A secondary selection changes only the secondary gun and keeps the limbo window open; a primary selection applies the loadout and closes it until respawn. A sim status of `-4` leaves the next-respawn choice intact rather than terminating the match or granting a live reload. Reliable commands clear rewind history so delayed shots cannot roll back across a loadout change.
 
 ## Input batch
 
@@ -111,6 +118,8 @@ Bits 12–15 of control and bits 4–15 of press order are zero. Conflicting ord
 | 29+13A | D bytes | Delta-encoded opaque sim save-state |
 
 Snapshot IDs and baseline IDs are per recipient. `snapshotAck` consists of a nonzero u32 snapshot ID at offset 0. A sender may choose a baseline only after receiving an acknowledgement for a state it actually sent. A receiver must acknowledge only after successful delta decoding and successful sim state loading. Never acknowledge an unreceived or rejected state. Do not assume that an unsent/coalesced snapshot became a baseline.
+
+Input records include bots as well as humans. Bot records are projected from the simulation's published `controlBits`, `aimX`, `aimY`, and `mouseDist`; press-order and reserved words are zero. Names, teams, kills, deaths, appearance, and team scores remain in the authoritative sim state/render projection, not duplicated host-maintained player objects. Clients initialize their sim instances with `ai:false`, load the authoritative snapshots, and hold these remote inputs during prediction; clients never run bot policy.
 
 `resync` consists of the unavailable/rejected u32 baseline ID at offset 0. Baseline zero requests a full state. The server resets this recipient's baseline and sends a delta against empty bytes. An unknown baseline must cause resync, not decoding against an unrelated state. Explicit resync also discards unsimulated queued/held intent and allows one next current/future input to rebase its forward sequence jump; IDs must still exceed the previously accepted floor. Clients keep sequences monotonic. This lets a >128-frame outage recover without granting extra simulation time; stale historical actions are not admitted during rebase.
 
@@ -187,11 +196,15 @@ Start the configured WSS listener from the repository root:
 SOLDAT_SERVER_CONFIG=/absolute/path/server.json node packages/server/src/main.ts
 ```
 
-The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`. Paths are relative to the process working directory. Never commit private TLS keys. The server derives its admission hash from `contentRoot/sim/manifest.json`; the worker independently verifies that manifest and every raw content file before mounting them in the sim.
+The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`; optional `botCount` defaults to zero and must be an integer in 0–31. Paths are relative to the process working directory. Never commit private TLS keys. The server derives its admission hash from `contentRoot/sim/manifest.json`; the worker independently verifies that manifest and every raw content file before mounting them in the sim.
 
 The programmatic `createGameServer` API accepts either `{ match, tls: { key, cert } }` or `{ match, httpsServer }`, never HTTP or an insecure fallback. A caller-supplied HTTPS listener remains caller-owned; closing the game service stops only its WSS connections and match worker. Internally managed HTTPS listeners are closed too. One `worker_thread` owns one real `SimHost`/WASM instance.
 
-Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects startup explicitly. Rules are passed unchanged to the versioned sim; the server never substitutes an unsupported mechanic. Each join explicitly uses `control:"authoritative"` and the admitted loadout, and records both next-respawn choices with `weapon-choice`.
+Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects startup explicitly. The server enables `ai:true`; other supported rules are preserved. Set `rules.mode` to `"dm"` (default) or `"ctf"`, and optionally `rules.botDifficulty` to an integer in 0–300 (sim default 100). For example, `"botCount":4,"rules":{"mode":"ctf","rng":"keyed","botDifficulty":100}` starts four bots on the configured map. Use a bot-capable map with original PMS waypoints.
+
+Bot slots are reserved from the top of the fixed 32-player range: four bots occupy slots 29–32, leaving human slots 1–28. Reservations exist before admission and survive human departures; a human slot is reusable only after the worker confirms leave. Stock profiles cycle through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. Bot joins use `control:"bot"`; the simulation retains each profile's original name, cosmetics and weapon preference. DM uses team zero. CTF bot teams alternate Alpha/Bravo, and human joins select the less populated current team (Alpha on ties).
+
+Human joins explicitly use `control:"authoritative"` and the admitted loadout, and record both next-respawn choices with `weapon-choice`. Welcome carries the effective server rules, including `ai:true`; prediction and extraction hosts must override only AI execution to `ai:false` before loading server snapshots.
 
 The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; overdue whole steps are discarded and counted, retaining the fractional remainder. Simulation never receives variable dt. `onMetrics` reports per-tick total sim+save+delta/IPC-post plus all listener wire encodings attributed to that tick (`simEncodeMs`), the original worker-only samples (`workerSimEncodeMs`), scheduled tick lateness (`tickLatenessMs`), per-packet listener wire encoding (`wireEncodeMs`), and historical rollback durations/ticks/rejections. The total is summed work across the worker/listener, not a fabricated single-thread elapsed span. These are samples, not a performance guarantee. The optional `onReliableEvent(slot,event)` observation runs after successful reliable enqueue, including retransmissions, so qualification can compare server-enqueued IDs against client-applied IDs without claiming enqueue is TCP delivery.
 
@@ -240,7 +253,10 @@ bun run --cwd packages/server test
 bun run --cwd packages/protocol typecheck
 bun run --cwd packages/server typecheck
 node packages/protocol/scripts/measure-delta.ts
+node --test packages/server/scripts/bots.test.ts
 ```
+
+The bot integration test requires the current ABI-4 WASM and regenerated content, including stock bot profiles and waypoint maps. It starts a real TLS/WSS server and two Node worker clients running the product `OnlineSession` with AI disabled. DM/Arena and CTF/ctf_Ash cases check snapshot hashes in both clients, relayed controls, profile names, balanced teams, scores, waypoint movement, and firing. It also checks malformed choices and choice flooding against a healthy match. `NET_G4_WASM`, `NET_G4_CONTENT`, and `NET_BOTS_OUT` override the module, content root, and test-artifact directory. This command is an acceptance test, not a claim that it has already passed.
 
 The delta measurement command uses `build-out/sim/sim.wasm`, verified `dist/content/sim/manifest.json` content and the arena movement fixture when the real sim exists. It steps through 60 consecutive real states and checks byte-exact delta reconstruction. If WASM is absent (or `--synthetic` is supplied), it measures a deterministic sparse 64 KiB synthetic stream and explicitly reports the real save-state measurement as **pending**. A failed real module/content/fixture check fails the command instead of silently substituting synthetic results. Ratio is encoded delta bytes divided by uncompressed current-state bytes; headers outside the delta are excluded.
 

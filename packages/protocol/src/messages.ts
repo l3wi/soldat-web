@@ -11,6 +11,7 @@ export const LIMITS = {
 
 export interface InputFrame { seq: number; tick: number; viewTick: number; input: Uint8Array }
 export interface ReliableEvent { id: number; tick: number; header: Uint8Array; payload: Uint8Array }
+export type WeaponSelection = "primary" | "secondary";
 export type Message =
   | { type: "hello"; protocolVersion: number; contentSetHash: Uint8Array; simAbiVersion: number; nickname: string; weapon: number; secondaryWeapon: number }
   | { type: "welcome"; slot: number; serverTick: number; tickRate: number; matchSeed: bigint; map: string; rules: Uint8Array }
@@ -22,6 +23,7 @@ export type Message =
   | { type: "chat"; text: string }
   | { type: "ping" | "pong"; timestamp: bigint }
   | { type: "resync"; baselineId: number }
+  | { type: "weapon-choice"; primary: number; secondary: number; selection: WeaponSelection }
   | { type: "disconnect"; code: number; reason: string };
 
 export type ProtocolErrorCode = "TRUNCATED" | "OVERSIZED" | "VERSION" | "TYPE" | "CHANNEL" | "TRAILING" | "VALUE" | "UTF8" | "DELTA" | "BASELINE" | "TRANSPORT";

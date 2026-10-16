@@ -1,4 +1,4 @@
-import type { InputFrame, Message } from "@soldat-web/protocol";
+import type { InputFrame, Message, WeaponSelection } from "@soldat-web/protocol";
 
 export interface MatchConfiguration {
   wasmPath: string;
@@ -7,11 +7,14 @@ export interface MatchConfiguration {
   map: string;
   rules: Record<string, unknown>;
   matchSeed: string;
+  /** Fixed bot population, reserved in the highest slots; leaves room for a human. */
+  botCount?: number;
 }
 export type WorkerRequest =
   | { type: "join"; slot: number; weapon: number; secondaryWeapon: number }
   | { type: "leave"; slot: number }
   | { type: "input"; slot: number; frames: InputFrame[] }
+  | { type: "weapon-choice"; slot: number; primary: number; secondary: number; selection: WeaponSelection }
   | { type: "rtt"; slot: number; milliseconds: number }
   | { type: "snapshotAck"; slot: number; snapshotId: number }
   | { type: "eventAck"; slot: number; eventId: number }
