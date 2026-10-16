@@ -328,6 +328,8 @@ begin
   UserDirectory := IncludeTrailingPathDelimiter(ParamStr(4));
   BaseDirectory := ExtractFilePath(ParamStr(3));
   MainConsole.CountMax := 7;
+  // Original Server startup owns this list; single-map fixtures leave it empty.
+  MapsList := TStringList.Create;
   if not PhysFS_Init(PChar(ParamStr(0))) then raise Exception.Create('PhysFS init failed');
   if not PhysFS_mount(PChar(ParamStr(3)), '/', False) then raise Exception.Create('PhysFS mount failed');
   // A test-only raw PMS mount may shadow a stock basename without editing base.
@@ -517,6 +519,7 @@ begin
   CloseFile(TraceFile);
   TraceOpen := False;
   Fixture.Free;
+  FreeAndNil(MapsList);
 end;
 
 end.

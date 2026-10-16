@@ -1,0 +1,8 @@
+{ "tick" : 206, "thing" : 3, "slot" : 2, "style" : 17, "healthBefore" : 1.5000000000000000E+002, "grenadesBefore" : 1 }
+{ "tick" : 1450, "thing" : 3, "slot" : 1, "style" : 17, "healthBefore" : 1.5000000000000000E+002, "grenadesBefore" : 1 }
+{ "tick" : 1520, "thing" : 3, "slot" : 4, "style" : 17, "healthBefore" : 1.5000000000000000E+002, "grenadesBefore" : 1 }
+{ "tick" : 1969, "thing" : 3, "slot" : 3, "style" : 17, "healthBefore" : 1.5000000000000000E+002, "grenadesBefore" : 1 }
+{ "tick" : 2627, "thing" : 3, "slot" : 1, "style" : 17, "healthBefore" : 1.5000000000000000E+002, "grenadesBefore" : 1 }
+{ "tick" : 2642, "thing" : 2, "slot" : 3, "style" : 16, "healthBefore" : 1.1290454101562500E+002, "grenadesBefore" : 2 }
+{ "tick" : 2761, "thing" : 1, "slot" : 3, "style" : 16, "healthBefore" : 6.2121620178222656E+001, "grenadesBefore" : 2 }
+{ "tick" : 2967, "thing" : 1, "slot" : 2, "style" : 16, "healthBefore" : 2.3365116119384766E+000, "grenadesBefore" : 1 }

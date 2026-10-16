@@ -8,11 +8,13 @@
 
 | Item | SHA-256 |
 | --- | --- |
-| WASM `build-out/sim/sim.wasm` | `18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a` |
-| macOS arm64 native `build-out/sim/sim-native` | `f16c30ea8ac6394bc127562a4c3df755afaee666aadb3201b3e0431c5471fd60` |
+| WASM `build-out/sim/sim.wasm` | `210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1` |
+| macOS arm64 native `build-out/sim/sim-native` | `94507919902999a170f831d62875f069d83e7f08b60a197297f61d6d212296fe` |
+| Linux arm64 native `build-out/sim/linux/sim-native` | `8dde169fb1ed22012284c784ce25465daea31ce5abc3310248937df09c6ac56a` |
+| Independent Linux oracle `build-out/oracle/cmake/bin/opensoldatserver` | `3c056d0a89b250dd58b1ec9061637311af8fe260df950b982f1d3315d7c37715` |
 | Combined simulation content | `5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64` |
 
-The final native build passed all 15 signed-packed-load compiler regression cases. The Linux native and independent oracle builds still require completion and final hashing. ABI/save-state version is `0x00010004`. Content contains 174 raw entries, including all 16 unchanged pinned bot profiles. Source, base and compiler pins remain those in SPEC.
+The native builds passed all 15 signed-packed-load compiler regression cases; the independent oracle rebuild also passed 15/15. ABI/save-state version is `0x00010004`. Content contains 174 raw entries, including all 16 unchanged pinned bot profiles. Source, base and compiler pins remain those in SPEC. The frozen WASM supersedes `18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a` only by an optional human-join `name` field, with unchanged default `oracle-<slot>`; fixture behavior is unchanged.
 
 ## Implemented boundaries
 
@@ -26,9 +28,9 @@ The client coordinator reports final-artifact integration passes: three package 
 
 Detailed role decisions are ledger B01–B08 and updated C06–C08 in [the role ledger](../role-divergence-ledger.md). The complete public contract is [sim-abi](../formats/sim-abi.md).
 
-## Authored corpus and outstanding evidence
+## Oracle corpus and outstanding evidence
 
-The bot corpus has **18 runnable fixtures**, not captured goldens: 14 fixture-world cases across Arena, ctf_Ash, ctf_Laos and ctf_B2b, plus four original-world cases including Arena eight bots/10,000 ticks, Ash CTF, Ash human-input versus bot and Airpirates stationary guns. Short cases run at least 1,500 ticks. Original-world kit pickup is a required observation from the independent original `ServerThingTaken` send site, written to a separate oracle sidecar; proximity or health change is not promoted to pickup proof.
+The bot corpus has **18 captured, repeated-byte-identical oracle fixtures**: 14 fixture-world cases across Arena, ctf_Ash, ctf_Laos and ctf_B2b, plus four original-world cases including Arena eight bots/10,000 ticks, Ash CTF, Ash human-input versus bot and Airpirates stationary guns. All **106/106 required predicates** were observed without fixture or predicate changes. Short cases run at least 1,500 ticks. Original-world kit pickup is proven at the independent original `ServerThingTaken` send site in separate oracle sidecars: Arena 40, Ash four bots 6, Ash human/bot 1, Airpirates 8. Captures retain `captured-with-limitations`: this proves the declared required observations, not every possible combat/flag/stationary-gun interaction. Evidence: `tests/fixtures/bots/capture-results.json` and its referenced goldens/sidecars.
 
 | Requested lane | Final-artifact completed / required |
 | --- | ---: |
@@ -52,7 +54,7 @@ After the client coordinator releases the heavy-job slot, run from the repositor
 
 ```sh
 node sim/build/run-g5.mjs build-out/sim/g5/final \
-  18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a
+  210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1
 ```
 
 The runner checks memory pressure before heavy steps and freezes the WASM identity throughout. It builds corrected Linux native/oracle targets, captures/repeats goldens, executes T1, exhaustively reports the ledgered authoritative-inventory differences, runs T2/Node, actual Chrome then Firefox with private profiles, validates receipts, checks presentation, and runs five-minute full-stock plus thirty-minute selected-map robustness. It stops on a failure and preserves the stage log and execution receipt rather than manufacturing a completed gate. All Docker writes remain host-bound; nothing prunes Docker or touches user browsers/dev server 5195.
@@ -60,3 +62,9 @@ The runner checks memory pressure before heavy steps and freezes the WASM identi
 ## Pre-qualification corrections
 
 Integration rejected superseded artifacts after finding two source-initialization/admission omissions: server secondary WeaponSel entries could not be used as vanilla client-menu eligibility, and omitted `WeaponsInGame` startup counting caused original Respawn to disarm real bots. The exact original startup count/primary-selection block was restored in both extracted initialization and oracle harness. Boundary review also found explicit bot spawn entering the human Dummy adapter; it now calls original Respawn directly. Earlier client results remain historical only, especially after the explicit decision to restore the original initial world.
+
+## Oracle startup correction during qualification
+
+The first full bot capture attempt passed 16 short fixtures, but both Arena 10,000-tick fixtures exited 217 in original `Server.NextMap`: fixture-world after tick 5,019 and original-world after tick 5,606. Resolving the existing executable's stack through an unstripped relink of the same objects identified `NextMap <- SortPlayers <- Die <- HealthHit <- CheckSpriteCollision <- UpdateFrame`. `SortPlayers` invokes `NextMap` at the original kill limit. Original startup allocates `MapsList` before gameplay; the independent harness had bypassed that allocation, leaving `MapsList.Count` to dereference nil. The extracted simulation already allocated the list in `Server` initialization. The harness now allocates and frees its own list; no simulation mechanics, frozen artifact, fixture inputs or observation predicates changed. Failed attempts do not count as golden evidence.
+
+Both harness and extracted simulation intentionally have an **empty map-rotation list for the admitted single-map match**, not a one-entry rotation/restart list. Original `NextMap` with an empty list reports “Can't load maps from mapslist”; it does not invoke `PrepareMapChange`, set a map-change countdown, reset scores, restart the map or emit a successful map-transition notification. Gameplay continues on the current map. The 10,000-tick T1 fixtures must therefore cover the first kill-limit call and the remaining ticks; a passing comparison is not evidence of a successful rotation/restart, which remains outside this ABI.
