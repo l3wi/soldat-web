@@ -6,9 +6,10 @@ import { createInterface } from 'node:readline';
 const args = process.argv.slice(2);
 const target = args.includes('--target');
 const ticksOnly = args.includes('--ticks-only');
+const allDifferences = args.includes('--all-differences');
 const paths = args.filter(arg => !arg.startsWith('--'));
-if (paths.length !== 2 || args.some(arg => arg.startsWith('--') && !['--target', '--ticks-only'].includes(arg))) {
-  console.error('Usage: node sim/build/compare-traces.mjs [--target] [--ticks-only] EXPECTED[.gz] ACTUAL[.gz]');
+if (paths.length !== 2 || (target && allDifferences) || args.some(arg => arg.startsWith('--') && !['--target', '--ticks-only','--all-differences'].includes(arg))) {
+  console.error('Usage: node sim/build/compare-traces.mjs [--target|--all-differences] [--ticks-only] EXPECTED[.gz] ACTUAL[.gz]');
   process.exit(2);
 }
 async function* rows(path) {
@@ -34,10 +35,17 @@ function float(bits) {
   return scratch.getFloat32(0, true);
 }
 let maxAbsError = 0, worst = null, floatDifferences = 0;
+const differences=new Map();
+function mismatch(value,context) {
+  if (!allDifferences) return value;
+  let found=differences.get(value.path);
+  if (!found) {found={...value,first:context,count:0};differences.set(value.path,found);}
+  found.count++;return null;
+}
 function difference(a, b, limit, context, path = '$') {
   if (Object.is(a, b)) return null;
-  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return { path, expected: a, actual: b };
-  if (Array.isArray(a) !== Array.isArray(b)) return { path, expected: a, actual: b };
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return mismatch({ path, expected: a, actual: b },context);
+  if (Array.isArray(a) !== Array.isArray(b)) return mismatch({ path, expected: a, actual: b },context);
   if (typeof a.bits === 'string' && typeof b.bits === 'string') {
     if (a.bits === b.bits) return null;
     const expected = float(a.bits), actual = float(b.bits);
@@ -47,7 +55,7 @@ function difference(a, b, limit, context, path = '$') {
       maxAbsError = error;
       worst = { ...context, path, expectedBits: a.bits, actualBits: b.bits, expected, actual };
     }
-    if (!target || !Number.isFinite(error) || error > limit) return { path, expectedBits: a.bits, actualBits: b.bits, expected, actual, absError: error, limit };
+    if (!target || !Number.isFinite(error) || error > limit) return mismatch({ path, expectedBits: a.bits, actualBits: b.bits, expected, actual, absError: error, limit },context);
     return null;
   }
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
@@ -83,7 +91,9 @@ try {
   if (headers !== 1 || states === 0 || finalTick !== ticks) {
     throw { reason: 'incomplete trace', headers, states, expectedTicks: ticks, finalTick };
   }
-  console.log(JSON.stringify({ status: 'pass', tier: target ? 'T2' : 'T1', records, states, ticks, bitExact: floatDifferences === 0, floatDifferences, maxAbsError, limit, worst }));
+  const status=differences.size?'fail':'pass';
+  console.log(JSON.stringify({ status, tier: target ? 'T2' : 'T1', records, states, ticks, bitExact: floatDifferences === 0 && differences.size===0, floatDifferences, maxAbsError, limit, worst, ...(allDifferences?{differences:[...differences.values()]}:{}) }));
+  if (differences.size) process.exitCode=1;
 } catch (error) {
   console.error(JSON.stringify({ status: 'fail', tier: target ? 'T2' : 'T1', records, mismatch: error instanceof Error ? error.message : error, maxAbsError, worst }));
   process.exitCode = 1;

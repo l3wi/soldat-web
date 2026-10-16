@@ -187,7 +187,7 @@ begin
   Header.Add('contentSetHash',Fixture.Strings['contentSetHash']);
   Header.Add('seed',Fixture.Int64s['seed']); Header.Add('ticks',TickCount); Header.Add('jetCapacity',Map.StartJet);
   Emit(Header); CurrentTick := 0; OracleDump('initial',0); Receipt;
-  SimTraceHook := TraceStage;
+  if Fixture.Get('traceStages','all')<>'tick' then SimTraceHook := TraceStage;
   for J := 1 to TickCount do
   begin
     CurrentTick := J; InjectInputs; Check(sim_step(0),'step');

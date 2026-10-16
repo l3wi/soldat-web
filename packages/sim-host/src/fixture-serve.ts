@@ -38,6 +38,7 @@ const server = Bun.serve({
         if (!Object.hasOwn(fixtureAssets, asset)) return new Response("Not a declared fixture asset", { status: 403 });
         return new Response(await readFile(fixtureAssets[asset]!));
       }
+      if (path === "/status") return Response.json({ expected: fixtures.length, results });
       if (path === "/results") return Response.json({ baselines: Object.values(expected), results });
       if (path === "/result" && request.method === "POST") {
         const receipt = await request.json() as FixtureReceipt;

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile, unlink } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { resolve, join, basename } from 'node:path';
 import { createReadStream } from 'node:fs';
@@ -92,9 +92,9 @@ for (const fixture of fixtures) {
   let comparison = null;
   if (capture.code === 0) {
     comparison = await run(process.execPath, ['sim/build/compare-traces.mjs',
-      expected.path, trace]);
+      ...(authoritative?['--all-differences']:[]),expected.path, trace]);
   }
-  const report = comparison?.code === 0 ? JSON.parse(comparison.stdout) : null;
+  const report = comparison?.stdout ? JSON.parse(comparison.stdout) : null;
   const result = { fixture: basename(fixture), fixtureSha256, mapSha256, contentSetHash: definition.contentSetHash,
     artifacts, oracle: { path: expected.path, sha256: expected.sha256, compressedSha256: expected.compressedSha256,
       captureBinarySha256: oracleCapture.oracleBinarySha256, harnessSha256: oracleCapture.harnessSha256,
@@ -103,10 +103,16 @@ for (const fixture of fixtures) {
     hashesSha256: capture.code === 0 ? await sha256(join(output, `${name}.hashes.jsonl`)) : null,
     oracleRegeneration: expected.regeneration, native: capture, comparison,
     status: capture.code === 0 && comparison?.code === 0 && report.bitExact === true && report.floatDifferences === 0 ? 'pass' : 'fail' };
+  if(authoritative) result.movementAndPoseIdentical=!!report && report.floatDifferences===0 &&
+    (report.status==='pass'||(report.differences?.length>0 && report.differences.every(difference=>
+      /^\$\.sprites\.0\.secondaryWeapon\.(num|ammo|fireInterval|fireIntervalPrev|reload|reloadPrev)$/.test(difference.path) &&
+      difference.first.tick>=212)));
   results.push(result);
+  if (capture.code===0) await unlink(trace);
+  if (expected.regeneration) await unlink(expected.path);
   console.log(JSON.stringify(result));
 }
 const summary = { tier: 'T1', invocation, artifacts, control: authoritative ? 'authoritative' : 'human', passed: results.filter(result => result.status === 'pass').length,
-  total: results.length, results };
+  total: results.length, ...(authoritative?{movementAndPoseIdentical:results.filter(result=>result.movementAndPoseIdentical).length}:{}), results };
 await writeFile(join(output, 'results.json'), `${JSON.stringify(summary, null, 2)}\n`);
 if (summary.passed !== summary.total) process.exitCode = 1;

@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION } from '../../packages/sim-host/src/sim.ts';
+import { loadSim, loadSimContent, requireStatus, SIM_ABI_VERSION, SIM_PRESENTATION_EVENTS } from '../../packages/sim-host/src/sim.ts';
 import { RENDER_LAYOUT, BULLET_PRESENTATION_FLAGS } from '../../packages/sim-host/src/render.ts';
 import { SIM_GAMEPLAY_EVENTS } from '../../packages/sim-host/src/gameplay-events.ts';
 import { runFixture } from '../../packages/sim-host/src/fixture.ts';
 import { readFixture, readManifest } from '../../packages/sim-host/src/fixture-files.ts';
 
-const wasmPath = process.argv[2] ?? 'build-out/sim-abi3/sim.wasm';
-const outputPath = process.argv[3] ?? 'build-out/sim-abi3/render-check.json';
+const wasmPath = process.argv[2] ?? 'build-out/sim/sim.wasm';
+const outputPath = process.argv[3] ?? 'build-out/sim/g5/render-check.json';
 const wasm = new Uint8Array(await readFile(wasmPath));
 const manifest = await readManifest('dist/content');
 const readContent = async path => new Uint8Array(await readFile(resolve('dist/content', path)));
@@ -52,7 +52,7 @@ for (const fixturePath of ['tests/fixtures/combat/target-standing.fixture.json',
       for (let index = 0; index < view.slots; index++) {
         const sprite = view.sprite(index), base = RENDER_LAYOUT.headerBytes + index * RENDER_LAYOUT.spriteBytes;
         const raw = new DataView(bytes.buffer, bytes.byteOffset + base, RENDER_LAYOUT.spriteBytes);
-        checkScalarFields(sprite, raw, RENDER_LAYOUT.sprite, ['fired','clipTexture','clipInTime','clipOutTime','secondaryWeapon','tertiaryWeapon','vest','jetpack','alpha','wearHelmet','hasCigar','chain','headCap','hairStyle','shirtColor','pantsColor','skinColor','hairColor','jetColor','ceaseFireCounter','visible','style','demoPlayer','weaponAmmo','weaponReloadTime','weaponFireInterval','fireIntervalCount','kills','deaths','ping','playerFlags','controlMethod','primaryIndex','secondaryIndex'], ['vest'], ['ceaseFireCounter','kills','deaths','primaryIndex','secondaryIndex'], ['jetpack','demoPlayer']);
+        checkScalarFields(sprite, raw, RENDER_LAYOUT.sprite, ['fired','clipTexture','clipInTime','clipOutTime','secondaryWeapon','tertiaryWeapon','vest','jetpack','alpha','wearHelmet','hasCigar','chain','headCap','hairStyle','shirtColor','pantsColor','skinColor','hairColor','jetColor','ceaseFireCounter','visible','style','demoPlayer','weaponAmmo','weaponReloadTime','weaponFireInterval','fireIntervalCount','kills','deaths','ping','playerFlags','controlMethod','primaryIndex','secondaryIndex','weaponBink','controlBits','mouseDist','currentWaypoint','nextWaypoint'], ['vest'], ['ceaseFireCounter','kills','deaths','primaryIndex','secondaryIndex','weaponBink','mouseDist','currentWaypoint','nextWaypoint'], ['jetpack','demoPlayer']);
         const nameLength = raw.getUint32(RENDER_LAYOUT.sprite.playerNameLength, true);
         assert.equal(sprite.playerName, new TextDecoder().decode(new Uint8Array(bytes.buffer, bytes.byteOffset + base + RENDER_LAYOUT.sprite.playerName, nameLength)));
         if (sprite.flags & 1) assert.ok(sprite.playerName.length > 0);
@@ -129,6 +129,33 @@ try {
   }
   assert.ok(result.replayGameplayEvents > 0, 'replay must exercise non-presentation gameplay notifications');
 } finally { for (const host of hosts) host.dispose(); }
+const binkHost=await loadSim(wasm);
+try {
+  await loadSimContent(binkHost,manifest,readContent);
+  const flat=await readFixture('tests/fixtures/combat/target-standing.fixture.json');
+  requireStatus(binkHost.putFile(`maps/${flat.fixture.map.toLowerCase()}.pms`,new Uint8Array(await readFile(flat.fixture.mapPath))),'bink map');
+  requireStatus(binkHost.init({traceCombat:true},123456789),'bink init');
+  requireStatus(binkHost.loadMap(flat.fixture.map),'bink load map');
+  for(let slot=1;slot<=2;slot++) requireStatus(binkHost.command(0,{kind:'join',slot,spawn:1,control:'authoritative',x:slot===1?-300:100,y:-32,weapon:slot===1?2:8,secondaryWeapon:0}),'bink join');
+  requireStatus(binkHost.command(0,{kind:'weapon-apply',slot:1,weapon:2,secondaryWeapon:11,selection:'secondary'}),'secondary limbo');
+  assert.equal(binkHost.renderView().sprite(0).secondaryWeapon,11);
+  requireStatus(binkHost.command(0,{kind:'weapon-apply',slot:1,weapon:4,secondaryWeapon:11}),'primary limbo');
+  assert.equal(binkHost.command(0,{kind:'weapon-apply',slot:1,weapon:3}),-4,'closed native limbo');
+  for(let tick=0;tick<100;tick++){requireStatus(binkHost.step(),'bink protection');binkHost.events();}
+  assert.equal(binkHost.renderView().sprite(1).weaponBink,65,'original Barrett bink');
+  const before=binkHost.saveState(),command={kind:'bullet',weapon:2,owner:1,target:2,hitCircle:12,x:-15,y:0,vx:30,vy:0,hitMultiply:0.1};
+  requireStatus(binkHost.command(100,command),'bink impact');requireStatus(binkHost.step(),'bink live');
+  const liveHash=binkHost.hash(),live=binkHost.events(),amounts=[];
+  const eventView=new DataView(live.buffer,live.byteOffset,live.byteLength);
+  for(let offset=0;offset<live.length;offset+=20+eventView.getUint32(offset+16,true))
+    if(eventView.getUint32(offset,true)===SIM_PRESENTATION_EVENTS.BINK && eventView.getUint32(offset+8,true)===2) amounts.push(eventView.getInt32(offset+20,true));
+  assert.deepEqual(amounts,[65],'genuine original hit-spray input');
+  requireStatus(binkHost.loadState(before),'bink rewind');requireStatus(binkHost.command(100,command),'bink replay impact');requireStatus(binkHost.step(1),'bink replay');
+  assert.equal(binkHost.hash(),liveHash);
+  const replay=binkHost.events(),replayView=new DataView(replay.buffer,replay.byteOffset,replay.byteLength);
+  for(let offset=0;offset<replay.length;offset+=20+replayView.getUint32(offset+16,true)) assert.notEqual(replayView.getUint32(offset,true),SIM_PRESENTATION_EVENTS.BINK,'replay bink suppression');
+  result.bink={hitAmounts:amounts,replaySuppressed:true,gameplayHashIdentical:true};result.limbo={secondaryApplied:true,primaryApplied:true,closedRejected:true};
+} finally {binkHost.dispose();}
 await mkdir(dirname(outputPath), { recursive: true });
 await writeFile(outputPath, JSON.stringify(result, null, 2) + '\n');
 console.log(JSON.stringify(result));
