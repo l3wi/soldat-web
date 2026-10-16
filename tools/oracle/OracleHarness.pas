@@ -165,7 +165,7 @@ begin
         Index := WeaponNumToIndex(Cmd.Integers['weapon']);
         if (Index < 1) or (Index > PRIMARY_WEAPONS) then
           raise Exception.Create('Invalid menu primary');
-        if (WeaponActive[Index] <> 1) or (WeaponSel[Slot][Index] <> 1) then
+        if WeaponActive[Index] <> 1 then
           raise Exception.Create('Disabled menu primary');
       end
       else if Cmd.Find('secondaryWeapon') = nil then
@@ -175,7 +175,7 @@ begin
         Index := WeaponNumToIndex(Cmd.Integers['secondaryWeapon']);
         if (Index < COLT) or (Index > LAW) then
           raise Exception.Create('Invalid menu secondary');
-        if (WeaponActive[Index] <> 1) or (WeaponSel[Slot][Index] <> 1) then
+        if WeaponActive[Index] <> 1 then
           raise Exception.Create('Disabled menu secondary');
         ChosenSecondary[Slot] := Cmd.Integers['secondaryWeapon'];
         Sprite[Slot].Player.SecWep := Index - COLT;
@@ -249,7 +249,7 @@ var
   PlayerSpec, Header: TJSONObject;
   P: TPlayer;
   Pos, Velocity: TVector2;
-  I, Spawn, Slot, FlagSlot, FlagStyle, TickCount, Tick, Difficulty: Integer;
+  I, Spawn, Slot, FlagSlot, FlagStyle, TickCount, Tick, Difficulty, WeaponIndex: Integer;
   Profile, BotDirectory: string;
 begin
   if ParamCount <> 4 then
@@ -356,6 +356,9 @@ begin
       BotDirectory := IncludeTrailingPathDelimiter(Fixture.Get('botDirectory','/sim-content/bots'));
       if not LoadBotConfig(BotDirectory + Profile + '.bot',Sprite[Slot]) then
         raise Exception.Create('Bot profile load failed: ' + Profile);
+      // Server.StartServer initializes primary selections before AddBotPlayer.
+      for WeaponIndex := 1 to PRIMARY_WEAPONS do
+        WeaponSel[Slot][WeaponIndex] := WeaponActive[WeaponIndex];
       Sprite[Slot].Respawn;
       Sprite[Slot].Player.ControlMethod := BOT;
       Sprite[Slot].Player.ChatWarnings := 0;

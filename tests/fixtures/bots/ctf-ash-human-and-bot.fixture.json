@@ -97,7 +97,7 @@
     "source": "reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest",
     "botJoin": "team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots",
     "controls": "Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.",
-    "weaponMenu": "Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); original active/WeaponSel/alive/non-bow guards apply.",
+    "weaponMenu": "Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); vanilla client active/alive/non-bow guards apply (advance mode disabled).",
     "chat": false,
     "activeWaypoints": 222,
     "connectedWaypoints": 221,

@@ -57,7 +57,7 @@ for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos']) {
         source: 'reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest',
         botJoin: 'team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots',
         controls: 'Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.',
-        weaponMenu: suffix === 'human-and-bot' ? 'Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); original active/WeaponSel/alive/non-bow guards apply.' : 'Bots choose weapons through original profiles/AI, never injected menu commands.',
+        weaponMenu: suffix === 'human-and-bot' ? 'Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); vanilla client active/alive/non-bow guards apply (advance mode disabled).' : 'Bots choose weapons through original profiles/AI, never injected menu commands.',
         chat: false, activeWaypoints, connectedWaypoints,
         profileSha256: Object.fromEntries(players.filter(p => p.control === 'bot').map(p => {
           const id = `bots/${p.bot!.toLowerCase()}.bot`; return [id, profileHashes[id]];
