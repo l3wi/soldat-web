@@ -1,5 +1,7 @@
 # G5 — client practice bots and online bot fill
 
+> **Original-world cutover:** the coordinator subsequently required native initial/periodic flags, medikits, grenade kits and map-authored stationary guns. Product sandbox/server now explicitly use `world:"original"`; controlled combat/prediction and legacy network fixtures explicitly use `world:"fixture"`. The results below bind the preceding `e8c4fbe…` module, not the yet-to-be-refrozen original-world implementation. New world-mode browser/Node assertions require observed medikit/grenade-kit Things and CTF flags. Original-world verification must replace these receipts after the simulation owner announces its final artifact.
+
 ## Client integration result — PASS, 2026-10-16
 
 Final module: **`e8c4fbe214eca1559e2a407e4ac8a973a09c592ff443bd6b3862f6a9b9679dd1`**, ABI/state `0x00010004`. Raw content set: `5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64`. Earlier artifact checks below are defect history only.

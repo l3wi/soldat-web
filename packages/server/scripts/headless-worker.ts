@@ -88,7 +88,9 @@ socket.on("message", data => {
               if (options.botDiagnostics.includes(bullet.owner)) projectiles.push(bullet.owner);
             }
             const humanTeams = [view.sprite(0).team, view.sprite(1).team];
-            port.postMessage({ type: "bots", player: options.player, tick: view.tick, hash: metrics.snapshotHash, bots, projectiles, humanTeams, teamScores: [...view.globals.teamScores] });
+            port.postMessage({ type: "bots", player: options.player, tick: view.tick, hash: metrics.snapshotHash, bots, projectiles,
+              humanTeams, teamScores: [...view.globals.teamScores],
+              thingStyles: Array.from({ length: view.thingCount }, (_, index) => view.thing(index).style) });
           }
           if (!ready) { ready = true; port.postMessage({ type: "ready", player: options.player, slot: message.slot }); }
         },

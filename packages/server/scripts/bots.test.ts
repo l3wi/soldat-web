@@ -19,7 +19,7 @@ interface BotSample {
 }
 interface BotSnapshot {
   type: "bots"; player: number; tick: number; hash: string; bots: BotSample[];
-  projectiles: number[]; humanTeams: number[]; teamScores: number[];
+  projectiles: number[]; humanTeams: number[]; teamScores: number[]; thingStyles: number[];
 }
 interface ClientSample {
   type: string; player: number; slot?: number; error?: string;
@@ -41,7 +41,7 @@ for (const mode of ["dm", "ctf"] as const) {
     const errors: string[] = [], samples: BotSnapshot[] = [], clientSamples: ClientSample[] = [];
     const workers: Worker[] = [], botSlots = reservedBotSlots(4);
     const server = await createGameServer({
-      match: { ...config.match, map: mode === "ctf" ? "ctf_Ash" : "Arena", botCount: 4, rules: { rng: "keyed", mode, botDifficulty: 100 } },
+      match: { ...config.match, map: mode === "ctf" ? "ctf_Ash" : "Arena", botCount: 4, rules: { rng: "keyed", mode, world: "original", botDifficulty: 100 } },
       tls: config.tls, host: "127.0.0.1", port: 0,
       onError: error => errors.push(error.stack ?? error.message),
     });
@@ -120,6 +120,10 @@ for (const mode of ["dm", "ctf"] as const) {
       assert.ok(samples.some(sample => sample.bots.some((bot, index) => Math.hypot(bot.x - initial.bots[index]!.x, bot.y - initial.bots[index]!.y) > 5)), "bots did not move");
       assert.ok(samples.some(sample => sample.bots.some(bot => bot.waypoint > 0 && (bot.controlBits & 0x2f) !== 0)), "no original waypoint movement controls observed");
       assert.ok(samples.some(sample => sample.projectiles.length > 0 || sample.bots.some(bot => bot.fired > 0)), "no bot fired on the reachable stock map");
+      assert.ok(samples.some(sample => sample.thingStyles.includes(16)), "original-world medikits absent");
+      assert.ok(samples.some(sample => sample.thingStyles.includes(17)), "original-world grenade kits absent");
+      if (mode === "ctf") for (const flag of [1, 2])
+        assert.ok(samples.some(sample => sample.thingStyles.includes(flag)), "original-world CTF flag absent");
 
       // Malformed and flooding connections must not kill the match or the two
       // already synchronized peers. Mutate valid wire bytes past the encoder.
@@ -143,7 +147,7 @@ for (const mode of ["dm", "ctf"] as const) {
       assert.ok(samples.at(-1)!.tick > before, "healthy clients stopped receiving snapshots after attacker rejection");
       assert.deepEqual(errors, []);
       await writeFile(resolve(out, "bots.json"), JSON.stringify({ wasmSha256: FROZEN_WASM_SHA256, abiVersion: SIM_ABI_VERSION,
-        contentSetHash: config.manifest.sha256, mode, sharedHashes, slots: ready.map(sample => sample.slot), initial, latest,
+        contentSetHash: config.manifest.sha256, world: "original", mode, sharedHashes, slots: ready.map(sample => sample.slot), initial, latest,
         firingObserved: true, samples: samples.length, errors }, null, 2));
     } finally {
       await Promise.all(workers.map(worker => worker.terminate()));
@@ -155,11 +159,11 @@ for (const mode of ["dm", "ctf"] as const) {
 test("worker applies secondary then primary once, retains fallback, and rejects invalid/rate-abusive choices safely", async () => {
   const config = await qualificationConfig(resolve(process.env.NET_BOTS_OUT ?? "build-out/net-bots", "weapon-choice"));
   const responses: WorkerResponse[] = [];
-  const match = await AuthoritativeMatch.start({ ...config.match, botCount: 4 }, response => responses.push(response));
+  const match = await AuthoritativeMatch.start({ ...config.match, botCount: 4, rules: { ...config.match.rules, world: "original" } }, response => responses.push(response));
   const inspector = await loadSim(config.wasm);
   try {
     await loadSimContent(inspector, config.manifest, async path => new Uint8Array(await readFile(resolve(config.match.contentRoot, path))));
-    requireStatus(inspector.init({ ...config.match.rules, ai: false }, 123456789, 0, 0), "weapon-choice inspector init");
+    requireStatus(inspector.init({ ...config.match.rules, ai: false, world: "original" }, 123456789, 0, 0), "weapon-choice inspector init");
     requireStatus(inspector.loadMap("Arena"), "weapon-choice inspector map");
     assert.throws(() => match.receive({ type: "join", slot: 29, weapon: 4, secondaryWeapon: 0 }, 0n), /slot/);
     match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, 0n);

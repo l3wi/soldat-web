@@ -40,6 +40,7 @@ export interface ClientDiagnostics {
 declare global { interface Window { __soldatClient?: ClientDiagnostics } }
 interface PracticeSnapshot {
   tick: number; hash: string; bink: number; bullets: number; scores: number[];
+  thingStyles: number[];
   players: { slot: number; name: string; team: number; flags: number; x: number; y: number; kills: number; deaths: number; fired: number; weapon: number; secondaryWeapon: number }[];
 }
 declare global { interface Window { __soldatPractice?: () => PracticeSnapshot } }
@@ -314,6 +315,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
               const hash = host!.hash(), view = world!.renderView;
               return { tick: view.tick, hash, bink: bink.counter, bullets: view.bulletCount,
                 scores: Array.from(view.globals.teamScores),
+                thingStyles: Array.from({ length: view.thingCount }, (_, index) => view.thing(index).style),
                 players: Array.from({ length: view.slots }, (_, index) => view.sprite(index))
                   .filter(sprite => (sprite.flags & 1) !== 0)
                   .map(sprite => ({ slot: sprite.slot, name: sprite.playerName, team: sprite.team, flags: sprite.flags,

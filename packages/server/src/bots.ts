@@ -12,7 +12,8 @@ export function configureMatch(config: MatchConfiguration): MatchConfiguration &
   if (config.rules.mode !== undefined && config.rules.mode !== "dm" && config.rules.mode !== "ctf") throw new RangeError("Match mode must be dm or ctf");
   const difficulty = config.rules.botDifficulty;
   if (difficulty !== undefined && (typeof difficulty !== "number" || !Number.isInteger(difficulty) || difficulty < 0 || difficulty > 300)) throw new RangeError("botDifficulty must be an integer in 0..300");
-  return { ...config, botCount, rules: { ...config.rules, ai: true } };
+  if (config.rules.world !== undefined && config.rules.world !== "original" && config.rules.world !== "fixture") throw new RangeError("world must be original or fixture");
+  return { ...config, botCount, rules: { ...config.rules, ai: true, world: config.rules.world ?? "original" } };
 }
 
 /** Humans allocate upward from one; this fixed high-slot reservation never changes. */

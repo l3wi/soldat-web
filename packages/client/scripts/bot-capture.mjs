@@ -45,12 +45,13 @@ try {
     if (chosen?.weapon !== 7 || chosen.secondaryWeapon !== 11) throw new Error("Limbo choice did not apply primary+secondary immediately");
     row.immediateWeaponChoice = { primary: chosen.weapon, secondary: chosen.secondaryWeapon };
     let previous, first;
-    const moving = new Set(), shooting = new Set(), respawned = new Set();
+    const moving = new Set(), shooting = new Set(), respawned = new Set(), thingStyles = new Set();
     const deadline = Date.now() + 240_000;
     while (Date.now() < deadline) {
       const sample = await page.evaluate(() => ({ view: window.__soldatPractice(), diagnostics: { ...window.__soldatClient } }));
       if (/unavailable|stopped|error/i.test(sample.diagnostics.simulation)) throw new Error(sample.diagnostics.simulation);
       const view = sample.view; first ??= view; row.samples++;
+      for (const style of view.thingStyles) thingStyles.add(style);
       if (view.players.length !== count + 1) throw new Error(`Expected ${count + 1} players; got ${view.players.length}`);
       const bots = view.players.filter(player => player.slot !== 1);
       for (const bot of bots) {
@@ -69,6 +70,9 @@ try {
       await page.waitForTimeout(100);
     }
     row.movingSlots = [...moving]; row.shootingSlots = [...shooting]; row.respawnedSlots = [...respawned];
+    row.world = "original"; row.thingStyles = [...thingStyles].sort((a, b) => a - b);
+    if (!thingStyles.has(16) || !thingStyles.has(17) || (mode === "ctf" && (!thingStyles.has(1) || !thingStyles.has(2))))
+      row.errors.push("Original-world medikits, grenade kits or CTF flags were not observed");
     if (moving.size !== count || !shooting.size || !respawned.size || row.kills <= 0 || row.deaths <= 0) row.errors.push("Did not observe all required movement/fire/death/respawn/kill-score predicates");
     await page.keyboard.down("F1");
     const name = `bots-${mode}-${count}-${map.toLowerCase()}.png`;

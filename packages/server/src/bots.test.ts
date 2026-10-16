@@ -24,7 +24,7 @@ test("bot count accepts 0..31 and preserves at least one human slot", () => {
 test("server enables AI without mutating caller rules and bounds original bot difficulty", () => {
   const rules = { mode: "ctf", rng: "keyed", ai: false, botDifficulty: 300 };
   const match = configureMatch({ ...config, rules, botCount: 4 });
-  assert.deepEqual(match.rules, { ...rules, ai: true });
+  assert.deepEqual(match.rules, { ...rules, ai: true, world: "original" });
   assert.equal(rules.ai, false);
   for (const mode of ["dm", "ctf"]) assert.equal(configureMatch({ ...config, rules: { mode } }).rules.mode, mode);
   for (const botDifficulty of [0, 100, 300]) assert.equal(configureMatch({ ...config, rules: { botDifficulty } }).rules.botDifficulty, botDifficulty);
@@ -32,6 +32,8 @@ test("server enables AI without mutating caller rules and bounds original bot di
     assert.throws(() => configureMatch({ ...config, rules: { botDifficulty } }), /botDifficulty/);
   }
   assert.throws(() => configureMatch({ ...config, rules: { mode: "team" } }), /mode/);
+  for (const world of ["original", "fixture"]) assert.equal(configureMatch({ ...config, rules: { world } }).rules.world, world);
+  for (const world of ["empty", null, false]) assert.throws(() => configureMatch({ ...config, rules: { world } }), /world/);
   assert.equal(BOT_PROFILES.length, 16);
   assert.equal(new Set(BOT_PROFILES).size, BOT_PROFILES.length);
 });

@@ -52,7 +52,7 @@ export async function qualificationConfig(out: string): Promise<QualificationCon
   const keyPath = resolve(out, "localhost-key.pem"), certPath = resolve(out, "localhost-cert.pem");
   await exec("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,DNS:host.docker.internal,IP:127.0.0.1", "-keyout", keyPath, "-out", certPath]);
   const [key, cert] = await Promise.all([readFile(keyPath), readFile(certPath)]);
-  return { wasm, manifest, tls: { key, cert }, match: { wasmPath, contentRoot, contentSetHash: manifest.sha256, map: "Arena", rules: { rng: "keyed", ai: false }, matchSeed: "123456789" } };
+  return { wasm, manifest, tls: { key, cert }, match: { wasmPath, contentRoot, contentSetHash: manifest.sha256, map: "Arena", rules: { rng: "keyed", ai: false, world: "fixture" }, matchSeed: "123456789" } };
 }
 
 export async function qualificationServer(out: string, port = 0): Promise<QualificationServer> {

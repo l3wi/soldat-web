@@ -11,7 +11,7 @@ async function realHost(): Promise<SimHost> {
   const manifest: SimManifest = JSON.parse(await readFile(new URL("dist/content/sim/manifest.json", root), "utf8"));
   try {
     await loadSimContent(host, manifest, path => readFile(new URL(`dist/content/${path}`, root)));
-    requireStatus(host.init({}, 1), "init"); requireStatus(host.loadMap("Arena"), "map");
+    requireStatus(host.init({ world: "fixture" }, 1), "init"); requireStatus(host.loadMap("Arena"), "map");
     return host;
   } catch (error) { host.dispose(); throw error; }
 }

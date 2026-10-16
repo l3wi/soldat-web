@@ -27,8 +27,8 @@ export async function loadSandbox(map: string, signal: AbortSignal, combat = fal
       if (bytes.length !== entry.bytes || await sha256(bytes) !== entry.sha256) throw new Error(`Simulation content identity mismatch: ${id}`);
       requireStatus(host.putFile(id, bytes), `sim_vfs_put(${id})`);
     }
-    requireStatus(host.init(combat ? { mode: "ctf", traceCombat: true, ai: false } :
-      { mode: options.mode, ai: true, rng: "keyed", botDifficulty: options.botDifficulty }, 0, 0, 0), "sim_init");
+    requireStatus(host.init(combat ? { mode: "ctf", traceCombat: true, ai: false, world: "fixture" } :
+      { mode: options.mode, ai: true, rng: "keyed", world: "original", botDifficulty: options.botDifficulty }, 0, 0, 0), "sim_init");
     requireStatus(host.loadMap(map), "sim_load_map");
     // Spawn armed with the limbo selection (original players pick in limbo before playing); combat qualification keeps its fixed setup.
     requireStatus(host.command(0, { kind: "join", slot: 1, team: combat ? 1 : options.mode === "ctf" ? options.team : 0, control: "authoritative", ...(!combat && loadout ? loadout : {}) }), "sim_command(join)");
