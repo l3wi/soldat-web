@@ -160,7 +160,8 @@ flowchart LR
 - Server→client: snapshot 30 Hz `{server tick, last consumed input seq, state}`; state = `sim_save_state` blob **delta-encoded against the last acknowledged baseline**; reliable events (kills, captures, pickups, chat, score) with IDs, exactly-once at the application layer.
 - Prediction: on snapshot, `sim_load_state(server)`, replay unacknowledged local inputs (remote/bot inputs held at last known) with `REPLAY`; ring of 128 frames; overflow ⇒ full resync.
 - Remote soldiers render from interpolated authoritative snapshots (start 50 ms, adapt 33–100 ms); local soldier renders from prediction; corrections smoothed visually only.
-- Lag compensation for projectiles: on an admissible delayed fire command, derive muzzle/aim/cooldown from historical shooter state and step the projectile through historical target states to now; history 500 ms, catch-up cap 200 ms. Grenades/rockets/melee get explicit per-style policy.
+- Lag compensation for projectiles: on an admissible delayed fire command, derive muzzle/aim/cooldown from historical shooter state and step the projectile through historical target states to now; history 500 ms, catch-up cap 200 ms. Grenades/rockets/melee get explicit per-style policy. The cap limits compensation, not admission: movement inputs are accepted regardless of the client's view age, and fire/grenade commands whose view is older than the cap execute at present time without rewind (counted as a metric), never dropped.
+- Client prediction lead is adaptive (smoothed one-way delay + jitter margin + 1–2 ticks, bounded by the 128-frame ring), not a fixed cap.
 - Validation: finite/range checks, input rate cap, sequence/replay rejection; client never sends position, velocity, hits or damage.
 - Transport interface: two channels `reliableControl` and `latestState`. WSS implements both on one socket. WebTransport adapter maps `latestState` to datagrams. Transport chosen once at admission; no mid-match switching.
 
