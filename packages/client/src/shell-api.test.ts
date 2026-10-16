@@ -29,7 +29,7 @@ function withFakeSocket(run: () => void): void {
 test('leaving a lobby whose server already disconnected does not throw', () => {
   withFakeSocket(() => {
     const errors: string[] = [];
-    const lobby = new LobbyConnection('wss://lobby.test/l/ABC123', 'Major', undefined, () => {}, message => errors.push(message));
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, message => errors.push(message));
     const socket = FakeSocket.last!;
     socket.open();
     socket.serverClose(1006, '');
@@ -41,10 +41,27 @@ test('leaving a lobby whose server already disconnected does not throw', () => {
 
 test('leaving a live lobby still tells the server', () => {
   withFakeSocket(() => {
-    const lobby = new LobbyConnection('wss://lobby.test/l/ABC123', 'Major', undefined, () => {}, () => {});
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', undefined, () => {}, () => {});
     const socket = FakeSocket.last!;
     socket.open();
     lobby.close();
     assert.deepEqual(socket.sent.map(packet => decodeMessage(packet).type), ['lobby-join', 'lobby-leave']);
+  });
+});
+
+test('kicking a guest sends their roster id over the reliable lobby connection', () => {
+  withFakeSocket(() => {
+    const lobby = new LobbyConnection('wss://lobby.test/l/AB12CD34', 'Major', 'host-secret', () => {}, () => {});
+    const socket = FakeSocket.last!;
+    socket.open();
+    lobby.send({ type: 'lobby-kick', id: 'guest-id' });
+    assert.deepEqual(socket.sent.map(packet => decodeMessage(packet)), [
+      { type: 'lobby-join', nickname: 'Major', hostToken: 'host-secret' },
+      { type: 'lobby-kick', id: 'guest-id' },
+    ]);
+    socket.serverClose(1006, '');
+    lobby.send({ type: 'lobby-kick', id: 'other-guest' });
+    assert.equal(socket.sent.length, 2);
+    lobby.close();
   });
 });

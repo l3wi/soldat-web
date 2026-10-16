@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { countdownSeconds, lobbyCode, menuKey, searchTransition, type SearchState } from './shell-state';
+import { countdownSeconds, lobbyCanKick, lobbyCode, menuKey, searchTransition, type SearchState } from './shell-state';
 import { validNickname } from './settings';
+import type { LobbyState } from '@soldat-web/protocol';
 
 test('number keys activate, arrows wrap, editing keeps native keys', () => {
   assert.deepEqual(menuKey('6', 0, 6), { type: 'activate', index: 5 });
@@ -18,10 +19,21 @@ test('names match the original 24-byte printable ASCII boundary', () => {
   for (const value of ['A', 'Sgt. Mac', '[name] ~!', 'a'.repeat(24)]) assert.equal(validNickname(value), true);
 });
 test('lobby codes accept shared links but reject malformed codes', () => {
-  assert.equal(lobbyCode(' ab12cd '), 'AB12CD');
-  assert.equal(lobbyCode('https://game.example/?lobby=k7m4q2'), 'K7M4Q2');
-  assert.equal(lobbyCode('/?lobby=k7m4q2'), 'K7M4Q2');
-  for (const input of ['', 'abcde', 'AB-CD!', 'https://game.example/?map=Arena', '?lobby=%00AAAAA']) assert.equal(lobbyCode(input), null);
+  assert.equal(lobbyCode(' ab12cd34 '), 'AB12CD34');
+  assert.equal(lobbyCode('https://game.example/?lobby=k7m4q2z9'), 'K7M4Q2Z9');
+  assert.equal(lobbyCode('/?lobby=k7m4q2z9'), 'K7M4Q2Z9');
+  assert.equal(lobbyCode('01234567'), '01234567');
+  for (const input of ['', 'abcde', 'AB-CD!', 'https://game.example/?map=Arena', '?lobby=%00AAAAAAA', 'AB12CD', '/?lobby=AB12CD', 'https://game.example/?lobby=AB12CD', 'AB12CD34X', ...['I', 'L', 'O', 'U', 'i', 'l', 'o', 'u'].map(letter => `${letter}1234567`)]) assert.equal(lobbyCode(input), null);
+});
+test('kick controls are available only to the current host before start', () => {
+  const lobby: LobbyState = { code: 'AB12CD34', mode: 'dm', map: 'Arena', targetPlayers: 8, started: false, players: [
+    { id: 'host', nickname: 'Major', host: true, ready: true },
+    { id: 'guest', nickname: 'Major', host: false, ready: false },
+  ] };
+  assert.equal(lobbyCanKick(lobby, 'host'), true);
+  for (const id of ['guest', 'unknown', undefined]) assert.equal(lobbyCanKick(lobby, id), false);
+  assert.equal(lobbyCanKick(null, 'host'), false);
+  assert.equal(lobbyCanKick({ ...lobby, started: true }, 'host'), false);
 });
 test('probes precede a full three-second countdown; cancellation is terminal', () => {
   let state: SearchState = searchTransition({ phase: 'testing' }, { type: 'tick', now: 100 });

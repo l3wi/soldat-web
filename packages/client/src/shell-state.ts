@@ -1,3 +1,5 @@
+import type { LobbyState } from '@soldat-web/protocol';
+
 export type MenuKey = { type: 'select'; index: number } | { type: 'activate'; index: number } | { type: 'back' } | null;
 
 /** Number keys activate directly; arrows wrap without activating. Editing retains native keys. */
@@ -14,11 +16,15 @@ export function menuKey(key: string, selected: number, count: number, editing = 
 
 export function lobbyCode(value: string): string | null {
   let code = value.trim();
-  if (!/^[a-z0-9]{6}$/i.test(code)) {
+  if (!/^[0-9A-HJKMNP-TV-Z]{8}$/i.test(code)) {
     try { code = new URL(code, 'https://lobby.invalid/').searchParams.get('lobby') ?? ''; }
     catch { return null; }
   }
-  return /^[a-z0-9]{6}$/i.test(code) ? code.toUpperCase() : null;
+  return /^[0-9A-HJKMNP-TV-Z]{8}$/i.test(code) ? code.toUpperCase() : null;
+}
+
+export function lobbyCanKick(lobby: LobbyState | null, selfId: string | undefined): boolean {
+  return !!lobby && !lobby.started && lobby.players.some(player => player.id === selfId && player.host);
 }
 
 export type SearchState = { phase: 'testing' } | { phase: 'countdown'; region: string; deadline: number } | { phase: 'joining'; region: string } | { phase: 'cancelled' };
