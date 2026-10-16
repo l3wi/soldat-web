@@ -3,6 +3,7 @@ import { validateInput } from "@soldat-web/protocol";
 
 export type InputRejection = "rate" | "sequence" | "jump" | "stale" | "lead" | "occupied" | "invalid";
 export interface BufferedInput { input: Uint8Array; seq: number; repeated: boolean }
+export type FireAdmission = "rewound" | "present" | "reject";
 const MAX_SEQUENCE_JUMP = 128;
 export const INPUT_PACKETS_PER_SECOND = 90;
 export const INPUT_PACKET_BURST = 128;
@@ -25,7 +26,7 @@ export class PlayerInputBuffer {
   constructor(now: bigint) { this.lastArrival = now; }
 
   /** Rate counts packets, including replay floods; redundant frames remain legal. */
-  offer(frames: readonly InputFrame[], currentTick: number, now: bigint, lateFire?: (frame: InputFrame) => boolean): InputRejection[] {
+  offer(frames: readonly InputFrame[], currentTick: number, now: bigint, admitFire?: (frame: InputFrame) => FireAdmission): InputRejection[] {
     if (now < this.lastArrival) throw new RangeError("Monotonic arrival time moved backwards");
     this.tokens = Math.min(INPUT_PACKET_BURST, this.tokens + Number(now - this.lastArrival) / 1e9 * INPUT_PACKETS_PER_SECOND);
     this.lastArrival = now;
@@ -43,20 +44,34 @@ export class PlayerInputBuffer {
     for (let i = frames.length - 1; i >= 0; i--) {
       const frame = frames[i]!;
       let failure: InputRejection | undefined;
-      if (!Number.isInteger(frame.seq) || frame.seq < 1 || frame.seq > 0xffffffff || !Number.isInteger(frame.tick) || frame.tick < 0 || frame.tick > 0xffffffff || !Number.isInteger(frame.viewTick) || frame.viewTick < 0 || frame.viewTick > frame.tick || frame.viewTick < frame.tick - 18 || frame.viewTick > currentTick + 2 || frame.input.length !== 12) failure = "invalid";
+      if (!Number.isInteger(frame.seq) || frame.seq < 1 || frame.seq > 0xffffffff || !Number.isInteger(frame.tick) || frame.tick < 0 || frame.tick > 0xffffffff || !Number.isInteger(frame.viewTick) || frame.viewTick < 0 || frame.viewTick > frame.tick || frame.viewTick > currentTick + 2 || frame.input.length !== 12) failure = "invalid";
       else if (frame.seq <= this.highestSequence) failure = "sequence";
       else if (!this.rebasing && frame.seq - this.highestSequence > MAX_SEQUENCE_JUMP) failure = "jump";
-      else if (frame.tick < currentTick && (!lateFire || this.rebasing)) failure = "stale";
+      else if (frame.tick < currentTick && (!admitFire || this.rebasing)) failure = "stale";
       else if (frame.tick > currentTick + MAX_INPUT_LEAD) failure = "lead";
       else if (this.frames.has(frame.tick)) failure = "occupied";
       else if (frame.tick <= this.highestTick) failure = "sequence";
       if (failure) { failures.push(failure); this.rejected[failure]++; continue; }
       try { validateInput(frame.input); } catch { failures.push("invalid"); this.rejected.invalid++; continue; }
+      const bits = new DataView(frame.input.buffer, frame.input.byteOffset, 12).getUint16(0, true);
+      const decision = bits & 80 && admitFire ? admitFire(frame) : undefined;
+      if (decision === "reject" || (frame.tick < currentTick && !decision)) { failures.push("stale"); this.rejected.stale++; continue; }
       if (frame.tick < currentTick) {
-        if (!lateFire!(frame)) { failures.push("stale"); this.rejected.stale++; continue; }
         this.highestSequence = frame.seq;
         this.highestTick = frame.tick;
-        this.consumedSequence = frame.seq;
+        if (decision === "rewound") this.consumedSequence = frame.seq;
+        else {
+          // Expired compensation does not erase a trigger pull. Apply only
+          // its fire/grenade bits and aim at the present boundary, retaining
+          // current movement; never rewrite elapsed movement or grant steps.
+          const queued = this.frames.get(currentTick);
+          const input = (queued?.input ?? this.held).slice();
+          const view = new DataView(input.buffer);
+          const currentBits = view.getUint16(0, true) & (queued ? 0x0fff : HELD_CONTROL_BITS);
+          view.setUint16(0, currentBits | (bits & 80), true);
+          input.set(frame.input.subarray(2, 8), 2);
+          this.frames.set(currentTick, { seq: frame.seq, tick: currentTick, viewTick: frame.viewTick, input });
+        }
         continue;
       }
       this.highestSequence = frame.seq;
@@ -73,7 +88,7 @@ export class PlayerInputBuffer {
     const frame = this.frames.get(tick);
     if (frame) {
       this.frames.delete(tick);
-      this.consumedSequence = frame.seq;
+      this.consumedSequence = Math.max(this.consumedSequence, frame.seq);
       this.lastConsumedTick = tick;
       this.held.set(frame.input);
       return { input: frame.input, seq: this.consumedSequence, repeated: false };

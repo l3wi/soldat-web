@@ -88,3 +88,26 @@ test("buffer owns admitted bytes and rejects zero/wrapped IDs and malformed batc
   assert.deepEqual(buffer.offer([frame(2, 1, new Uint8Array(11))], 1, 0n), ["invalid"]);
   assert.deepEqual(buffer.offer([frame(2, 1), frame(3, 2)], 1, 0n), ["invalid"]);
 });
+
+test("present movement and jets keep genuine old view time without buying tick lead", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  const movement = { seq: 1, tick: 100, viewTick: 0, input: encodeInput({ Right: true, Jetpack: true }) };
+  assert.deepEqual(buffer.offer([movement], 100, 0n), []);
+  assert.equal(buffer.consume(100).input[0], 2 | 32);
+  assert.deepEqual(buffer.offer([{ ...movement, seq: 2, tick: 103 }], 100, 0n), ["lead"]);
+  assert.deepEqual(buffer.offer([{ ...movement, seq: 2, tick: 101, viewTick: 103 }], 100, 0n), ["invalid"]);
+});
+
+test("expired fire applies only present action/aim while preserving held movement", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  buffer.offer([frame(1, 100, encodeInput({ Right: true }))], 100, 0n);
+  buffer.consume(100);
+  const old = { seq: 2, tick: 101, viewTick: 0, input: encodeInput({ Left: true, Fire: true, ThrowNade: true, Reload: true, MouseAimX: 321 }) };
+  assert.deepEqual(buffer.offer([old], 110, 1_000_000n, () => "present"), []);
+  assert.equal(buffer.lastConsumedSequence, 1);
+  const present = buffer.consume(110);
+  assert.equal(present.seq, 2);
+  assert.equal(new DataView(present.input.buffer, present.input.byteOffset, 12).getUint16(0, true), 2 | 16 | 64);
+  assert.equal(new DataView(present.input.buffer, present.input.byteOffset, 12).getInt16(2, true), 321);
+  assert.deepEqual(buffer.offer([old], 111, 2_000_000n, () => "present"), ["sequence"]);
+});

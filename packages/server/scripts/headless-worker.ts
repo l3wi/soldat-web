@@ -9,6 +9,7 @@ import { arenaInput } from "./workload.ts";
 
 export interface HeadlessWorkerOptions { url: string; wasmPath: string; contentRoot: string; manifest: SimManifest; player: number; combat: boolean; stackedCombat: boolean; pickupCombat: boolean }
 const options = workerData as HeadlessWorkerOptions;
+const correctionDiagnostics = process.env.NET_G4_CORRECTION_DIAGNOSTICS === "1";
 if (!parentPort) throw new Error("Headless client must run in its own worker thread");
 const port = parentPort;
 const wasm = new Uint8Array(await readFile(options.wasmPath));
@@ -73,6 +74,9 @@ socket.on("message", data => {
           port.postMessage({ type: "snapshot", player: options.player, at: performance.now(), metrics, bytesSent, bytesReceived, inputsSent });
           if (!ready) { ready = true; port.postMessage({ type: "ready", player: options.player, slot: message.slot }); }
         },
+        onCorrection: correctionDiagnostics ? diagnostic => {
+          port.postMessage({ type: "correction-diagnostic", player: options.player, at: performance.now(), diagnostic });
+        } : undefined,
         onEvent: event => {
           const duplicate = appliedEvents.has(event.id); appliedEvents.add(event.id);
           port.postMessage({ type: "logical-event", player: options.player, id: event.id, tick: event.tick, kind: new DataView(event.header.buffer, event.header.byteOffset).getUint32(0, true), duplicate });

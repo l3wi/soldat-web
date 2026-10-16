@@ -7,6 +7,8 @@ type Snapshot = Extract<Message, { type: "snapshot" }>;
 export const INPUT_HISTORY = 128;
 export const REPLAY = 1;
 const STEP_MS = 1000 / 60;
+const PREDICTION_SAFETY_TICKS = 8;
+const RTT_WINDOW = 32;
 /** Holding a remote control must never repeat a grenade/switch/reload/etc edge. */
 export function heldInput(input: Uint8Array): Uint8Array {
   const held = input.slice(); held[0] = held[0]! & 0x3f; held[1] = 0; return held;
@@ -19,11 +21,33 @@ export interface OnlineMetrics {
   hashMatches: number; hashMismatches: number; snapshots: number; events: number;
   pendingInputs: number; baselineBytes: number; extractionMs: number; reconcileMs: number;
   lastConsumedInputSeq: number; replayLength: number; duplicateEvents: number; eventGaps: number;
+  predictionLeadTicks: number; targetPredictionLeadTicks: number; rttDeviationMs: number; predictionClockRate: number;
+}
+export interface CorrectionSprite {
+  slot: number; active: boolean; x: number; y: number; health: number; flags: number; fuel: number;
+}
+export interface CorrectionDiagnostic {
+  slot: number; correction: number; previousServerTick: number; serverTick: number; predictedTick: number;
+  viewTick: number; snapshotAgeMs: number; rttMs: number; previousConsumedInputSeq: number; consumedInputSeq: number;
+  sequence: number; replayGaps: number[];
+  before: CorrectionSprite[]; authoritative: CorrectionSprite[]; after: CorrectionSprite[];
+  ring: { seq: number; tick: number; viewTick: number; bits: number; input: number[] }[];
+  previousInputs: { slot: number; bits: number; input: number[] }[];
+  authoritativeInputs: { slot: number; bits: number; input: number[] }[];
+}
+function correctionSprites(sprites: readonly WorldSprite[]): CorrectionSprite[] {
+  return sprites.filter(sprite => sprite.active).map(({ slot, active, x, y, health, flags, fuel }) =>
+    ({ slot, active, x, y, health, flags, fuel }));
+}
+function diagnosticInput(input: Uint8Array): { bits: number; input: number[] } {
+  return { bits: input[0]! | (input[1]! << 8), input: Array.from(input) };
 }
 export interface OnlineOptions {
   prediction: SimHost; extraction: SimHost; slot: number; send(message: Message): void;
   now?: () => number; onEvent?: (event: ReliableEvent) => void;
   onSnapshot?: (metrics: Readonly<OnlineMetrics>) => void;
+  /** Opt-in reconciliation evidence; no diagnostic copies are made when absent. */
+  onCorrection?: (diagnostic: Readonly<CorrectionDiagnostic>) => void;
   /** Borrowed event records, presentation kinds only; never emitted on REPLAY. */
   onPresentation?: (bytes: Uint8Array) => void;
 }
@@ -51,6 +75,11 @@ export class OnlineSession {
   private lastPresentAt = 0;
   private lastPingAt = -Infinity;
   private ping: bigint | undefined;
+  private readonly rttDeviations = new Float64Array(RTT_WINDOW);
+  private readonly sortedDeviations = new Float64Array(RTT_WINDOW);
+  private rttSamples = 0;
+  private clockPhase = 0;
+  private clockAt = 0;
   private waiting = true;
   private resyncRequested = false;
   private correctionX = 0;
@@ -76,7 +105,8 @@ export class OnlineSession {
       rttMs: 0, loss: 0, snapshotAgeMs: 0, interpolationMs: 50, correction: 0, corrections: 0,
       replayTicks: 0, resyncs: 0, snapshotId: 0, snapshotTick: 0, snapshotHash: "", loadedHash: "",
       hashMatches: 0, hashMismatches: 0, snapshots: 0, events: 0, pendingInputs: 0, baselineBytes: 0, extractionMs: 0, reconcileMs: 0,
-      lastConsumedInputSeq: 0, replayLength: 0, duplicateEvents: 0, eventGaps: 0 };
+      lastConsumedInputSeq: 0, replayLength: 0, duplicateEvents: 0, eventGaps: 0,
+      predictionLeadTicks: 2, targetPredictionLeadTicks: 2, rttDeviationMs: 0, predictionClockRate: 1 };
   }
   receive(message: Message): void {
     if (this.disposed) return;
@@ -84,7 +114,15 @@ export class OnlineSession {
     if (message.type === "pong") {
       if (this.ping === message.timestamp) {
         const rtt = Math.max(0, this.now() - Number(message.timestamp) / 1000);
-        this.metrics.rttMs = this.metrics.rttMs ? this.metrics.rttMs * 0.8 + rtt * 0.2 : rtt;
+        const m = this.metrics;
+        this.rttDeviations[this.rttSamples++ % RTT_WINDOW] = m.rttMs ? Math.abs(rtt - m.rttMs) : 0;
+        m.rttMs = m.rttMs ? m.rttMs * 0.8 + rtt * 0.2 : rtt;
+        const count = Math.min(this.rttSamples, RTT_WINDOW);
+        this.sortedDeviations.set(this.rttDeviations);
+        this.sortedDeviations.fill(Infinity, count); this.sortedDeviations.sort();
+        m.rttDeviationMs = this.sortedDeviations[Math.ceil(count * 0.95) - 1]!;
+        m.targetPredictionLeadTicks = Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
+          (m.rttMs + m.rttDeviationMs) / 2 / STEP_MS + 2);
         this.ping = undefined;
       }
       return;
@@ -125,6 +163,17 @@ export class OnlineSession {
     const state = decodeDelta(message.state, baseline);
     const old = this.predictionWorld.sprites[this.options.slot - 1]!;
     const oldX = old.x, oldY = old.y, oldTick = this.predictionWorld.tick;
+    const diagnostic: CorrectionDiagnostic | undefined = this.options.onCorrection ? {
+      slot: this.options.slot, correction: 0, previousServerTick: m.serverTick, serverTick: message.serverTick,
+      predictedTick: oldTick, viewTick: m.viewTick, snapshotAgeMs: this.now() - this.lastSnapshotAt,
+      rttMs: m.rttMs, previousConsumedInputSeq: m.lastConsumedInputSeq, consumedInputSeq: message.lastConsumedInputSeq,
+      sequence: this.seq, replayGaps: [], before: correctionSprites(this.predictionWorld.sprites),
+      authoritative: [], after: [],
+      ring: this.ring.filter((frame): frame is InputFrame => !!frame).map(frame =>
+        ({ seq: frame.seq, tick: frame.tick, viewTick: frame.viewTick, ...diagnosticInput(frame.input) })).sort((a, b) => a.tick - b.tick),
+      previousInputs: this.remote.map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
+      authoritativeInputs: message.inputs.map(entry => ({ slot: entry.slot, ...diagnosticInput(entry.input) })),
+    } : undefined;
     requireStatus(this.options.extraction.loadState(state), "snapshot extraction load");
     const extractedHash = this.options.extraction.hash();
     requireStatus(this.options.prediction.loadState(state), "prediction restore");
@@ -137,6 +186,7 @@ export class OnlineSession {
     m.hashMatches++;
     this.extractionWorld.sync();
     if (this.extractionWorld.tick !== message.serverTick) throw new Error("Snapshot/render tick mismatch");
+    if (diagnostic) diagnostic.authoritative = correctionSprites(this.extractionWorld.sprites);
     this.poses.push({ tick: message.serverTick, sprites: this.extractionWorld.sprites.map(copySprite) });
     if (this.poses.length > 16) this.poses.shift();
     m.extractionMs = this.now() - started;
@@ -153,6 +203,7 @@ export class OnlineSession {
     if (target - message.serverTick > INPUT_HISTORY) { this.resync(); return; }
     for (let tick = message.serverTick; tick < target; tick++) {
       const frame = this.ring[tick % INPUT_HISTORY];
+      if (diagnostic && frame?.tick !== tick) diagnostic.replayGaps.push(tick);
       this.controls(tick, frame?.tick === tick ? frame.input : undefined);
       requireStatus(this.options.prediction.step(REPLAY), "sim_step(REPLAY)"); m.replayTicks++;
     }
@@ -161,6 +212,7 @@ export class OnlineSession {
     if (!this.waiting && oldTick === target && old.active && local.active) {
       const dx = oldX - local.x, dy = oldY - local.y;
       m.correction = Math.hypot(dx, dy);
+      if (diagnostic) diagnostic.correction = m.correction;
       if (m.correction > 0.001) { m.corrections++; this.correctionX += dx; this.correctionY += dy; }
     }
     const at = this.now();
@@ -173,6 +225,11 @@ export class OnlineSession {
     }
     m.snapshotId = message.snapshotId; m.serverTick = message.serverTick; m.snapshots++;
     m.loss = this.gapSnapshots / Math.max(1, this.gapSnapshots + m.snapshots);
+    // Fullstate recovery rebases the clock, not the sequence or sampled intent.
+    if (this.waiting) {
+      this.clockPhase = message.serverTick + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
+        m.rttMs / 2 / STEP_MS + m.predictionLeadTicks); this.clockAt = at;
+    } else this.clockPhase = Math.max(this.clockPhase, this.predictionWorld.tick);
     this.lastSnapshotAt = at; this.waiting = false; this.resyncRequested = false; m.status = "online";
     m.predictedTick = this.predictionWorld.tick; m.pendingInputs = this.ring.filter(Boolean).length;
     if (m.snapshots === 1) m.viewTick = message.serverTick;
@@ -180,6 +237,10 @@ export class OnlineSession {
     m.reconcileMs = this.now() - started;
     if (acknowledge) this.options.send({ type: "snapshotAck", snapshotId: message.snapshotId });
     this.options.onSnapshot?.(m);
+    if (diagnostic && diagnostic.correction > 0.001) {
+      diagnostic.after = correctionSprites(this.predictionWorld.sprites);
+      this.options.onCorrection!(diagnostic);
+    }
   }
   private controls(tick: number, local?: Uint8Array): void {
     const host = this.options.prediction;
@@ -209,9 +270,19 @@ export class OnlineSession {
     if (m.snapshotAgeMs > INPUT_HISTORY * STEP_MS) { this.resync(); return; }
     this.present();
     const serverNow = m.serverTick + (m.snapshotAgeMs + m.rttMs / 2) / STEP_MS;
-    const phase = Math.min(m.serverTick + 16, serverNow + m.rttMs / 2 / STEP_MS + 2);
-    const desired = Math.min(Math.floor(phase), m.viewTick + 18);
-    this.fraction = phase >= m.serverTick + 16 ? 1 : phase - desired;
+    const elapsed = Math.max(0, at - this.clockAt);
+    this.clockAt = at;
+    // Increase lead slowly; shed surplus lead faster. Clock corrections change
+    // tick rate by at most 10%, never skip a sampled tick or invent view time.
+    const leadDelta = m.targetPredictionLeadTicks - m.predictionLeadTicks;
+    m.predictionLeadTicks += Math.max(-elapsed * 0.004, Math.min(elapsed * 0.001, leadDelta));
+    const targetPhase = serverNow + m.predictionLeadTicks;
+    const naturalPhase = this.clockPhase + elapsed / STEP_MS;
+    m.predictionClockRate = Math.max(0.9, Math.min(1.1, 1 + (targetPhase - naturalPhase) / 60));
+    this.clockPhase = Math.max(this.predictionWorld.tick, Math.min(m.serverTick + INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
+      this.clockPhase + elapsed / STEP_MS * m.predictionClockRate));
+    const desired = Math.floor(this.clockPhase);
+    this.fraction = this.clockPhase - desired;
     for (let count = 0; this.predictionWorld.tick < desired && count < 4; count++) {
       const tick = this.predictionWorld.tick, index = tick % INPUT_HISTORY;
       if (this.ring[index]) { this.resync(); return; }

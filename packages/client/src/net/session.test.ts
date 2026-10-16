@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { loadSim, loadSimContent, requireStatus, encodeInput, type SimHost, type SimManifest } from "@soldat-web/sim-host";
 import { encodeDelta, type Message } from "@soldat-web/protocol";
-import { heldInput, OnlineSession, INPUT_HISTORY } from "./session.ts";
+import { heldInput, OnlineSession, INPUT_HISTORY, type CorrectionDiagnostic } from "./session.ts";
 
 const root = new URL("../../../../", import.meta.url);
 async function realHost(): Promise<SimHost> {
@@ -154,5 +154,96 @@ test("fresh snapshots cannot hide an exhausted unconsumed sequence window", asyn
     session.advance(() => encodeInput({ Right: true }));
     assert.equal(session.metrics.resyncs, 1);
     assert.ok(sent.filter(message => message.type === "input").length > priorInputs);
+  } finally { session.dispose(); authoritative.dispose(); }
+});
+
+test("real-host correction evidence preserves pre-retirement controls and separates missing authority from damage", async () => {
+  const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
+  const diagnostics: Readonly<CorrectionDiagnostic>[] = [];
+  let now = 0;
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send() {},
+    onCorrection: diagnostic => diagnostics.push(diagnostic) });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative" }), "join");
+    for (let tick = 0; tick < 60; tick++) requireStatus(authoritative.step(), "settle");
+    const neutral = encodeInput({});
+    session.receive(snapshot(authoritative, save(authoritative), 1, 60, 0, [{ slot: 1, input: neutral }]));
+    const right = encodeInput({ Right: true });
+    now = 250;
+    for (let batch = 0; batch < 4; batch++) session.advance(() => right);
+    assert.equal(session.metrics.predictedTick, 76);
+    // The server never received these controls. Its unchanged ACK and neutral
+    // held input must remain visible, not be rewritten to match prediction.
+    for (let tick = 60; tick < 72; tick++) {
+      requireStatus(authoritative.setInput(1, tick, {}), "neutral authoritative input");
+      requireStatus(authoritative.step(), "authoritative step");
+    }
+    session.receive(snapshot(authoritative, save(authoritative), 2, 72, 0, [{ slot: 1, input: neutral }]));
+    assert.equal(diagnostics.length, 1);
+    const diagnostic = diagnostics[0]!;
+    assert.ok(diagnostic.correction > 0.001);
+    assert.equal(diagnostic.correction, session.metrics.correction);
+    assert.equal(diagnostic.previousServerTick, 60); assert.equal(diagnostic.serverTick, 72);
+    assert.equal(diagnostic.predictedTick, 76); assert.equal(diagnostic.viewTick, 60);
+    assert.equal(diagnostic.previousConsumedInputSeq, 0); assert.equal(diagnostic.consumedInputSeq, 0);
+    assert.deepEqual(diagnostic.replayGaps, []);
+    assert.equal(diagnostic.ring.length, 16);
+    assert.deepEqual(diagnostic.ring.map(frame => frame.tick), Array.from({ length: 16 }, (_, i) => 60 + i));
+    assert.ok(diagnostic.ring.every(frame => frame.bits === 2 && frame.viewTick === 60));
+    assert.deepEqual(diagnostic.ring[0]!.input, Array.from(right));
+    assert.equal(diagnostic.authoritativeInputs[0]!.bits, 0);
+    const before = diagnostic.before.find(sprite => sprite.slot === 1)!;
+    const restored = diagnostic.authoritative.find(sprite => sprite.slot === 1)!;
+    const after = diagnostic.after.find(sprite => sprite.slot === 1)!;
+    assert.equal(before.health, restored.health); assert.equal(restored.health, after.health);
+    assert.equal(before.fuel, restored.fuel); assert.equal(restored.fuel, after.fuel);
+    assert.notEqual(before.x, after.x);
+    // Subsequent syncs may mutate WorldSprites but not the delivered evidence.
+    const beforeX = before.x;
+    now += 17; session.advance(() => right);
+    assert.equal(before.x, beforeX);
+  } finally { session.dispose(); authoritative.dispose(); }
+});
+
+test("adaptive prediction passes sixteen ticks without inventing view time or skipping sampled controls", async () => {
+  const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
+  const sent: Message[] = [];
+  let now = 0;
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send: message => sent.push(message) });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative" }), "join");
+    session.receive(snapshot(authoritative, save(authoritative), 1, 0));
+    const input = encodeInput({ Right: true });
+    session.advance(() => input);
+    const firstPing = sent.find(message => message.type === "ping")!;
+    assert.equal(firstPing.type, "ping");
+    for (let tick = 1; tick <= 90; tick++) {
+      now = tick * 1000 / 60;
+      if (tick === 24) {
+        session.receive({ type: "pong", timestamp: firstPing.timestamp });
+        assert.ok(Math.abs(session.metrics.targetPredictionLeadTicks - 14) < 0.001);
+      }
+      if (tick === 90) {
+        const pings = sent.filter(message => message.type === "ping");
+        const secondPing = pings[pings.length - 1]!;
+        assert.equal(secondPing.type, "ping");
+        session.receive({ type: "pong", timestamp: secondPing.timestamp });
+        assert.ok(Math.abs(session.metrics.rttDeviationMs - 100) < 0.001);
+        assert.ok(session.metrics.targetPredictionLeadTicks > 17);
+      }
+      const previousLead = session.metrics.predictionLeadTicks;
+      session.advance(() => input);
+      assert.ok(session.metrics.predictionClockRate >= 0.9 && session.metrics.predictionClockRate <= 1.1);
+      assert.ok(session.metrics.predictionLeadTicks - previousLead <= 1 / 60 + 0.000001);
+    }
+    const frames = sent.filter(message => message.type === "input").map(message => message.frames[0]!);
+    assert.ok(frames.length > 90 && frames.length < INPUT_HISTORY - 8);
+    assert.deepEqual(frames.map(frame => frame.tick), Array.from({ length: frames.length }, (_, i) => i));
+    assert.deepEqual(frames.map(frame => frame.seq), Array.from({ length: frames.length }, (_, i) => i + 1));
+    assert.ok(frames.every(frame => frame.viewTick === 0));
+    assert.ok(frames.some(frame => frame.tick - frame.viewTick > 18));
+    assert.ok(frames.every(frame => frame.input.every((byte, i) => byte === input[i])));
+    assert.equal(session.metrics.resyncs, 0);
+    assert.equal(session.metrics.viewTick, 0);
   } finally { session.dispose(); authoritative.dispose(); }
 });

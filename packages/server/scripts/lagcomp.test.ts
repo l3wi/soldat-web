@@ -206,11 +206,12 @@ test("trusted RTT, replay window and per-player rewind budget are enforced", asy
     stepTo(value, 72);
     value.match.receive({ type: "rtt", slot: 1, milliseconds: 0 }, value.now);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 60, viewTick: 56, input: encodeInput({ Fire: true }) }] }, value.now);
-    assert.equal(value.match.takeLagMetrics().replayTicks, 0);
+    const expired = value.match.takeLagMetrics();
+    assert.equal(expired.replayTicks, 0); assert.equal(expired.uncompensatedShots, 1);
     value.match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, value.now);
-    value.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 60, viewTick: 56, input: encodeInput({ Fire: true }) }] }, value.now);
-    assert.equal(value.match.takeLagMetrics().replayTicks, 12);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 2, tick: 61, viewTick: 57, input: encodeInput({ Fire: true }) }] }, value.now);
+    assert.equal(value.match.takeLagMetrics().replayTicks, 11);
+    value.match.receive({ type: "input", slot: 1, frames: [{ seq: 3, tick: 62, viewTick: 58, input: encodeInput({ Fire: true }) }] }, value.now);
     assert.equal(value.match.takeLagMetrics().replayTicks, 0);
     assert.equal(value.match.tick, 72);
   } finally { value.match.dispose(); }
@@ -321,4 +322,71 @@ test("overlapping delayed shots rebuild from a retained coherent anchor", async 
     stepTo(timely, 660); stepTo(late, 660);
     assert.equal(late.lastSnapshot?.stateHash, timely.lastSnapshot?.stateHash);
   } finally { timely.match.dispose(); late.match.dispose(); }
+});
+
+test("eight recipients sharing an acknowledged state encode each baseline once", async () => {
+  const previous = process.env.NET_G4_PROFILE;
+  process.env.NET_G4_PROFILE = "1";
+  let value: Timeline | undefined;
+  try {
+    value = await timeline(4, 8);
+    stepTo(value, 2);
+    const full = value.match.takeWorkProfile()!;
+    assert.equal(full.recipients, 8); assert.equal(full.deltaEncodes, 1);
+    stepTo(value, 4);
+    const delta = value.match.takeWorkProfile()!;
+    assert.equal(delta.recipients, 8); assert.equal(delta.deltaEncodes, 1);
+    assert.ok(value.lastSnapshot!.baselineId > 0);
+    requireStatus(inspector.loadState(value.state!), "inspect shared-baseline delta");
+    assert.equal(inspector.hash(), value.lastSnapshot!.stateHash.toString(16).padStart(16, "0"));
+  } finally {
+    value?.match.dispose();
+    if (previous === undefined) delete process.env.NET_G4_PROFILE;
+    else process.env.NET_G4_PROFILE = previous;
+  }
+});
+
+for (const action of ["Fire", "ThrowNade"] as const) {
+  test(`expired ${action} runs at present time with original ammo/cooldown, never historical movement`, async () => {
+    const present = await timeline(), expired = await timeline();
+    try {
+      for (const value of [present, expired]) { warmSeparatedPlayers(value, 600); stepTo(value, 630); }
+      const before = present.state!;
+      const current = { seq: present.sequence + 1, tick: 630, viewTick: 626, input: encodeInput({ [action]: true, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 }) };
+      present.match.receive({ type: "input", slot: 1, frames: [current] }, present.now);
+      expired.match.receive({ type: "input", slot: 1, frames: [{ ...current, tick: 600, viewTick: 570, input: encodeInput({ Left: true, Reload: true, [action]: true, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 }) }] }, expired.now);
+      assert.equal(expired.match.tick, 630);
+      const metrics = expired.match.takeLagMetrics();
+      assert.equal(metrics.replayTicks, 0); assert.equal(metrics.uncompensatedShots, 1);
+      stepTo(present, 631); stepTo(expired, 631);
+      // Original throwing animation reaches its launch gate after 36 frames.
+      for (let tick = 631; tick < 670; tick++) {
+        const held = { ...current, seq: current.seq + tick - 630, tick, viewTick: tick - 4 };
+        for (const value of [present, expired]) {
+          value.match.receive({ type: "input", slot: 1, frames: [held] }, value.now);
+          stepTo(value, tick + 1);
+        }
+      }
+      assert.equal(expired.lastSnapshot?.lastConsumedInputSeq, current.seq + 39);
+      assert.equal(expired.lastSnapshot?.stateHash, present.lastSnapshot?.stateHash);
+      requireStatus(inspector.loadState(before), "inspect pre-expired action");
+      const beforeView = inspector.renderView(); if (typeof beforeView === "number") throw new Error("Missing before view");
+      const ammo = action === "Fire" ? beforeView.sprite(0).ammo : beforeView.sprite(0).grenades;
+      requireStatus(inspector.loadState(expired.state!), "inspect expired action result");
+      const afterView = inspector.renderView(); if (typeof afterView === "number") throw new Error("Missing after view");
+      assert.ok((action === "Fire" ? afterView.sprite(0).ammo : afterView.sprite(0).grenades) < ammo, `Original action did not consume real ammo: before=${ammo}, after=${action === "Fire" ? afterView.sprite(0).ammo : afterView.sprite(0).grenades}, health=${afterView.sprite(0).health}, body=${afterView.sprite(0).bodyId}/${afterView.sprite(0).bodyFrame}`);
+    } finally { present.match.dispose(); expired.match.dispose(); }
+  });
+}
+
+test("timely fire with an old genuine view is present-only and counted", async () => {
+  const value = await timeline();
+  try {
+    warmSeparatedPlayers(value, 600);
+    value.match.receive({ type: "input", slot: 1, frames: [{ seq: value.sequence + 1, tick: 600, viewTick: 0, input: encodeInput({ Fire: true }) }] }, value.now);
+    const metrics = value.match.takeLagMetrics();
+    assert.equal(metrics.uncompensatedShots, 1); assert.equal(metrics.replayTicks, 0);
+    stepTo(value, 602);
+    assert.equal(value.lastSnapshot?.lastConsumedInputSeq, value.sequence + 1);
+  } finally { value.match.dispose(); }
 });

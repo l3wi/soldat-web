@@ -3,8 +3,8 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { encodeDelta, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
 import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@soldat-web/sim-host";
 import type { SimHost, SimManifest } from "@soldat-web/sim-host";
-import { PlayerInputBuffer } from "./input-buffer.ts";
-import type { MatchConfiguration, WorkerRequest, WorkerResponse } from "./worker-messages.ts";
+import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
+import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
 
 interface Player {
   inputs: PlayerInputBuffer;
@@ -24,6 +24,7 @@ interface History {
 }
 const HISTORY_TICKS = 30;
 const REWIND_TICKS = 12;
+const emptyProfile = (): TickWorkProfile => ({ tick: 0, stepMs: 0, saveMs: 0, hashMs: 0, deltaMs: 0, postMs: 0, deltaEncodes: 0, recipients: 0, ...(process.env.NET_G4_INPUT_DIAGNOSTICS === "1" ? { controls: [] } : {}) });
 
 /** One worker, one instance. History and all uncommitted effects share its timeline. */
 export class AuthoritativeMatch {
@@ -38,13 +39,18 @@ export class AuthoritativeMatch {
   private replayMs: number[] = [];
   private replayTicks = 0;
   private rejectedShots = 0;
+  private uncompensatedShots = 0;
+  private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
   private readonly host: SimHost;
   private readonly emit: (response: WorkerResponse) => void;
   tick = 0;
 
   private constructor(host: SimHost, emit: (response: WorkerResponse) => void) {
     this.host = host;
-    this.emit = emit;
+    this.emit = this.profile ? response => {
+      const start = performance.now(); emit(response);
+      this.profile!.postMs += performance.now() - start;
+    } : emit;
     this.inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
     if (!this.inputPtr) throw new Error("Input allocation failed");
   }
@@ -94,7 +100,7 @@ export class AuthoritativeMatch {
     if (!player) return;
     switch (message.type) {
       case "input": {
-        const rejected = player.inputs.offer(message.frames, this.tick, now, frame => this.rewindFire(message.slot, player, frame));
+        const rejected = player.inputs.offer(message.frames, this.tick, now, frame => this.admitFire(message.slot, player, frame));
         if (rejected.includes("rate")) this.emit({ type: "reject", slot: message.slot, reason: "Input rate limit exceeded" });
         break;
       }
@@ -127,7 +133,9 @@ export class AuthoritativeMatch {
   }
 
   private save(): Uint8Array {
+    const start = this.profile ? performance.now() : 0;
     const state = this.host.saveState();
+    if (this.profile) this.profile.saveMs += performance.now() - start;
     if (typeof state === "number") throw new Error(`sim_save_state failed: ${state}`);
     return state;
   }
@@ -157,19 +165,34 @@ export class AuthoritativeMatch {
     const render = this.host.renderView();
     if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
     for (const [slot, player] of this.players) {
-      const input = player.inputs.consume(this.tick).input.slice();
+      const consumed = player.inputs.consume(this.tick), input = consumed.input.slice();
+      this.profile?.controls?.push({ slot, seq: consumed.seq, repeated: consumed.repeated, bits: new DataView(input.buffer, input.byteOffset, 12).getUint16(0, true), rejected: { ...player.inputs.rejected } });
       inputs.set(slot, input); weapons.set(slot, render.sprite(slot - 1).weapon);
     }
     this.history.set(this.tick, { state: this.save(), inputs, weapons });
     while (this.history.size > HISTORY_TICKS + 1) this.history.delete(this.history.keys().next().value!);
     for (const [slot, input] of inputs) { this.apply(slot, this.tick, input); this.lastInputs.set(slot, input); }
+    const stepStart = this.profile ? performance.now() : 0;
     const advanced = requireStatus(this.host.step(), "sim_step");
+    if (this.profile) this.profile.stepMs += performance.now() - stepStart;
     if (advanced !== this.tick + 1) throw new Error(`Unexpected sim tick ${advanced}`);
     this.tick = advanced;
     this.pendingEvents.set(this.tick, this.events());
     this.commitEvents();
     if (this.tick % 2 === 0) this.snapshot();
     if (this.tick % 30 === 0) this.retransmitEvents();
+  }
+
+  private admitFire(slot: number, player: Player, frame: InputFrame): FireAdmission {
+    const allowance = Math.min(REWIND_TICKS, Math.ceil(player.rttMs * 0.03) + 2);
+    const viewAllowance = Math.min(18, Math.ceil(player.rttMs * 0.06) + 8);
+    const late = frame.tick < this.tick;
+    if (this.tick - frame.tick > allowance || frame.tick - frame.viewTick > viewAllowance || (late && !this.history.has(frame.tick))) {
+      this.uncompensatedShots++;
+      return "present";
+    }
+    if (!late) return "present";
+    return this.rewindFire(slot, player, frame) ? "rewound" : "reject";
   }
 
   /** Insert intent only; original historical guns derive muzzle, cooldown, ammo and hits. */
@@ -211,7 +234,9 @@ export class AuthoritativeMatch {
       if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
       for (const owner of historical.inputs.keys()) historical.weapons.set(owner, render.sprite(owner - 1).weapon);
       for (const [owner, input] of historical.inputs) this.apply(owner, tick, input);
+      const stepStart = this.profile ? performance.now() : 0;
       requireStatus(this.host.step(1), "sim_step(rewind)");
+      if (this.profile) this.profile.stepMs += performance.now() - stepStart;
       if (tick + 1 > this.tick - REWIND_TICKS) this.pendingEvents.set(tick + 1, this.events());
       else this.events(); // Already committed prefix: drain, never confirm twice.
     }
@@ -224,9 +249,15 @@ export class AuthoritativeMatch {
 
   private snapshot(): void {
     if (this.snapshotId === 0xffffffff) throw new Error("Snapshot ID space exhausted");
-    const state = this.save(), stateHash = BigInt.asUintN(64, this.host.exports.sim_hash_state());
+    const state = this.save(), hashStart = this.profile ? performance.now() : 0;
+    const stateHash = BigInt.asUintN(64, this.host.exports.sim_hash_state());
+    if (this.profile) this.profile.hashMs += performance.now() - hashStart;
     const id = ++this.snapshotId;
     const inputs = [...this.lastInputs].sort((a, b) => a[0] - b[0]).map(([slot, input]) => ({ slot, input }));
+    // Recipients acknowledging the same immutable snapshot share its bytes.
+    // Encode once per distinct baseline, not once per player. Each IPC post
+    // still owns its structured-cloned packet; no ACK or state is fabricated.
+    const deltas = new Map<Uint8Array | undefined, Uint8Array>();
     for (const [slot, player] of this.players) {
       // A missing/never-acked baseline is an explicit full-state recovery.
       if (player.sent.size >= 128) { player.baselineId = 0; player.baseline = undefined; player.sent.clear(); }
@@ -234,7 +265,15 @@ export class AuthoritativeMatch {
       // before its ACK only multiplies TCP HOL and can starve the handshake.
       if (player.baselineId === 0 && player.sent.size !== 0) continue;
       player.sent.set(id, state);
-      this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "snapshot", serverTick: this.tick, lastConsumedInputSeq: player.inputs.lastConsumedSequence, snapshotId: id, baselineId: player.baselineId, stateHash, inputs, state: encodeDelta(state, player.baseline) } });
+      let delta = deltas.get(player.baseline);
+      if (!delta) {
+        const deltaStart = this.profile ? performance.now() : 0;
+        delta = encodeDelta(state, player.baseline);
+        deltas.set(player.baseline, delta);
+        if (this.profile) { this.profile.deltaMs += performance.now() - deltaStart; this.profile.deltaEncodes++; }
+      }
+      if (this.profile) this.profile.recipients++;
+      this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "snapshot", serverTick: this.tick, lastConsumedInputSeq: player.inputs.lastConsumedSequence, snapshotId: id, baselineId: player.baselineId, stateHash, inputs, state: delta } });
     }
   }
 
@@ -274,9 +313,14 @@ export class AuthoritativeMatch {
       if (events.length) this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "events", events } });
     }
   }
-  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number } {
-    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots };
-    this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0;
+  takeWorkProfile(): TickWorkProfile | undefined {
+    const profile = this.profile;
+    if (profile) { profile.tick = this.tick; this.profile = emptyProfile(); }
+    return profile;
+  }
+  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number } {
+    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots };
+    this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0;
     return result;
   }
   dispose(): void {

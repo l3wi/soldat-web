@@ -13,9 +13,9 @@ after(async () => { await rig?.close(); });
 
 async function activePeer() {
   const peer = new RawPeer(rig.url);
-  await peer.connect(rig.manifest.sha256);
+  const welcome = await peer.connect(rig.manifest.sha256);
   const snapshot = await peer.waitFor((m): m is Extract<Message, { type: "snapshot" }> => m.type === "snapshot");
-  return { peer, snapshot };
+  return { peer, snapshot, welcome };
 }
 
 for (const [name, packet] of [
@@ -60,22 +60,40 @@ test("raw IEEE NaN/inf bit patterns cannot smuggle float controls", async () => 
   }
 });
 
-for (const attack of ["sequence-jump", "future-target", "stale-target", "future-view-fire", "stale-view-fire", "stale-fire"] as const) {
+for (const attack of ["sequence-jump", "future-target", "stale-target", "future-view-fire"] as const) {
   test(`real worker never consumes ${attack}`, async () => {
-    const { peer, snapshot } = await activePeer();
+    const { peer, snapshot, welcome } = await activePeer();
     try {
       const frame: InputFrame = { seq: 1, tick: snapshot.serverTick + 3, viewTick: snapshot.serverTick, input: encodeInput({ Fire: attack.includes("fire") }) };
       if (attack === "sequence-jump") frame.seq = 1_000_000;
       if (attack === "future-target") frame.tick = snapshot.serverTick + 16;
       if (attack === "stale-target") { frame.tick = Math.max(0, snapshot.serverTick - 30); frame.viewTick = frame.tick; }
       if (attack === "future-view-fire") frame.viewTick = frame.tick + 1000;
-      if (attack === "stale-view-fire") { frame.tick = Math.max(30, frame.tick); frame.viewTick = frame.tick - 30; }
-      if (attack === "stale-fire") { frame.tick = Math.max(0, snapshot.serverTick - 30); frame.viewTick = frame.tick; }
       const start = peer.messages.length; peer.send({ type: "input", frames: [frame] });
       const later = await peer.waitFor((m): m is Extract<Message, { type: "snapshot" }> => m.type === "snapshot" && m.serverTick >= snapshot.serverTick + 8, start);
       assert.equal(later.lastConsumedInputSeq, 0);
-      assert.equal(later.inputs.find(entry => entry.slot === 1)?.input[0] ?? 0, 0);
+      assert.equal(later.inputs.find(entry => entry.slot === welcome.slot)?.input[0] ?? 0, 0);
       rig.evidence.record({ type: "security", case: attack, frame: { seq: frame.seq, tick: frame.tick, viewTick: frame.viewTick }, snapshotTick: later.serverTick, consumedSequence: later.lastConsumedInputSeq });
+    } finally { await peer.close(); }
+  });
+}
+
+for (const expired of ["stale-view-fire", "stale-fire"] as const) {
+  test(`real worker applies ${expired} at present without historical compensation`, async () => {
+    const { peer, snapshot: initial, welcome } = await activePeer();
+    try {
+      const snapshot = initial.serverTick >= 40 ? initial : await peer.waitFor((m): m is Extract<Message, { type: "snapshot" }> => m.type === "snapshot" && m.serverTick >= 40);
+      const start = peer.messages.length, metricsStart = rig.metrics.length;
+      const tick = expired === "stale-fire" ? Math.max(0, snapshot.serverTick - 30) : snapshot.serverTick;
+      peer.send({ type: "input", frames: [{ seq: 1, tick, viewTick: expired === "stale-fire" ? tick : Math.max(0, tick - 30), input: encodeInput({ Fire: true }) }] });
+      const later = await peer.waitFor((m): m is Extract<Message, { type: "snapshot" }> => m.type === "snapshot" && m.serverTick >= snapshot.serverTick + 8, start);
+      assert.equal(later.lastConsumedInputSeq, 1);
+      assert.equal(later.inputs.find(entry => entry.slot === welcome.slot)?.input[0] ?? 0, 16);
+      await delay(1100);
+      const metrics = rig.metrics.slice(metricsStart);
+      assert.ok(metrics.reduce((sum, sample) => sum + sample.uncompensatedShots, 0) >= 1);
+      assert.equal(metrics.reduce((sum, sample) => sum + sample.replayTicks, 0), 0);
+      rig.evidence.record({ type: "security", case: expired, result: "present-only original Fire, no historical insertion", snapshotTick: later.serverTick, consumedSequence: later.lastConsumedInputSeq });
     } finally { await peer.close(); }
   });
 }
