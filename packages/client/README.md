@@ -22,7 +22,7 @@ bun run --cwd packages/client build
 bun run --cwd packages/client verify
 # With the dev server running, actual installed Chrome headless:
 bun run --cwd packages/client capture
-# Real installed Chrome + Firefox + Safari; dev server must be running.
+# Real installed Chrome + Firefox, serial private headless profiles; Safari skipped.
 # Requires matching Node movement receipts for the currently built WASM.
 node packages/client/scripts/qualify.mjs
 # All 99 maps through the actual selector, init/join/step/render path:
@@ -62,13 +62,13 @@ sh tools/refclient/capture-combat.sh
 bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_ACTUAL_SHA256
 ```
 
-The capture harness requires a running dev server and ego-browser. It binds served/local WASM identities, compares native bullet/Thing and both raster-isolation/full default HUD galleries at 1280×720, and separately drives real stock-weapon/grenade/pickup/flag/death/respawn scenarios. Captures read the actual retained WebGL and HUD framebuffers; external DOM chat/menus are excluded. It writes `tests/fixtures/render/combat-*.png` and `build-out/client-g3/` receipts. See [G3 client evidence](../../docs/gates/G3-client.md) for the exact exercised/pending boundary; commands alone are not a pass.
+The capture harness requires a running dev server and installed Chrome. It launches only a private headless Chrome profile and closes its owned browser on completion or error; Firefox combat automation is not supported. It binds served/local WASM identities, compares native bullet/Thing and both raster-isolation/full default HUD galleries at 1280×720, and separately drives real stock-weapon/grenade/pickup/flag/death/respawn scenarios. Captures read the actual retained WebGL and HUD framebuffers; external DOM chat/menus are excluded. It writes `tests/fixtures/render/combat-*.png` and `build-out/client-g3/` receipts. See [G3 client evidence](../../docs/gates/G3-client.md) for the exact exercised/pending boundary; commands alone are not a pass.
 
 ## Online authoritative matches
 
 Open `http://127.0.0.1:5195/?server=wss%3A%2F%2Flocalhost%3A7443&map=Arena` to enter the existing game surface immediately. The server must actually host the selected map; a mismatched welcome fails explicitly. Optional `nickname`, `weapon` (original primary number, default `4`), and `secondaryWeapon` (default `0`) query parameters are sent in protocol-v2 admission. Only WSS is admitted. Trust the server certificate in the browser before joining; the client does not disable TLS validation. **Enable audio** remains the explicit browser unlock gesture. Online respawning belongs to the server, not the offline sandbox's spawn command. Without `server`, the sandbox/capture/G2 paths are unchanged.
 
-Admission verifies the corrected frozen WASM SHA-256 `b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00`, ABI/state `0x00010003`, every raw simulation file, and the combined manifest identity. Two separate real WASM hosts mount the complete verified manifest (matching the server's serialized VFS identity), then initialize from welcome rules, 64-bit seed and map. Only server snapshots create online players; the client never substitutes a local join for admission. The earlier `7282e304…` ABI3 build was superseded by the audited CTF lifecycle correction and its qualification does not qualify this artifact.
+Admission verifies the final frozen WASM SHA-256 `a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88`, ABI/state `0x00010003`, every raw simulation file, and the combined manifest identity. Two separate real WASM hosts mount the complete verified manifest (matching the server's serialized VFS identity), then initialize from welcome rules, 64-bit seed and map. Only server snapshots create online players; the client never substitutes a local join for admission. Earlier `7282e304…` and `b66fccdc…` ABI3 qualification is historical and does not qualify this artifact.
 
 `src/net/session.ts` is DOM-free and accepts initialized prediction/extraction hosts, a typed protocol-message sender, monotonic millisecond clock, and optional event/snapshot callbacks. It restores full authoritative states, compares both loaded host hashes with the server hash **at the loaded snapshot tick**, and replays unacknowledged local inputs with `REPLAY=1`. Remote controls hold movement/fire/jet/aim/order but clear one-shot bits 6–11. Inputs target the current predicted tick before stepping, start sequence numbers at one, include the rendered remote `viewTick`, and resend the newest frame plus two predecessors. Sequence numbers remain monotonic through resync. Prediction targets estimated server-now plus half-RTT and two ticks, within server lead/view-age limits; each display frame advances at most four fixed steps.
 

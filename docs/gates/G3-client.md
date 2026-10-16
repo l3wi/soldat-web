@@ -1,5 +1,49 @@
 # G3 — client combat presentation
 
+## Final frozen artifact requalification — 2026-10-16
+
+**PASS in installed Chrome 155 (private headless profile): 33/33 rows**, comprising four native-reference comparisons and 29 real local-simulation combat scenarios, in fresh run **`combat-1792135842972`**. Exact WASM SHA-256: **`a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88`**, ABI `0x00010003`, state v3. The local and served binary identities matched; the WASM remained unchanged throughout capture. There were **zero failed rows and zero reported runtime exceptions**.
+
+| Engine | Combat rows | Native comparisons | Status |
+|---|---:|---:|---|
+| Chrome 155, installed, headless | 29/29 | 4/4 | PASS, 33/33 total |
+| Firefox 115 | Not run | Not run | Combat harness does not support this engine; no Firefox combat qualification claimed |
+| Safari | Not run | Not run | SKIPPED by user decision |
+
+Fresh comparisons at 1280×720/DPR1 count pixels exceeding 8/255 in any channel:
+
+| Native comparison | Differing pixels / 921,600 | Percentage | Maximum channel delta | SPEC ≤1% |
+|---|---:|---:|---:|---|
+| Objects | 853 | 0.092556% | 192 | PASS |
+| Default HUD raster | 1,144 | 0.124132% | 228 | PASS |
+| Default reload HUD raster | 1,144 | 0.124132% | 228 | PASS |
+| Full original default HUD | 4,099 | 0.444770% | 255 | PASS |
+
+These are newly measured a5b8 browser captures, not promoted b66f/7282/181b results. The unchanged native reference executable, helper, gallery states and PNGs were verified against `build-out/refclient/combat-capture.json`; the native reference itself was retained, not rebuilt. The source-backed HUD rasterization/cursor/version-label explanation in the historical record still applies; this is not byte-identical HUD rendering.
+
+The fresh scenario observations include all 19 fire paths, frag grenade, cluster kit/throw/split, thrown knife, three pickup paths, both flag grab/drop paths, input-driven damage/death/ragdoll/automatic respawn and genuine partial-magazine reload. Their tick observations are recorded in `build-out/client-g3/combat-results.json`. The harness uses the production renderer and actual WebGL/HUD framebuffer readback; it excludes external DOM chat/menus.
+
+Commands exercised:
+
+```sh
+bun run --cwd packages/client check
+bun run --cwd packages/client build
+bun run --cwd packages/client dev --port 5198 --strictPort
+bun packages/client/scripts/combat-capture.mjs \
+  --wasm-sha256 a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88 \
+  --url http://127.0.0.1:5198
+```
+
+Typecheck and production build passed. Vite's ordinary large-chunk warning remains (2,034.76 kB JavaScript before gzip). This requalification did not rerun the historical unit/invariant suites or native compilation. The harness now uses an owned private headless Chrome instance, retaining its user agent in the receipt and closing only that instance in `finally`; no user's browser window or process is touched. `memory_pressure` was checked before the heavy step (71% system-wide memory free). All browser/Node matrices were strictly serial.
+
+Current receipts: `build-out/client-g3/combat-results.json`, `combat-browser.json` and individual `*.state.json`; current screenshots: `tests/fixtures/render/combat-browser-*.png` and `combat-sim-*.png`. The scratch `combat-frames.jsonl` trace was deleted after recording results. Earlier client G2/G3 receipts were archived in `build-out/client-pre-a5b8.tar.gz`.
+
+Online client and server qualification admission pins now reference a5b8; this pin migration is not itself a fresh G4 qualification.
+
+## Historical results — not final-artifact qualification
+
+**Everything below is the retained 2026-10-15 record for older binaries. Its PASS statements, commands and unexercised boundaries are historical only, not current a5b8 evidence.**
+
 Date: 2026-10-15.
 **Client presentation acceptance PASS on the corrected frozen artifact.** Run `combat-1792101421387` passed **33/33 rows** (4 native comparisons and 29 real local-simulation scenarios), with no reported runtime exceptions, on WASM `b66f…fb00`; the binary remained unchanged. Earlier run `combat-1792100004735` on withdrawn `7282…f857` is historical only. The replacement contains the simulation owner's demonstrated periodic CTF lifecycle correction; this client result does not substitute for its independent T1/T2/T3 gate.
 

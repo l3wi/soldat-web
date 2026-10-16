@@ -1,21 +1,22 @@
 import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { spawn } from "node:child_process";
+import { execFileSync } from "node:child_process";
+import { chromium } from "playwright";
 import { compare } from "../../render-spike/scripts/compare.ts";
 
 // Usage: bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_SHA256
-// Prerequisites: running client dev server, ego-browser, and native combat captures.
+// Prerequisites: running client dev server, installed Chrome, and native combat captures.
 // No render-only gallery row is counted as simulation/gameplay evidence.
 const root = resolve(import.meta.dir, "../../..");
-const options = { "wasm-sha256": "", url: process.env.CLIENT_URL ?? "http://127.0.0.1:5195", map: "Arena", space: "" };
+const options = { "wasm-sha256": "", url: process.env.CLIENT_URL ?? "http://127.0.0.1:5195", map: "Arena" };
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i]?.replace(/^--/, "");
-  if (!(key in options) || !process.argv[i + 1]) throw new Error("Usage: bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_SHA256 [--url URL] [--map Arena] [--space ID]");
+  if (!(key in options) || !process.argv[i + 1]) throw new Error("Usage: bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_SHA256 [--url URL] [--map Arena]");
   options[key] = process.argv[i + 1];
 }
 if (!/^[a-f0-9]{64}$/.test(options["wasm-sha256"])) throw new Error("An explicit final WASM SHA-256 is required; capture never silently blesses a rebuilt artifact");
-if (options.space && !/^[1-9][0-9]*$/.test(options.space)) throw new Error("--space requires an existing positive TaskSpace ID");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const out = resolve(root, "tests/fixtures/render"), receipts = resolve(root, "build-out/client-g3");
 await mkdir(out, { recursive: true }); await mkdir(receipts, { recursive: true });
@@ -99,25 +100,22 @@ const plan = [...galleries.map(g => ({ name: `native-${g.mode}`, source: "native
   ...weapons.map(w => ({ name: `fire-${w.name}`, source: "actual-local-sim", status: "pending", observations: [] })),
   ...["grenade", "clusters", "knife-throw", "pickup-16", "pickup-17", "pickup-7", "flag-grab-drop-1", "flag-grab-drop-2", "death-ragdoll-respawn", "hud-reload"]
     .map(name => ({ name, source: "actual-local-sim", status: "pending", observations: [] }))];
-const config = { runId, plan, root, out, receipts, spaceId: options.space ? Number(options.space) : undefined, url: options.url, map: options.map, identity, lane, anchors, galleries, weapons, nativeCapture, mapSha256: map.mapSha256 };
+const config = { runId, plan, root, out, receipts, url: options.url, map: options.map, identity, lane, anchors, galleries, weapons, nativeCapture, mapSha256: map.mapSha256 };
 await writeFile(resolve(receipts, "combat-browser.json"), JSON.stringify({ version: 1, runId, ...identity, rows: plan, errors: [], completed: false }, null, 2) + "\n");
 
-// This function is serialized into the ego-browser Node runtime. Static imports
-// in browserScript provide fs; the hook uses the repository's input encoder.
-async function browserCapture(config) {
-  const task = await taskSpace(config.spaceId ?? "Soldat native combat qualification");
-  console.log(JSON.stringify({ taskSpaceId: task.spaceId }));
-  const page = task.page("p1");
+// Installed Chrome runs in a disposable Playwright-owned headless profile.
+// Firefox combat is unsupported; no user browser processes are touched.
+async function browserCapture(config, page, runtimeErrors) {
+  const runtime = await page.evaluate(() => navigator.userAgent);
   const rows = config.plan, errors = [];
   const reportPath = `${config.receipts}/combat-browser.json`;
   let completed = false;
   await fs.writeFile(`${config.receipts}/combat-frames.jsonl`, "");
   const save = async () => {
     await fs.writeFile(reportPath, JSON.stringify({ version: 1, runId: config.runId, ...config.identity, map: config.map, mapSha256: config.mapSha256, nativeCapture: config.nativeCapture,
-      lane: config.lane, anchors: config.anchors, taskSpaceId: task.spaceId, rows, errors,
+      lane: config.lane, anchors: config.anchors, runtime, browser: "chrome", headless: true, rows, errors,
       captureMethod: "browser-canvas-framebuffer-readback",
       captureLimitations: "Actual preserved WebGL framebuffer plus actual HUD 2D canvas; external DOM chat/menus are not covered",
-      bootNote: "Coordinator reported Page.screenshot/CDP capture timeouts before this harness run; those failed attempts wrote no screenshot file",
       evidenceBoundary: "Native gallery is rendering-only; gameplay rows use original local sim commands and input-driven updates", completed }, null, 2) + "\n");
   };
   const evaluate = async (action, args = null) => page.evaluate(async ({ action, args }) => {
@@ -225,7 +223,6 @@ async function browserCapture(config) {
     await save();
   };
   try {
-    await page.cdp("Emulation.setDeviceMetricsOverride", { width: 1280, height: 720, deviceScaleFactor: 1, mobile: false });
     await page.goto(config.url);
     const originalSettings = await page.evaluate(() => {
       const key = "soldat-web.settings.v1", original = localStorage.getItem(key);
@@ -370,8 +367,7 @@ async function browserCapture(config) {
       row.image = await screenshot("sim-hud-reload", reload.state);
       if (!reload.found) throw new Error("Reload input did not reach genuine empty-ammo reload state");
     });
-    const events = await page.events();
-    for (const event of events) if (event.method === "Runtime.exceptionThrown") errors.push(JSON.stringify(event.params));
+    errors.push(...runtimeErrors);
     await page.evaluate(original => {
       if (original === null) localStorage.removeItem("soldat-web.settings.v1");
       else localStorage.setItem("soldat-web.settings.v1", original);
@@ -383,12 +379,17 @@ async function browserCapture(config) {
   }
 }
 
-const browserScript = `import * as fs from "node:fs/promises"; await (${browserCapture.toString()})(${JSON.stringify(config)});`;
-const completion = Promise.withResolvers();
-const child = spawn("ego-browser", ["nodejs", "-e", browserScript], { cwd: root, stdio: "inherit" });
-child.once("error", completion.reject);
-child.once("close", status => completion.resolve(status ?? 1));
-const code = await completion.promise;
+console.log(execFileSync("memory_pressure", { encoding: "utf8" }));
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--force-device-scale-factor=1"] });
+let code = 0;
+try {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
+  const runtimeErrors = [];
+  page.on("pageerror", error => runtimeErrors.push(error.message));
+  await browserCapture(config, page, runtimeErrors);
+} catch (error) {
+  console.error(error); code = 1;
+} finally { await browser.close(); }
 let browserResult;
 try { browserResult = JSON.parse(await readFile(resolve(receipts, "combat-browser.json"), "utf8")); }
 catch (error) { throw new Error(`Browser capture produced no receipt (exit ${code}): ${String(error)}`); }
@@ -409,10 +410,3 @@ const result = { ...browserResult, comparisons, wasmUnchangedDuringCapture: unch
 await writeFile(resolve(receipts, "combat-results.json"), JSON.stringify(result, null, 2) + "\n");
 console.log(JSON.stringify(result, null, 2));
 if (result.status !== "pass") process.exitCode = 1;
-else {
-  const finishing = Promise.withResolvers();
-  const closer = spawn("ego-browser", ["nodejs", "-e", `const task = await taskSpace(${browserResult.taskSpaceId}); await task.finish({ keep: [] });`], { cwd: root, stdio: "inherit" });
-  closer.once("error", finishing.reject);
-  closer.once("close", status => finishing.resolve(status ?? 1));
-  if (await finishing.promise !== 0) throw new Error("Combat capture passed but TaskSpace completion failed");
-}
