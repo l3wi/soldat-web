@@ -134,8 +134,9 @@ flowchart LR
 - Input: pinned base checkout (and, later, user-supplied local `.smod`/`.pms`).
 - TS readers for PMS v11, POA, PO, `mod.ini`, `weapons.ini`, ZIP; byte layouts per `docs/research/FileFormats.md` §1. Strict bounds/finite checks; accept and preserve trailing bytes.
 - Path resolution exactly as `GameRendering.pas:337-354`: lowercase + `/` canonical ID, PNG preferred over requested extension, case-insensitive match; image type from signature, not extension.
-- Images: exact green key (0,255,0,255) only on single-frame non-terrain images; derivatives stored straight-alpha and premultiplied exactly once at GPU upload; NPOT preserved; per-asset scale from `mod.ini` `[SCALE]` (default 4.5); `GostekGraphics.inc` 131-entry table (IDs 0–130; the file is 138 lines) exported as data with `[GOSTEK]` center overrides.
-- Audio: PCM WAV passthrough; `jump.wav` → PCM.
+- Images: exact green key (0,255,0,255) only on single-frame non-terrain images; derivatives stored straight-alpha and premultiplied exactly once at GPU upload; NPOT preserved; per-asset scale from `mod.ini` `[SCALE]` (default 4.5); `GostekGraphics.inc` 131-entry table (IDs 0–130; the file is 138 lines) exported as data with `[GOSTEK]` center overrides. Shipped derivatives are lossless WebP whose decoded RGBA is byte-identical to the keyed PNG derivative.
+- Audio: shipped as Ogg Opus (user decision 2026-10-16, lossy; WAV masters stay importer input only, `jump.wav` decoded from MS-ADPCM first); loaded on demand with a per-match preload set.
+- Delivery: one small content index per session, per-map manifests on selection, one verified sim-content pack per match, `sim.wasm` compiled once per session; hash-named files served `immutable` and precompressed.
 - Output: immutable hash-addressed objects + per-map manifest (`map hash, terrain, scenery, sim content set`) + a **sim content set** (raw PMS, POA, PO, weapons.ini) with one combined hash that client and server must match before join.
 - Provenance per file: source repo/commit/path, SHA-256, license id, credit, transformations.
 - Missing active dependencies are reported and rendered with the original fallback (`default` texture) plus a visible warning.
@@ -227,7 +228,7 @@ Original `AI.pas` runs inside the server's sim instance (`AI_ENABLED`), using PM
 - Security: rejects NaN/inf, malformed packets, sequence jumps, future/stale fire timestamps, input flooding; a stalled client gains no simulation time.
 
 ### 6.5 Content
-- 99/99 maps import; 97 render with no missing active asset; all 164 SFX decode in all target browsers with duration within 1 ms of source.
+- 99/99 maps import; 97 render with no missing active asset; all 164 SFX decode in all target browsers; Opus durations within one 20 ms Opus frame of source and looping sounds seamless.
 
 ## 7. Repository layout
 
