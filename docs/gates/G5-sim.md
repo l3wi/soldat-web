@@ -2,7 +2,7 @@
 
 ## Gate status
 
-**NOT YET QUALIFIED.** The ABI-4 implementation and original-world artifact are built. The final artifact has not completed the requested oracle, target, cross-runtime, presentation or robustness matrices. Earlier ABI-3 G3 receipts and superseded ABI-4 client receipts do not qualify this artifact. This record deliberately makes no inferred pass claim.
+**REQUALIFICATION IN PROGRESS.** The frozen ABI-4 artifact passes oracle/T1 **168/168**, T2 **336/336** across both RNG policies, and Node save/load **336/336**. Browser, presentation and robustness matrices remain pending; earlier ABI-3 G3 receipts and superseded ABI-4 client receipts do not qualify those remaining lanes.
 
 ## Frozen artifact and content
 
@@ -34,12 +34,12 @@ The bot corpus has **18 captured, repeated-byte-identical oracle fixtures**: 14 
 
 | Requested lane | Final-artifact completed / required |
 | --- | ---: |
-| Oracle/T1 movement | 0 / 98 |
-| Oracle/T1 combat | 0 / 52 |
-| Oracle/T1 bots | 0 / 18 |
-| Authoritative-control movement comparison | 0 / 98 |
-| T2 original + keyed | 0 / 336 |
-| Node T3 original + keyed, save/load every 50 ticks | 0 / 336 |
+| Oracle/T1 movement | **98 / 98 bit-exact** |
+| Oracle/T1 combat | **52 / 52 bit-exact** |
+| Oracle/T1 bots | **18 / 18 bit-exact**, 106/106 required observations |
+| Authoritative-control movement comparison | **98 / 98 movement/pose identical**; strict full trace 95/98, only ledger C08 inventory differences |
+| T2 original + keyed | **336 / 336 bit-exact**, plus byte-identical hash/event sidecars; 168 per policy |
+| Node T3 original + keyed, save/load every 50 ticks | **336 / 336**, 168 per policy |
 | Chrome T3 original + keyed | 0 / 336 |
 | Firefox T3 original + keyed | 0 / 336 |
 | Presentation/render/menu/bink checks | Not run on final artifact |
@@ -68,3 +68,9 @@ Integration rejected superseded artifacts after finding two source-initializatio
 The first full bot capture attempt passed 16 short fixtures, but both Arena 10,000-tick fixtures exited 217 in original `Server.NextMap`: fixture-world after tick 5,019 and original-world after tick 5,606. Resolving the existing executable's stack through an unstripped relink of the same objects identified `NextMap <- SortPlayers <- Die <- HealthHit <- CheckSpriteCollision <- UpdateFrame`. `SortPlayers` invokes `NextMap` at the original kill limit. Original startup allocates `MapsList` before gameplay; the independent harness had bypassed that allocation, leaving `MapsList.Count` to dereference nil. The extracted simulation already allocated the list in `Server` initialization. The harness now allocates and frees its own list; no simulation mechanics, frozen artifact, fixture inputs or observation predicates changed. Failed attempts do not count as golden evidence.
 
 Both harness and extracted simulation intentionally have an **empty map-rotation list for the admitted single-map match**, not a one-entry rotation/restart list. Original `NextMap` with an empty list reports “Can't load maps from mapslist”; it does not invoke `PrepareMapChange`, set a map-change countdown, reset scores, restart the map or emit a successful map-transition notification. Gameplay continues on the current map. The 10,000-tick T1 fixtures must therefore cover the first kill-limit call and the remaining ticks; a passing comparison is not evidence of a successful rotation/restart, which remains outside this ABI.
+
+## Completed deterministic tiers
+
+`build-out/sim/g5/final/execution.json` records zero-exit captures, movement/combat/bot T1 and all three T2/Node corpus stages. The authoritative-control command exits 1 for the three deliberate C08 secondary-inventory differences; its explicit `movementAndPoseIdentical:98` acceptance passes. Full results are `movement-t1/results.json`, `movement-authoritative/{results,all-differences}.json`, and `{movement,combat,bots}/results-{t1,t2}.json` under that directory (movement T1 uses `movement-t1/`). T1 bot fixtures include both complete 10,000-tick Arena runs, not a shortened pre-kill-limit comparison.
+
+The original serial runner was deliberately stopped as its first Chrome lane opened, to obey coordinator browser-slot arbitration and mandatory audio muting. No incomplete browser lane is counted. Remaining stages resume with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence is not discarded or rerun just because browser scheduling was interrupted.
