@@ -4,10 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Option A: a faithful numbered limbo panel over original game scenery. Interactive Field Sandbox shell study.">
-  <title>A — The limbo panel / Field Sandbox</title>
+  <meta name="description" content="Chosen limbo-panel direction: numbered menus over a real eight-bot gameplay loop. Field Sandbox shell study, round two.">
+  <title>A — Chosen limbo panel / Field Sandbox</title>
   <link rel="stylesheet" href="./shell.css">
-  <script src="./shell.js" type="module"></script>
+  <link rel="stylesheet" href="./a.css">
+  <script src="./a.js" type="module"></script>
 </head>
-<body class="theme-a" data-option="a"><div id="app"></div><noscript>This interactive mockup needs JavaScript. All assets are served locally.</noscript></body>
+<body class="theme-a" data-option="a">
+  <div class="scene attract-scene" aria-hidden="true">
+    <video id="attract-background" autoplay muted loop playsinline preload="none" poster="./assets/attract-poster.jpg">
+      <source data-src="./assets/attract.webm" type="video/webm">
+      <source data-src="./assets/attract.mp4" type="video/mp4">
+    </video>
+  </div>
+  <div id="app"></div>
+  <noscript>This interactive mockup needs JavaScript. All assets are served locally.</noscript>
+</body>
 </html>
