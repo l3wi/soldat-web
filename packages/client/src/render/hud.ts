@@ -4,6 +4,8 @@ import { resizeCamera } from "../camera";
 import { SoldatMap, TextureBank } from "./soldat-map";
 import type { WorldView } from "../world";
 import type { Camera, DrawRun, Geometry, ImageAsset } from "./types";
+import { LIMBO_WEAPONS, LimboMenu, limboHitIndex, limboKeyIndex, limboRowY, limboWeaponEnabled } from "./limbo";
+import { cursorMoveAccuracy, cursorScale } from "./cursor";
 
 export interface HudContent {
   graphics: { interface: readonly { symbol: string; asset: ImageAsset | null }[] };
@@ -11,8 +13,15 @@ export interface HudContent {
 }
 export interface HudOptions {
   startJet: number;
-  weapons: Readonly<Record<string, { ammo: number; reloadtime: number; fireinterval: number }>>;
+  weapons: Readonly<Record<string, { ammo: number; reloadtime: number; fireinterval: number; movementacc?: number }>>;
   onInputCapture?: (captured: boolean) => void;
+  weaponsMenu?: boolean;
+  pointer?: { pointerX: number; pointerY: number };
+  onWeaponChoice?: (primary: number, secondary: number) => void;
+  weaponChoiceNotice?: string;
+  /** One-based native WeaponActive / per-player WeaponSel, when supplied. */
+  weaponActive?: readonly number[];
+  weaponSelection?: readonly number[];
 }
 export interface HudPlayer {
   slot: number;
@@ -336,12 +345,18 @@ export class CombatHud {
   private scoreboardText = "";
   private chatNotice = "";
   private chatNoticeUntil = 0;
+  private readonly limbo = new LimboMenu();
+  private limboPlayer = false;
+  private menuHover = -1;
+  private lastTick = 0;
+  private readonly previousCursor: string;
 
   private constructor(private readonly host: HTMLElement, private readonly options: HudOptions) {
     this.fontFamily = `SoldatHud${CombatHud.nextFont++}`;
     const context = this.canvas.getContext("2d");
     if (!context) throw new Error("Canvas 2D HUD renderer unavailable");
     this.context = context;
+    this.previousCursor = host.style.cursor;
     this.root.className = "soldat-combat-hud";
     this.root.style.cssText = "position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:3";
     this.canvas.style.cssText = "position:absolute;inset:0;display:block;width:100%;height:100%;pointer-events:none";
@@ -350,7 +365,7 @@ export class CombatHud {
     this.graphicsCanvas.setAttribute("aria-hidden", "true");
     this.accessible.style.cssText = "position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:pre";
     this.accessible.setAttribute("role", "region");
-    this.accessible.setAttribute("aria-label", "Scoreboard. Hold Tab to show. T or Enter opens local chat input.");
+    this.accessible.setAttribute("aria-label", "Scoreboard. Hold F1 to show. Tab controls weapons menu. T or Enter opens local chat input.");
     this.accessible.hidden = true;
     this.form.style.cssText = "position:absolute;left:0;top:0;transform-origin:0 0;align-items:baseline;gap:2px;pointer-events:auto;color:#ffe6aa;white-space:nowrap";
     this.form.hidden = true;
@@ -372,6 +387,7 @@ export class CombatHud {
     this.resize();
     window.addEventListener("keydown", this.keyDown, true);
     window.addEventListener("keyup", this.keyUp, true);
+    window.addEventListener("mousedown", this.menuMouseDown, true);
     window.addEventListener("blur", this.blur);
     this.host.addEventListener("wheel", this.wheel, { passive: false });
     this.form.addEventListener("submit", this.submit);
@@ -422,6 +438,10 @@ export class CombatHud {
   }
 
   get inputActive(): boolean { return !this.form.hidden; }
+  get gameplayCaptured(): boolean { return this.inputActive || this.limbo.active; }
+
+  /** Explicit sandbox spawn commands can replace a living soldier in one tick. */
+  spawned(): void { if (this.options.weaponsMenu) this.limbo.spawn(); }
 
   /** Hide the per-frame overlay for map-only/object-only gallery captures. */
   clear(): void {
@@ -468,6 +488,11 @@ export class CombatHud {
     const jetAnchor = this.pixelAlign(480 * sx, "x");
     const barAnchorY = this.pixelAlign(439);
     const me = world.sprites.find(sprite => sprite.slot === localSlot && sprite.active);
+    this.lastTick = world.tick;
+    this.limboPlayer = !!me && me.team !== 5;
+    if (this.options.weaponsMenu && this.limboPlayer && me && !state.rasterOnly)
+      this.limbo.observe((me.flags & SPRITE_FLAGS.dead) !== 0, me.weapon, me.secondaryWeapon);
+    if (!this.limboPlayer) this.limbo.active = false;
     if (me) {
       const gun = WEAPONS[me.weapon];
       const config = gun ? this.options.weapons[gun[1]] : undefined;
@@ -504,6 +529,27 @@ export class CombatHud {
       this.status(state, localSlot, sx);
       this.ping(state.ping ?? state.players?.find(player => player.slot === localSlot)?.ping, sx);
     }
+    const pointer = this.options.pointer;
+    const dialog = document.querySelector("dialog[open]") !== null;
+    const customCursor = !!me && !!pointer && !state.rasterOnly && !this.inputActive && !dialog;
+    this.host.style.cursor = customCursor ? "none" : this.previousCursor;
+    if (this.limbo.active && !this.inputActive && !dialog) this.drawLimbo();
+    if (customCursor && me && pointer) {
+      const x = pointer.pointerX / this.width * this.logicalWidth;
+      const y = pointer.pointerY / this.height * 480;
+      const menuCursor = this.limbo.active || (me.flags & SPRITE_FLAGS.dead) !== 0 || me.team === 5;
+      const asset = this.images.get(menuCursor ? "MENUCURSOR" : "CURSOR");
+      if (asset) {
+        const gun = WEAPONS[me.weapon];
+        const movement = gun ? this.options.weapons[gun[1]]?.movementacc ?? 0 : 0;
+        const scale = menuCursor ? 1 : cursorScale(cursorMoveAccuracy(me, movement));
+        // Native cursor sprites are output-pixel sized, unlike the scaled interface.
+        const width = asset.width * scale / (this.width / this.logicalWidth);
+        const height = asset.height * scale / (this.height / 480);
+        this.sprite(menuCursor ? "MENUCURSOR" : "CURSOR", x - (menuCursor ? 0 : width / 2),
+          y - (menuCursor ? 0 : height / 2), width, height);
+      }
+    }
     this.teamBox(state, sx);
     this.killFeed(world.tick, state, sx);
     if (this.scoreboard) this.drawScoreboard(world, state, localSlot);
@@ -511,6 +557,57 @@ export class CombatHud {
       this.text(this.chatNotice, 5, 400, 9, "#ffe6aa");
     this.raster.finish();
   }
+
+  private drawLimbo(): void {
+    this.sprite("BACK", 45, 140, 252, 210, 0.56);
+    this.sprite("BACK", 45, 350, 252, 80, 0.56);
+    this.text("Primary Weapon:", 65, 142, 9, "#eaeaea");
+    this.text("Secondary Weapon:", 65, 337, 9, "#d6d6d6");
+    const pointer = this.options.pointer;
+    this.menuHover = pointer ? limboHitIndex(pointer.pointerX / this.width * this.logicalWidth, pointer.pointerY / this.height * 480) : -1;
+    for (let i = 0; i < LIMBO_WEAPONS.length; i++) {
+      if (!limboWeaponEnabled(i, this.options.weaponActive, this.options.weaponSelection)) continue;
+      const weapon = LIMBO_WEAPONS[i]!, image = this.images.get(`GUNS_${weapon.image}`);
+      const selected = this.limbo.selected(i), hover = this.menuHover === i;
+      const imageY = i < 10 ? 157 + 18 * i : 157 + 18 * (i + 1);
+      if (image) this.sprite(`GUNS_${weapon.image}`, 55, imageY + Math.max(0, 18 - image.height) / 2,
+        undefined, undefined, i < 10 || selected ? 1 : 0.5);
+      const caption = i < 10 ? `${(i + 1) % 10} ${weapon.name}` : weapon.name;
+      this.text(caption, 120 + (!selected && hover ? 1 : 0), limboRowY(i) + 6 - (!selected && hover ? 1 : 0),
+        9, selected ? (hover ? "#556937" : "#37a537") : "#ffffff");
+    }
+    this.text("Ctrl+1–4: secondary · 1–0: primary", 45, 112, 8, "#ffffe6");
+    this.text(this.options.weaponChoiceNotice ?? "Choices apply on next respawn", 45, 125, 8, "#ffffe6");
+  }
+
+  private chooseWeapon(index: number): void {
+    if (!limboWeaponEnabled(index, this.options.weaponActive, this.options.weaponSelection)) return;
+    const weapon = LIMBO_WEAPONS[index]!;
+    try {
+      if (!this.options.onWeaponChoice) throw new Error("Weapon selection unavailable");
+      this.options.onWeaponChoice(index < 10 ? weapon.num : this.limbo.primary, index >= 10 ? weapon.num : this.limbo.secondary);
+      this.limbo.choose(index);
+      if (index >= 10 && !LIMBO_WEAPONS.some((_, i) => i < 10 && limboWeaponEnabled(i, this.options.weaponActive, this.options.weaponSelection)))
+        this.limbo.active = false;
+      this.chatNotice = "Weapon choice saved — applies on next respawn";
+    } catch (error) {
+      this.chatNotice = error instanceof Error ? error.message : String(error);
+    }
+    this.chatNoticeUntil = this.lastTick + 360;
+    this.options.onInputCapture?.(this.gameplayCaptured);
+  }
+
+  private readonly menuMouseDown = (event: MouseEvent): void => {
+    if (!this.limbo.active || this.inputActive || event.button !== 0 || document.querySelector("dialog[open]")) return;
+    if (!(event.target instanceof HTMLCanvasElement) || !this.host.contains(event.target)) return;
+    const rect = this.host.getBoundingClientRect();
+    event.target.focus({ preventScroll: true });
+    const index = limboHitIndex((event.clientX - rect.left) / rect.width * this.logicalWidth, (event.clientY - rect.top) / rect.height * 480);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (index >= 0) this.chooseWeapon(index);
+    else { this.limbo.active = false; this.options.onInputCapture?.(this.gameplayCaptured); }
+  };
 
   /** InterfaceGraphics PixelAlign: snap in output pixels, not logical units. */
   private pixelAlign(value: number, axis: "x" | "y" = "y"): number {
@@ -706,7 +803,7 @@ export class CombatHud {
     const outsideEditor = target instanceof Element && !this.root.contains(target) &&
       target.closest('input, textarea, select, button, dialog, [contenteditable="true"]');
     if (outsideEditor) return;
-    if (event.code === "Tab" && !this.inputActive) {
+    if (event.code === "F1" && !this.inputActive) {
       event.preventDefault();
       event.stopImmediatePropagation();
       this.scoreboard = true;
@@ -725,6 +822,28 @@ export class CombatHud {
       event.stopPropagation();
       return;
     }
+    if (this.options.weaponsMenu && this.limboPlayer && !document.querySelector("dialog[open]")) {
+      if (event.code === "Tab" && !event.ctrlKey && !event.altKey && !event.shiftKey && !event.metaKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (!event.repeat) {
+          this.limbo.toggle();
+          this.chatNotice = this.limbo.locked ? "Weapons menu disabled" : "Weapons menu active";
+          this.chatNoticeUntil = this.lastTick + 180;
+          this.options.onInputCapture?.(this.gameplayCaptured);
+        }
+        return;
+      }
+      if (this.limbo.active) {
+        const index = limboKeyIndex(event.code, event.ctrlKey, event.shiftKey, event.altKey, event.metaKey);
+        if (index >= 0) {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          if (!event.repeat) this.chooseWeapon(index);
+          return;
+        }
+      }
+    }
     if (!event.repeat && (event.code === "KeyT" || event.code === "Enter")) {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -738,7 +857,7 @@ export class CombatHud {
   };
 
   private readonly keyUp = (event: KeyboardEvent): void => {
-    if (event.code === "Tab") {
+    if (event.code === "F1") {
       this.scoreboard = false;
       this.accessible.hidden = true;
     }
@@ -781,6 +900,7 @@ export class CombatHud {
     this.observer.disconnect();
     window.removeEventListener("keydown", this.keyDown, true);
     window.removeEventListener("keyup", this.keyUp, true);
+    window.removeEventListener("mousedown", this.menuMouseDown, true);
     window.removeEventListener("blur", this.blur);
     this.host.removeEventListener("wheel", this.wheel);
     this.form.removeEventListener("submit", this.submit);
@@ -789,6 +909,7 @@ export class CombatHud {
     this.raster?.destroy();
     this.images.clear();
     this.pingTints.length = 0;
+    this.host.style.cursor = this.previousCursor;
     this.root.remove();
   }
 }

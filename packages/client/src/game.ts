@@ -98,7 +98,16 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: capture || combatCapture, powerPreference: "high-performance" });
       if (!gl) throw new Error("The map renderer requires WebGL2");
       const input = new InputSampler(canvas, settings);
-      if (!capture) hud = await CombatHud.create(container, content.core, { startJet: 0, weapons, onInputCapture: () => input.reset() });
+      if (!capture) hud = await CombatHud.create(container, content.core, {
+        startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
+        onInputCapture: () => input.reset(),
+        weaponChoiceNotice: serverUrl ? "Online loadout is fixed at admission" : "Choices apply on next respawn",
+        onWeaponChoice(primary, secondary) {
+          if (serverUrl) throw new Error("Online weapon changes need an in-match protocol message");
+          if (!host || !world) throw new Error("Simulation unavailable");
+          requireStatus(host.command(world.tick, { kind: "weapon-choice", slot: 1, weapon: primary, secondaryWeapon: secondary }), "sim_command(weapon-choice)");
+        },
+      });
       let world: SimWorldView | undefined, render: SoldatMap | undefined;
       let fx: SimEffectsView | undefined;
       let eventBytes: Uint8Array | undefined, inputBytes: Uint8Array | undefined, inputView: DataView | undefined;
@@ -121,7 +130,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
         if (playback && world.tick >= playback.fixture.ticks) return;
         const slots = playback ? playback.active : combatCapture ? combatSlots : LOCAL_SLOT;
         for (const slot of slots) {
-          const sample = playback ? playback.input(slot, world.tick + 1) : overrides.get(slot) ?? (slot === 1 && !hud?.inputActive ? input.sample(camera, width, height, player.x, player.y) : neutral);
+          const sample = playback ? playback.input(slot, world.tick + 1) : overrides.get(slot) ?? (slot === 1 ? input.sample(camera, width, height, player.x, player.y, hud?.gameplayCaptured) : neutral);
           if (!inputView || inputView.buffer !== sample.buffer) inputView = new DataView(sample.buffer, sample.byteOffset, sample.byteLength);
           const memory = host.exports.memory.buffer;
           if (!inputBytes || inputBytes.buffer !== memory) inputBytes = new Uint8Array(memory, inputPtr, 12);
@@ -283,7 +292,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             fx = new SimEffectsView(host);
             respawn = () => {
               requireStatus(host!.command(world!.tick, { kind: "spawn", slot: 1 }), "sim_command(spawn)");
-              world!.sync(); input.reset();
+              world!.sync(); input.reset(); hud?.spawned(); canvas.focus({ preventScroll: true });
             };
             const player = world.sprites[0]!; camera.x = player.x; camera.y = player.y;
             clock.reset();
@@ -355,7 +364,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (online && host && world) {
               const local = world.sprites[online.session.metrics.slot - 1]!;
               online.session.advance(
-                () => online!.hook.input ?? (hud?.inputActive ? neutral : input.sample(camera, width, height, local.x, local.y)),
+                () => online!.hook.input ?? input.sample(camera, width, height, local.x, local.y, hud?.gameplayCaptured),
                 () => {
                   if (fxAvailable) {
                     const zoom = Math.exp(camera.z);

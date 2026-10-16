@@ -114,12 +114,14 @@ export class InputSampler {
 
   /** Returns the SAME borrowed 12-byte record every tick. Copy only if retaining it. */
   public sample(
-    camera: Camera, width: number, height: number, _playerX: number, _playerY: number,
+    camera: Camera, width: number, height: number, _playerX: number, _playerY: number, captured = false,
   ): Uint8Array {
-    if (this.destroyed || this.blocked(document.activeElement)) {
+    if (this.destroyed) {
       this.reset();
       return this.record;
     }
+    // Native FreeControls still updates mouse aim while limbo/chat captures keys.
+    if (captured || this.blocked(document.activeElement)) this.reset();
     let bits = 0;
     for (let i = 0; i < ACTIONS.length; i++) {
       if (this.held.has(this.bindings[i]!)) bits |= 1 << i;
