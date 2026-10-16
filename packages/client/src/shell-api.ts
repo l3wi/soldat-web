@@ -26,10 +26,12 @@ export async function apiRequest<T>(origin: string, path: string, signal: AbortS
 export class LobbyConnection {
   private readonly transport: MessageTransport;
   private closed = false;
+  /** Cleared when the socket fails or the server closes it; the transport then rejects sends. */
+  private live = true;
   constructor(url: string, nickname: string, hostToken: string | undefined, onState: (state: LobbyState, selfId?: string) => void, onError: (message: string) => void) {
     this.transport = connectWss(url);
-    this.transport.onError = error => { if (!this.closed) onError(error.message); };
-    this.transport.onClose = (code, reason) => { if (!this.closed) onError(`Lobby disconnected (${code}): ${reason}`); };
+    this.transport.onError = error => { this.live = false; if (!this.closed) onError(error.message); };
+    this.transport.onClose = (code, reason) => { this.live = false; if (!this.closed) onError(`Lobby disconnected (${code}): ${reason}`); };
     this.transport.onMessage = (_channel, packet) => {
       try {
         const message = decodeMessage(packet);
@@ -40,8 +42,9 @@ export class LobbyConnection {
     };
     this.send({ type: 'lobby-join', nickname, ...(hostToken ? { hostToken } : {}) });
   }
+  /** Disconnection has already been reported through onError, so sends on a dead socket are dropped. */
   send(message: Message): void {
-    if (!this.closed) this.transport.send('reliableControl', encodeMessage(message));
+    if (!this.closed && this.live) this.transport.send('reliableControl', encodeMessage(message));
   }
   close(): void {
     if (this.closed) return;
