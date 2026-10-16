@@ -10,6 +10,7 @@
   "rules": {
     "mode": "ctf",
     "rng": "original",
+    "world": "fixture",
     "ai": true,
     "botDifficulty": 100,
     "traceCombat": true
@@ -101,6 +102,7 @@
     "chat": false,
     "activeWaypoints": 376,
     "connectedWaypoints": 369,
+    "world": "fixture",
     "profileSha256": {
       "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435"
     },

@@ -171,3 +171,21 @@ diff --git a/shared/mechanics/Bullets.pas b/shared/mechanics/Bullets.pas
 +        {$ENDIF}
  
          case Style of
+diff --git a/shared/network/NetworkServerThing.pas b/shared/network/NetworkServerThing.pas
+--- a/shared/network/NetworkServerThing.pas
++++ b/shared/network/NetworkServerThing.pas
+@@ -42,2 +42,5 @@
+ uses
++  {$IFDEF ORACLE}
++  OracleHarness,
++  {$ENDIF}
+   {$IFDEF SERVER}
+@@ -240,4 +243,8 @@
+     Exit;
+ 
++  {$IFDEF ORACLE}
++  OracleThingTaken(ThingNum, Who);
++  {$ENDIF}
++
+   ThingMsg.Header.ID := MsgID_ThingTaken;
+   ThingMsg.Num := Thing[ThingNum].Num;

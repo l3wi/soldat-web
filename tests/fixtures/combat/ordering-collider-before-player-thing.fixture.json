@@ -4,13 +4,14 @@
   "mapPath": "tests/fixtures/combat/maps/combat-collider.pms",
   "mapDirectory": "/fixture-maps",
   "mapSha256": "aa74a71c0ca2919c9bae2972a5554f6dc092f6b87f43f0671fb80d126a6a7146",
-  "contentSetHash": "e9e92281557d2477373df0f0233c6b2eeb51adfabb56a269b19b1f3ba08be922",
+  "contentSetHash": "8734e57c5b9ca7da968bb339707fe957da8d9d36d0ff04331a52ac320c451686",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
   "rules": {
     "mode": "dm",
     "rng": "original",
+    "world": "fixture",
     "traceCombat": true
   },
   "players": [

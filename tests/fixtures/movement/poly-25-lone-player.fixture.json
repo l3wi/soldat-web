@@ -3,10 +3,13 @@
   "map": "ctf_Aftermath",
   "mapPath": "reference/base/shared/maps/ctf_Aftermath.pms",
   "mapSha256": "5ee4ff86756ba6a37bfe4763881943fdbd9545dc56eef5e0ce727fd34ea9f800",
-  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
+  "rules": {
+    "world": "fixture"
+  },
   "players": [
     {
       "team": 0,

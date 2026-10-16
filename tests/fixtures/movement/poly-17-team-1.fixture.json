@@ -3,10 +3,13 @@
   "map": "movement-poly-17",
   "mapPath": "tests/fixtures/movement/maps/movement-poly-17.pms",
   "mapSha256": "250a692cca2901d57ee64627004cf14ef9e103ccb439971d2eaf6aaac72fb267",
-  "contentSetHash": "27c40751e42a306352c41eaadeb53e53674f342a5c1bf589f90e3476716f08e5",
+  "contentSetHash": "26254f7a1d6478e1bdda84bc45b4a7f88c3fdf07e25cde30c82e361c7057724b",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
+  "rules": {
+    "world": "fixture"
+  },
   "mapDirectory": "/fixture-maps",
   "players": [
     {

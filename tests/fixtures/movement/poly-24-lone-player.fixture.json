@@ -3,10 +3,13 @@
   "map": "movement-poly-24",
   "mapPath": "tests/fixtures/movement/maps/movement-poly-24.pms",
   "mapSha256": "30ea566478bb1626aca5c6a50d30298a19323bbce867cb4a8f7f57453aa58aee",
-  "contentSetHash": "e947feebd1e381a11649f1ce1d1b2171d05e634809481f5d18a6ffb18e163db6",
+  "contentSetHash": "d7680b663951ed49e86092d2f9f9c86d102b34429cb48c55d30a2f23002799b1",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
+  "rules": {
+    "world": "fixture"
+  },
   "mapDirectory": "/fixture-maps",
   "players": [
     {

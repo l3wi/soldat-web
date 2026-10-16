@@ -4,13 +4,14 @@
   "mapPath": "tests/fixtures/combat/maps/combat-flat.pms",
   "mapDirectory": "/fixture-maps",
   "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
-  "contentSetHash": "abd473407ea98b941a082541d6a6d9748e7d0a9bdd53330e5509622f20b7466d",
+  "contentSetHash": "2a2144f5f89a9101d9dd82d64d3db50588afe24fbe0be35fa2945a7203f55491",
   "seed": 123456789,
   "ticks": 1000,
   "traceStages": "all",
   "rules": {
     "mode": "dm",
     "rng": "original",
+    "world": "fixture",
     "traceCombat": true
   },
   "players": [

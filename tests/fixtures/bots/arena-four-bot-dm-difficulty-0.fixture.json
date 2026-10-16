@@ -10,6 +10,7 @@
   "rules": {
     "mode": "dm",
     "rng": "original",
+    "world": "fixture",
     "ai": true,
     "botDifficulty": 0,
     "traceCombat": true
@@ -51,6 +52,7 @@
     "chat": false,
     "activeWaypoints": 224,
     "connectedWaypoints": 224,
+    "world": "fixture",
     "profileSha256": {
       "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435",
       "bots/commando.bot": "e679f457c7415a80e7cf281e1652df3ca3f3d47acd70c1d233071fddb757864f",

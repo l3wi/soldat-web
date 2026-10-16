@@ -23,7 +23,7 @@ for (const profile of profiles) {
 await mkdir(directory, { recursive: true });
 const names: string[] = [];
 const maps: { name: string; sha256: string; activeWaypoints: number; connectedWaypoints: number }[] = [];
-for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b']) {
+for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b', 'Airpirates']) {
   const id = `maps/${name.toLowerCase()}.pms`, entry = manifest.files[id];
   if (!entry) throw new Error(`Missing stock map: ${id}`);
   const original = await readFile(`reference/base/shared/maps/${name}.pms`);
@@ -41,14 +41,15 @@ for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b']) {
     return index + 1;
   };
   const bot = (profile: string, team: number): Fixture['players'][number] => ({ team, spawnpoint: spawn(team), control: 'bot', bot: profile });
-  async function fixture(suffix: string, mode: 'dm' | 'ctf', players: Fixture['players'], inputs: Fixture['inputs'] = [], ticks = 1500, botDifficulty = 100) {
+  async function fixture(suffix: string, mode: 'dm' | 'ctf', players: Fixture['players'], inputs: Fixture['inputs'] = [], ticks = 1500, botDifficulty = 100, world: 'original' | 'fixture' = 'fixture', stationaryGuns = false) {
     const filename = `${name.toLowerCase().replaceAll('_', '-')}-${suffix}.fixture.json`;
     const record = {
       version: 1, map: name, mapSha256: entry!.sha256, contentSetHash: manifest.sha256,
       seed: 123456789, ticks, traceStages: 'tick', botDirectory: '/sim-content/bots',
-      rules: { mode, rng: 'original', ai: true, botDifficulty, traceCombat: true },
+      rules: { mode, rng: 'original', world, ai: true, botDifficulty, traceCombat: true, ...(stationaryGuns ? { stationaryGuns } : {}) },
+      ...(world === 'original' ? { capturePickups: true } : {}),
       players, inputs,
-      commands: suffix === 'human-and-bot' ? [
+      commands: suffix.endsWith('human-and-bot') ? [
         { tick: 0, kind: 'weapon-apply', slot: 1, weapon: 3, secondaryWeapon: 11, selection: 'secondary' },
         { tick: 0, kind: 'weapon-apply', slot: 1, weapon: 2, selection: 'primary' },
       ] : [],
@@ -57,12 +58,17 @@ for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b']) {
         source: 'reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest',
         botJoin: 'team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots',
         controls: 'Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.',
-        weaponMenu: suffix === 'human-and-bot' ? 'Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); vanilla client active/alive/non-bow guards apply (advance mode disabled).' : 'Bots choose weapons through original profiles/AI, never injected menu commands.',
+        weaponMenu: suffix.endsWith('human-and-bot') ? 'Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); vanilla client active/alive/non-bow guards apply (advance mode disabled).' : 'Bots choose weapons through original profiles/AI, never injected menu commands.',
         chat: false, activeWaypoints, connectedWaypoints,
+        world,
+        ...(world === 'original' ? {
+          originalStartup: { medikits: map.spawnpoints.some(s => s.active && s.team === 8) ? map.medikits : 0, grenadeKits: map.spawnpoints.some(s => s.active && s.team === 7) ? map.grenades : 0, flagStyles: mode === 'ctf' ? [1, 2] : [], stationaryGuns: stationaryGuns ? map.spawnpoints.filter(s => s.active && s.team === 16).length : 0 },
+          pickupEvidence: 'Only actual ServerThingTaken send-site callbacks in the oracle-only .pickups.jsonl sidecar count as bot kit pickups; no state-delta or fixture-name inference.',
+        } : {}),
         profileSha256: Object.fromEntries(players.filter(p => p.control === 'bot').map(p => {
           const id = `bots/${p.bot!.toLowerCase()}.bot`; return [id, profileHashes[id]];
         })),
-        requiredObservations: ['complete-ticks', 'bot-roster', 'bot-movement', 'bot-waypoint', 'bot-controls'],
+        requiredObservations: ['complete-ticks', 'bot-roster', 'bot-movement', 'bot-waypoint', 'bot-controls', ...(world === 'original' ? ['original-world-kits', 'original-world-flags', 'original-world-stationary-guns', 'bot-kit-pickup'] : [])],
         limitations: ['Authoring is not capture evidence. Combat, deaths, respawns, flag interactions and scores are reported only if observed; none are presumed.'],
       },
     };
@@ -74,6 +80,21 @@ for (const name of ['Arena', 'ctf_Ash', 'ctf_Laos', 'ctf_B2b']) {
   const human: Fixture['players'][number] = { team: humanTeam, spawnpoint: spawn(humanTeam), control: 'authoritative', weapon: 3, secondaryWeapon: 0 };
   const humanSpawn = map.spawnpoints[human.spawnpoint - 1]!;
   const aim = { MouseAimX: humanSpawn.x + 600, MouseAimY: humanSpawn.y - 20 };
+  if (name === 'Arena') {
+    await fixture('original-world-eight-bot-dm-10000', 'dm', profiles.map(profile => bot(profile, 0)), [], 10000, 100, 'original');
+  }
+  if (name === 'ctf_Ash') {
+    await fixture('original-world-four-bot-ctf', 'ctf', profiles.slice(0, 4).map((profile, i) => bot(profile, i % 2 + 1)), [], 3000, 100, 'original');
+    await fixture('original-world-human-and-bot', 'ctf', [human, bot('Billy', enemyTeam)], [
+      { player: 1, start: 61, ticks: 360, control: { Right: true, Fire: true, ...aim } },
+      { player: 1, start: 421, ticks: 60, control: { Up: true, Right: true, Jetpack: true, ...aim } },
+      { player: 1, start: 601, ticks: 360, control: { Left: true, Fire: true, MouseAimX: humanSpawn.x - 600, MouseAimY: humanSpawn.y - 20 } },
+    ], 3000, 100, 'original');
+  }
+  if (name === 'Airpirates') {
+    await fixture('original-world-four-bot-statguns', 'dm', profiles.slice(0, 4).map(profile => bot(profile, 0)), [], 3000, 100, 'original', true);
+    continue;
+  }
   await fixture('human-and-bot', mode, [human, bot('Billy', enemyTeam)], [
     { player: 1, start: 61, ticks: 360, control: { Right: true, Fire: true, ...aim } },
     { player: 1, start: 421, ticks: 60, control: { Up: true, Right: true, Jetpack: true, ...aim } },

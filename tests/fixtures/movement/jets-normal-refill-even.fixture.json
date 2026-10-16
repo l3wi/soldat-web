@@ -3,10 +3,13 @@
   "map": "Arena",
   "mapPath": "reference/base/shared/maps/Arena.pms",
   "mapSha256": "bb0d2ba2ace3db2e22d62909d12d956acc46954f4df9c6d6c0b6eac2dd54fa30",
-  "contentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
   "seed": 123456789,
   "ticks": 900,
   "traceStages": "all",
+  "rules": {
+    "world": "fixture"
+  },
   "players": [
     {
       "team": 0,

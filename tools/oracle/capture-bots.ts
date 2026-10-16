@@ -20,12 +20,24 @@ interface BotFixture extends Fixture {
   mapSha256: string;
   traceStages: 'tick';
   botDirectory: '/sim-content/bots';
-  rules: { mode: 'dm' | 'ctf'; ai: true; rng: 'original'; botDifficulty: number; traceCombat: true };
-  metadata: { profileSha256: Record<string, string>; requiredObservations: string[]; limitations: string[] };
+  rules: { mode: 'dm' | 'ctf'; world: 'original' | 'fixture'; ai: true; rng: 'original'; botDifficulty: number; traceCombat: true; stationaryGuns?: boolean };
+  capturePickups?: boolean;
+  metadata: { profileSha256: Record<string, string>; requiredObservations: string[]; limitations: string[]; originalStartup?: { medikits: number; grenadeKits: number; flagStyles: number[]; stationaryGuns: number } };
 }
 interface BotState {
   name: string; accuracy: number; target: number; path: number; waypoint: number; nextWaypoint: number; favWeapon: number;
   left: boolean; right: boolean; up: boolean; down: boolean; fire: boolean; jetpack: boolean; throwNade: boolean; aimX: number; aimY: number;
+}
+interface PickupEvidence { tick: number; thing: number; slot: number; style: number; healthBefore: number; grenadesBefore: number }
+async function readPickups(path: string, fixture: BotFixture): Promise<PickupEvidence[]> {
+  if (!fixture.capturePickups) return [];
+  const pickups: PickupEvidence[] = [];
+  for await (const line of createInterface({ input: createReadStream(path), crlfDelay: Infinity })) {
+    const pickup = JSON.parse(line) as PickupEvidence;
+    if (!pickup || !['tick', 'thing', 'slot', 'style', 'grenadesBefore'].every(key => Number.isInteger(Reflect.get(pickup, key))) || !Number.isFinite(pickup.healthBefore) || pickup.tick < 1 || pickup.tick > fixture.ticks || pickup.thing < 1 || pickup.style < 16 || pickup.style > 22 || fixture.players[pickup.slot - 1]?.control !== 'bot' || pickup.tick < (pickups.at(-1)?.tick ?? 0)) throw new Error('Malformed bot kit pickup send-site evidence');
+    pickups.push(pickup);
+  }
+  return pickups;
 }
 async function execute(command: string, args: string[], image?: string) {
   return await new Promise<{ code: number; stdout: string; stderr: string }>((done, reject) => {
@@ -41,11 +53,12 @@ async function hashFile(path: string) {
   for await (const chunk of createReadStream(path)) hash.update(chunk);
   return hash.digest('hex');
 }
-async function summarize(path: string, fixture: BotFixture) {
+async function summarize(path: string, fixture: BotFixture, pickups: PickupEvidence[]) {
   const botSlots = fixture.players.flatMap((player, i) => player.control === 'bot' ? [i + 1] : []);
   const bots = new Map<number, { name: string; accuracy: number; samples: number; initialX: number; initialY: number; maxDisplacement: number; waypoints: Set<number>; targets: Set<number>; controlTicks: number; fireTicks: number; jetTicks: number; grenadeTicks: number; healthLossTicks: number; deaths: number; respawns: number; ammunitionDecrements: number; heldThingTicks: number; dead: boolean; health: number; weapon: number; ammo: number }>();
   let finalTick = -1, records = 0, headerSeen = false, hitRecords = 0;
   const teamScores = [0, 0, 0, 0], bulletStyles = new Set<number>(), flagStyles = new Set<number>();
+  const initialThings = new Map<number, number>();
   for await (const line of createInterface({ input: createReadStream(path), crlfDelay: Infinity })) {
     const row = parseCombatTraceRow(line);
     if (!row) {
@@ -57,6 +70,7 @@ async function summarize(path: string, fixture: BotFixture) {
     finalTick = row.tick; records++;
     if (row.sprites.length !== fixture.players.length) throw new Error('Oracle player roster changed');
     hitRecords += row.combatHits.length;
+    if (row.tick === 0) for (const thing of row.things) initialThings.set(thing.style, (initialThings.get(thing.style) ?? 0) + 1);
     row.teamScores.forEach((score, i) => { teamScores[i] = Math.max(teamScores[i] ?? 0, score); });
     for (const bullet of row.bullets) bulletStyles.add(bullet.style);
     for (const thing of row.things) if (thing.style >= 1 && thing.style <= 3) flagStyles.add(thing.style);
@@ -90,6 +104,10 @@ async function summarize(path: string, fixture: BotFixture) {
     'bot-movement': [...bots.values()].some(bot => bot.maxDisplacement > 20),
     'bot-waypoint': [...bots.values()].some(bot => bot.waypoints.size > 0),
     'bot-controls': [...bots.values()].some(bot => bot.controlTicks > 0),
+    'original-world-kits': fixture.rules.world === 'original' && !!fixture.metadata.originalStartup && (initialThings.get(16) ?? 0) === fixture.metadata.originalStartup.medikits && (initialThings.get(17) ?? 0) === fixture.metadata.originalStartup.grenadeKits,
+    'original-world-flags': fixture.rules.world === 'original' && !!fixture.metadata.originalStartup && [1, 2, 3].every(style => (initialThings.get(style) ?? 0) === (fixture.metadata.originalStartup!.flagStyles.includes(style) ? 1 : 0)),
+    'original-world-stationary-guns': fixture.rules.world === 'original' && !!fixture.metadata.originalStartup && (initialThings.get(27) ?? 0) === fixture.metadata.originalStartup.stationaryGuns,
+    'bot-kit-pickup': pickups.length > 0,
   };
   const required = fixture.metadata.requiredObservations.map(kind => {
     if (!(kind in observations)) throw new Error(`Unknown bot observation: ${kind}`);
@@ -99,7 +117,8 @@ async function summarize(path: string, fixture: BotFixture) {
     records, finalTick, required, allRequiredObserved: required.every(item => item.observed),
     bots: [...bots].map(([slot, { waypoints, targets, ...stats }]) => ({ slot, ...stats, waypoints: [...waypoints].sort((a, b) => a - b), targets: [...targets].sort((a, b) => a - b) })),
     teamScores, hitRecords, bulletStyles: [...bulletStyles].sort((a, b) => a - b), flagStyles: [...flagStyles].sort(),
-    measurement: 'Tick snapshots only. Ammunition decrements are not a hit/shot proof; heldThing is reported as heldThing, not a scored capture. Death/respawn counts are observed transitions.',
+    initialThings: Object.fromEntries([...initialThings].sort(([a], [b]) => a - b)), pickups,
+    measurement: 'Tick snapshots measure startup Things and state transitions. Kit pickups are exact original ServerThingTaken callbacks in a separate oracle-only sidecar, never inferred from health/ammo deltas. Ammunition decrements are not hit/shot proof; heldThing is not a scored capture.',
     limitations: fixture.metadata.limitations,
   };
 }
@@ -134,6 +153,7 @@ let failed = false;
 for (const name of names) {
   const fixturePath = `${directory}/${name}`, fixture = JSON.parse(await readFile(fixturePath, 'utf8')) as BotFixture;
   if (fixture.version !== 1 || fixture.ticks < 1000 || fixture.contentSetHash !== manifest.sha256 || fixture.rules?.ai !== true || fixture.rules.rng !== 'original' || !Number.isInteger(fixture.rules.botDifficulty) || fixture.rules.botDifficulty < 0 || fixture.rules.botDifficulty > 300 || fixture.rules.traceCombat !== true || fixture.traceStages !== 'tick' || fixture.botDirectory !== '/sim-content/bots') throw new Error(`Malformed/stale bot fixture: ${name}`);
+  if (!['original', 'fixture'].includes(fixture.rules.world) || (fixture.rules.world === 'original' && (fixture.capturePickups !== true || !fixture.metadata.originalStartup)) || (fixture.rules.world === 'fixture' && fixture.capturePickups)) throw new Error(`Malformed bot world contract: ${name}`);
   const map = manifest.files[`maps/${fixture.map.toLowerCase()}.pms`];
   if (!map || map.sha256 !== fixture.mapSha256 || await hashFile(`dist/content/${map.path}`) !== map.sha256) throw new Error(`Map identity mismatch: ${name}`);
   for (const player of fixture.players) if (player.control === 'bot') {
@@ -144,24 +164,32 @@ for (const name of names) {
   const basename = name.replace(/\.fixture\.json$/, ''), raw = `${output}/${basename}.jsonl`, golden = `${directory}/golden/${basename}.jsonl.gz`;
   const args = [resolve(fixturePath), resolve(raw)];
   const identity = { fixture: name, fixtureSha256: await hashFile(fixturePath), contentSetHash: fixture.contentSetHash, mapSha256: fixture.mapSha256, profileSha256: fixture.metadata.profileSha256, seed: fixture.seed, botDifficulty: fixture.rules.botDifficulty, chat: false, oracleBinarySha256, harnessSha256, sharedTraceSha256, diagnosticsSha256, sourcePatchSha256, runnerSha256, baseSmodSha256, image, platform, command: ['tools/oracle/run.sh', ...args], env: { ORACLE_IMAGE: image, ORACLE_PLATFORM: platform }, mounts: { work: `${root}/build-out/oracle:/work:ro`, profiles: `${root}/dist/content/sim:/sim-content:ro`, fixture: `${args[0]}:/fixture.json:ro`, maps: `${resolve(directory)}:/fixture-maps:ro`, output: `${resolve(output)}:/output` } };
+  const pickupRaw = `${raw}.pickups.jsonl`, pickupGolden = `${directory}/golden/${basename}.pickups.jsonl`;
+  Object.assign(identity, { world: fixture.rules.world, stationaryGuns: fixture.rules.stationaryGuns ?? false, capturePickups: fixture.capturePickups ?? false });
   try {
     const result = await execute('tools/oracle/run.sh', args, image);
     if (result.code !== 0) { captures.set(name, { ...identity, ...result, status: 'capture-failed' }); failed = true; }
     else {
-      const summary = await summarize(raw, fixture);
+      const pickups = await readPickups(pickupRaw, fixture);
+      const summary = await summarize(raw, fixture, pickups);
+      const pickupEvidence = fixture.capturePickups ? { golden: `golden/${basename}.pickups.jsonl`, sha256: await hashFile(pickupRaw), bytes: (await stat(pickupRaw)).size } : null;
+      if (pickupEvidence) await writeFile(pickupGolden, await readFile(pickupRaw));
       const sha256 = await hashFile(raw), bytes = (await stat(raw)).size;
       await pipeline(createReadStream(raw), createGzip({ level: 9 }), createWriteStream(golden));
       const compressedSha256 = await hashFile(golden), compressedBytes = (await stat(golden)).size;
       const repeat = await execute('tools/oracle/run.sh', args, image);
       const repeatSha256 = repeat.code === 0 ? await hashFile(raw) : null;
-      const byteIdentical = repeat.code === 0 && repeatSha256 === sha256;
+      const repeatPickupSha256 = fixture.capturePickups && repeat.code === 0 ? await hashFile(pickupRaw) : null;
+      const byteIdentical = repeat.code === 0 && repeatSha256 === sha256 && (!pickupEvidence || repeatPickupSha256 === pickupEvidence.sha256);
       const status = !byteIdentical ? 'repeat-diverged' : !summary.allRequiredObserved ? 'observations-missing' : 'captured-with-limitations';
-      captures.set(name, { ...identity, ...result, status, golden: `golden/${basename}.jsonl.gz`, sha256, bytes, compressedSha256, compressedBytes, summary, repeat: { ...repeat, sha256: repeatSha256, byteIdentical } });
+      captures.set(name, { ...identity, ...result, status, golden: `golden/${basename}.jsonl.gz`, sha256, bytes, compressedSha256, compressedBytes, summary, pickups: pickupEvidence, repeat: { ...repeat, sha256: repeatSha256, pickupSha256: repeatPickupSha256, byteIdentical } });
       failed ||= !byteIdentical || !summary.allRequiredObserved;
       await unlink(raw);
     }
   } catch (error) {
     captures.set(name, { ...identity, status: 'capture-error', error: error instanceof Error ? error.message : String(error) }); failed = true;
+  } finally {
+    if (fixture.capturePickups) await unlink(pickupRaw).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; });
   }
   await writeFile(`${directory}/capture-results.json`, `${JSON.stringify({ version: 1, tier: 'bot-oracle-evidence', image, platform, rng: 'original', chat: false, network: 'none', captures: [...captures.values()].sort((a, b) => a.fixture.localeCompare(b.fixture)) }, null, 2)}\n`);
   console.log(JSON.stringify({ fixture: name, status: captures.get(name)!.status }));

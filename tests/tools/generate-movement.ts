@@ -60,7 +60,7 @@ async function fixture(name:string,surface:Surface,inputs:InputSegment[],options
   if(isSynthetic) contentEntries[`maps/${map.name.toLowerCase()}.pms`]={sha256:map.sha256};
   const contentSetHash=isSynthetic?sha256(Object.keys(contentEntries).sort().map(id=>`${id}\t${contentEntries[id].sha256}\n`).join('')):sim.sha256;
   const {ticks=360,team=0,heldFlag=0,health=150,x=surface.x,y=surface.y-32,...metadata}=options;
-  const record={version:1,map:map.name,mapPath:map.path,mapSha256:map.sha256,contentSetHash,seed:123456789,ticks,traceStages:'all',
+  const record={version:1,map:map.name,mapPath:map.path,mapSha256:map.sha256,contentSetHash,seed:123456789,ticks,traceStages:'all',rules:{world:'fixture'},
     ...(isSynthetic?{mapDirectory:'/fixture-maps'}:{}),
     players:[{team,spawnpoint:map.map.spawnpoints.findIndex(s=>s.active)+1,x,y,health,...(heldFlag?{heldFlag}:{})}],inputs,
     metadata:{purpose:name,coordinateSystem:'Original PMS world units; +X right, +Y down. Main particle starts 32 units above target edge unless explicitly overridden.',target:{polygon:surface.polygon,edge:surface.edge,polytype:surface.polytype,midpoint:[surface.x,surface.y],width:surface.width,slope:surface.slope,vertices:surface.vertices,rawNormals:surface.normals},source:isSynthetic?'test-only PMS: required missing polytype/capacity':'pinned stock PMS byte-identical',...metadata}};
@@ -140,6 +140,7 @@ await writeFile(`${output}/corpus.json`,JSON.stringify({
     mapPath:'Repository-relative raw PMS path; canonical VFS id is maps/<lowercase map>.pms.',
     mapSha256:'SHA256 of exact PMS bytes.',
     contentSetHash:'SHA256 of sorted canonical path<TAB>SHA256<LF> sim manifest records; synthetic map entry is added to base set.',
+    world:'rules.world=fixture preserves deliberately injected/empty initial Things; original startup is exercised by the bot corpus.',
     players:'spawnpoint remains required active one-based PMS index; x/y override initial coordinates; health defaults150; heldFlag optional1/2/3 creates real held flag.',
     pressOrder:'inputs[].pressOrder u16: 0 preserves raw server TControl. Nonzero bit0 left-first, bit1 right-first, bit2 up-first, bit3 down-first. Prior jump history chooses old vs newer L/R as original client resolution. Up/Down remain both held: no original Up/Down exclusivity branch.',
     traceStages:'all includes every per-stage diagnostic; required for the entire corpus including long runs. tick is optional tooling only and not qualifying T1 evidence.',

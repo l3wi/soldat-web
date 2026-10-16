@@ -4,6 +4,7 @@ interface
 
 procedure RunOracle;
 procedure OracleDump(const Stage: string; Entity: Integer);
+procedure OracleThingTaken(ThingNum, Who: Byte);
 
 implementation
 
@@ -15,6 +16,9 @@ uses
 var
   Fixture: TJSONObject;
   TraceFile: Text;
+  PickupFile: Text;
+  PickupOpen: Boolean = False;
+  World: string = 'original';
   TraceOpen: Boolean = False;
   CurrentTick: Integer = 0;
   WasRunningLeft, WasJumping: array[1..MAX_PLAYERS] of Boolean;
@@ -26,6 +30,28 @@ var
 
 
 {$I OracleTrace.inc}
+
+procedure OracleThingTaken(ThingNum, Who: Byte);
+var
+  Row: TJSONObject;
+begin
+  if not PickupOpen then Exit;
+  if (Who < 1) or (Who > MAX_PLAYERS) then Exit;
+  if not BotPlayer[Who] then Exit;
+  if not (Thing[ThingNum].Style in [OBJECT_MEDICAL_KIT..OBJECT_CLUSTER_KIT]) then Exit;
+  Row := TJSONObject.Create;
+  try
+    Row.Add('tick', CurrentTick);
+    Row.Add('thing', ThingNum);
+    Row.Add('slot', Who);
+    Row.Add('style', Thing[ThingNum].Style);
+    Row.Add('healthBefore', Double(Sprite[Who].Health));
+    Row.Add('grenadesBefore', Sprite[Who].TertiaryWeapon.AmmoCount);
+    WriteLn(PickupFile, Row.AsJSON);
+  finally
+    Row.Free;
+  end;
+end;
 
 function ReadControl(Data: TJSONObject): TControl;
 begin
@@ -270,6 +296,13 @@ begin
   bots_difficulty.SetValue(100);
   if Fixture.Find('rules') <> nil then
   begin
+    if Fixture.Objects['rules'].Find('world') <> nil then
+      if Fixture.Objects['rules'].Find('world').JSONType <> jtString then
+        raise Exception.Create('world must be original or fixture');
+    World := Fixture.Objects['rules'].Get('world','original');
+    if (World <> 'original') and (World <> 'fixture') then
+      raise Exception.Create('world must be original or fixture');
+    sv_stationaryguns.SetValue(Fixture.Objects['rules'].Get('stationaryGuns',False));
     CombatDiagnostics.Enabled := Fixture.Objects['rules'].Get('traceCombat',False);
     if Fixture.Objects['rules'].Get('mode','dm') = 'ctf' then sv_gamemode.SetValue(GAMESTYLE_CTF);
     if Fixture.Objects['rules'].Get('rng','original') <> 'original' then
@@ -320,6 +353,45 @@ begin
   MapChangeCounter := -60;
   BulletTimeTimer := -1;
   TimeLimitCounter := 360000;
+  if World = 'original' then
+  begin
+    // Original Server.StartServer:1271-1328, in source order before admission.
+    if sv_gamemode.Value = GAMESTYLE_CTF then
+    begin
+      if RandomizeStart(Pos, 5) then
+        TeamFlag[1] := CreateThing(Pos, 255, OBJECT_ALPHA_FLAG, 255);
+      if RandomizeStart(Pos, 6) then
+        TeamFlag[2] := CreateThing(Pos, 255, OBJECT_BRAVO_FLAG, 255);
+    end;
+    if sv_gamemode.Value = GAMESTYLE_RAMBO then
+    begin
+      RandomizeStart(Pos, 15);
+      CreateThing(Pos, 255, OBJECT_RAMBO_BOW, 255);
+    end;
+    if sv_gamemode.Value = GAMESTYLE_INF then
+    begin
+      if RandomizeStart(Pos, 5) then
+        TeamFlag[1] := CreateThing(Pos, 255, OBJECT_ALPHA_FLAG, 255);
+      if RandomizeStart(Pos, 6) then
+        TeamFlag[2] := CreateThing(Pos, 255, OBJECT_BRAVO_FLAG, 255);
+    end;
+    if not sv_survivalmode.Value then
+    begin
+      SpawnThings(OBJECT_MEDICAL_KIT, Map.Medikits);
+      if sv_maxgrenades.Value > 0 then
+        SpawnThings(OBJECT_GRENADE_KIT, Map.Grenades);
+    end
+    else MainConsole.Console('Survival Mode ON', MODE_MESSAGE_COLOR);
+    if sv_stationaryguns.Value then
+      for I := 1 to MAX_SPAWNPOINTS do
+        if Map.SpawnPoints[I].Active then
+          if Map.SpawnPoints[I].Team = 16 then
+          begin
+            Pos.X := Map.SpawnPoints[I].X;
+            Pos.Y := Map.SpawnPoints[I].Y;
+            CreateThing(Pos, 255, OBJECT_STATIONARY_GUN, 255);
+          end;
+  end;
   Players := Fixture.Arrays['players'];
   if (Players.Count < 1) or (Players.Count > MAX_PLAYERS) then raise Exception.Create('Invalid player count');
   for I := 0 to Players.Count - 1 do
@@ -393,6 +465,13 @@ begin
   AssignFile(TraceFile, ParamStr(2));
   Rewrite(TraceFile);
   TraceOpen := True;
+  if (World = 'original') and (Fixture.Find('rules') <> nil) then
+    if Fixture.Get('capturePickups',False) then
+    begin
+      AssignFile(PickupFile, ParamStr(2) + '.pickups.jsonl');
+      Rewrite(PickupFile);
+      PickupOpen := True;
+    end;
   Header := TJSONObject.Create;
   Header.Add('type', 'header');
   Header.Add('version', 1);
@@ -429,6 +508,11 @@ begin
       end;
     InjectCommands(Tick);
     OracleDump('tick', 0);
+  end;
+  if PickupOpen then
+  begin
+    CloseFile(PickupFile);
+    PickupOpen := False;
   end;
   CloseFile(TraceFile);
   TraceOpen := False;

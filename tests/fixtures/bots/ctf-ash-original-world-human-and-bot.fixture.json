@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "map": "ctf_Ash",
+  "mapSha256": "75064ef07c9f7dcd84ce9b21f34dda6394244286b7cfde604607e27987df6d72",
+  "contentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
+  "seed": 123456789,
+  "ticks": 3000,
+  "traceStages": "tick",
+  "botDirectory": "/sim-content/bots",
+  "rules": {
+    "mode": "ctf",
+    "rng": "original",
+    "world": "original",
+    "ai": true,
+    "botDifficulty": 100,
+    "traceCombat": true
+  },
+  "capturePickups": true,
+  "players": [
+    {
+      "team": 1,
+      "spawnpoint": 1,
+      "control": "authoritative",
+      "weapon": 3,
+      "secondaryWeapon": 0
+    },
+    {
+      "team": 2,
+      "spawnpoint": 9,
+      "control": "bot",
+      "bot": "Billy"
+    }
+  ],
+  "inputs": [
+    {
+      "player": 1,
+      "start": 61,
+      "ticks": 360,
+      "control": {
+        "Right": true,
+        "Fire": true,
+        "MouseAimX": 314,
+        "MouseAimY": -310
+      }
+    },
+    {
+      "player": 1,
+      "start": 421,
+      "ticks": 60,
+      "control": {
+        "Up": true,
+        "Right": true,
+        "Jetpack": true,
+        "MouseAimX": 314,
+        "MouseAimY": -310
+      }
+    },
+    {
+      "player": 1,
+      "start": 601,
+      "ticks": 360,
+      "control": {
+        "Left": true,
+        "Fire": true,
+        "MouseAimX": -886,
+        "MouseAimY": -310
+      }
+    }
+  ],
+  "commands": [
+    {
+      "tick": 0,
+      "kind": "weapon-apply",
+      "slot": 1,
+      "weapon": 3,
+      "secondaryWeapon": 11,
+      "selection": "secondary"
+    },
+    {
+      "tick": 0,
+      "kind": "weapon-apply",
+      "slot": 1,
+      "weapon": 2,
+      "selection": "primary"
+    }
+  ],
+  "metadata": {
+    "purpose": "original-world-human-and-bot: original stock bot profiles and unmodified waypoint AI on ctf_Ash",
+    "source": "reference/base/shared/maps + reference/base/server/configs/bots; hashes verified against mounted simulation manifest",
+    "botJoin": "team shirt -> RandomizeStart -> CreateSprite -> original LoadBotConfig -> Respawn -> BOT; fixture spawnpoint/loadout ignored for bots",
+    "controls": "Human/authoritative inputs only. Bot controls persist between ticks and are produced exclusively by original AI.",
+    "weaponMenu": "Initial authoritative human selects knife secondary (menu stays open), then MP5 primary (menu closes); vanilla client active/alive/non-bow guards apply (advance mode disabled).",
+    "chat": false,
+    "activeWaypoints": 222,
+    "connectedWaypoints": 221,
+    "world": "original",
+    "originalStartup": {
+      "medikits": 4,
+      "grenadeKits": 4,
+      "flagStyles": [
+        1,
+        2
+      ],
+      "stationaryGuns": 0
+    },
+    "pickupEvidence": "Only actual ServerThingTaken send-site callbacks in the oracle-only .pickups.jsonl sidecar count as bot kit pickups; no state-delta or fixture-name inference.",
+    "profileSha256": {
+      "bots/billy.bot": "2aa34c3a268ae7e3dae01d09f4e063f73c83145e228cf79e9281b519f5662435"
+    },
+    "requiredObservations": [
+      "complete-ticks",
+      "bot-roster",
+      "bot-movement",
+      "bot-waypoint",
+      "bot-controls",
+      "original-world-kits",
+      "original-world-flags",
+      "original-world-stationary-guns",
+      "bot-kit-pickup"
+    ],
+    "limitations": [
+      "Authoring is not capture evidence. Combat, deaths, respawns, flag interactions and scores are reported only if observed; none are presumed."
+    ]
+  }
+}

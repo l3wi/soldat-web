@@ -2,7 +2,7 @@
   "version": 1,
   "basePin": "5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4",
   "upstreamPin": "bf43a43bdd7a069e02c906768807f66e621b2888",
-  "baseContentSetHash": "855f61f831c5c74efbf267483d21c509baddc760d4dfbcfce2b77eba8aa0c109",
+  "baseContentSetHash": "5a4affae0a9dc0ffd9b579367a2c338146e242d20a1c8293c35b920ead983b64",
   "fixtures": [
     "flat-left.fixture.json",
     "flat-right.fixture.json",
@@ -107,6 +107,7 @@
     "mapPath": "Repository-relative raw PMS path; canonical VFS id is maps/<lowercase map>.pms.",
     "mapSha256": "SHA256 of exact PMS bytes.",
     "contentSetHash": "SHA256 of sorted canonical path<TAB>SHA256<LF> sim manifest records; synthetic map entry is added to base set.",
+    "world": "rules.world=fixture preserves deliberately injected/empty initial Things; original startup is exercised by the bot corpus.",
     "players": "spawnpoint remains required active one-based PMS index; x/y override initial coordinates; health defaults150; heldFlag optional1/2/3 creates real held flag.",
     "pressOrder": "inputs[].pressOrder u16: 0 preserves raw server TControl. Nonzero bit0 left-first, bit1 right-first, bit2 up-first, bit3 down-first. Prior jump history chooses old vs newer L/R as original client resolution. Up/Down remain both held: no original Up/Down exclusivity branch.",
     "traceStages": "all includes every per-stage diagnostic; required for the entire corpus including long runs. tick is optional tooling only and not qualifying T1 evidence.",

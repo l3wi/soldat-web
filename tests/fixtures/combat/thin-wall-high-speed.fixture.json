@@ -4,13 +4,14 @@
   "mapPath": "tests/fixtures/combat/maps/combat-thin-wall.pms",
   "mapDirectory": "/fixture-maps",
   "mapSha256": "36a496a373cd081c3fd0066cd5c6562dd2e171f2de425d65e94efa342a21d363",
-  "contentSetHash": "a0108a3a738fe75c615304d9326fe708b8c8dc71f922dc6f8ade66b07fa24f0e",
+  "contentSetHash": "d819e52c76a331a05fe022a220f6e9ae212763cbb5fcf71d11314fcd7e3e2dd1",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
   "rules": {
     "mode": "dm",
     "rng": "original",
+    "world": "fixture",
     "traceCombat": true
   },
   "players": [

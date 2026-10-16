@@ -3,10 +3,13 @@
   "map": "movement-capacity-one",
   "mapPath": "tests/fixtures/movement/maps/movement-capacity-one.pms",
   "mapSha256": "b618c5dde015320971157757ccd61118f2febc18905a50e1157ce3acaa6a287a",
-  "contentSetHash": "30c19015bd0333b3fac33e3901c8ba455c1512d26d340ed5e02dd6f52d4396ad",
+  "contentSetHash": "fd1a81ac682b16d771026e380f64b0f9ed969e1efde1fc9aa09cc46fe97e4127",
   "seed": 123456789,
   "ticks": 600,
   "traceStages": "all",
+  "rules": {
+    "world": "fixture"
+  },
   "mapDirectory": "/fixture-maps",
   "players": [
     {

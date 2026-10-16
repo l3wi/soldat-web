@@ -4,13 +4,14 @@
   "mapPath": "tests/fixtures/combat/maps/combat-ricochet.pms",
   "mapDirectory": "/fixture-maps",
   "mapSha256": "4792d1f3d91afb37a835ba445ab17b870eb2c1e33752b1f61a9e974302f890f9",
-  "contentSetHash": "7c78578ef8bb91e1d4d4b12717334214ed1d7ce76c7bebbf584326b8b36f0342",
+  "contentSetHash": "f068b49dcbb27d481f951da3f5096b110096374a4fa67d1245bb2dd4e70b4467",
   "seed": 123456789,
   "ticks": 360,
   "traceStages": "all",
   "rules": {
     "mode": "dm",
     "rng": "original",
+    "world": "fixture",
     "traceCombat": true
   },
   "players": [
