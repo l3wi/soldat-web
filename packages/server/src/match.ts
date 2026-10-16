@@ -40,6 +40,8 @@ export class AuthoritativeMatch {
   private replayTicks = 0;
   private rejectedShots = 0;
   private uncompensatedShots = 0;
+  private inputBufferOccupancy: number[] = [];
+  private inputBufferLeadTicks: number[] = [];
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
   private readonly host: SimHost;
   private readonly emit: (response: WorkerResponse) => void;
@@ -165,6 +167,8 @@ export class AuthoritativeMatch {
     const render = this.host.renderView();
     if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
     for (const [slot, player] of this.players) {
+      this.inputBufferOccupancy.push(player.inputs.size);
+      this.inputBufferLeadTicks.push(player.inputs.leadTicks(this.tick));
       const consumed = player.inputs.consume(this.tick), input = consumed.input.slice();
       this.profile?.controls?.push({ slot, seq: consumed.seq, repeated: consumed.repeated, bits: new DataView(input.buffer, input.byteOffset, 12).getUint16(0, true), rejected: { ...player.inputs.rejected } });
       inputs.set(slot, input); weapons.set(slot, render.sprite(slot - 1).weapon);
@@ -318,9 +322,10 @@ export class AuthoritativeMatch {
     if (profile) { profile.tick = this.tick; this.profile = emptyProfile(); }
     return profile;
   }
-  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number } {
-    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots };
+  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
+    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
     this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0;
+    this.inputBufferOccupancy = []; this.inputBufferLeadTicks = [];
     return result;
   }
   dispose(): void {

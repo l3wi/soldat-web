@@ -247,3 +247,24 @@ test("adaptive prediction passes sixteen ticks without inventing view time or sk
     assert.equal(session.metrics.viewTick, 0);
   } finally { session.dispose(); authoritative.dispose(); }
 });
+
+test("adaptive jitter lead leaves two ticks of the eight-tick server window for clock error", async () => {
+  const [authoritative, prediction, extraction] = await Promise.all([realHost(), realHost(), realHost()]);
+  const sent: Message[] = []; let now = 0;
+  const session = new OnlineSession({ prediction, extraction, slot: 1, now: () => now, send: message => sent.push(message) });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative" }), "join");
+    session.receive(snapshot(authoritative, save(authoritative), 1, 0));
+    session.advance(() => encodeInput({}));
+    const first = sent.find(message => message.type === "ping")!;
+    assert.equal(first.type, "ping");
+    now = 100; session.receive({ type: "pong", timestamp: first.timestamp });
+    now = 1000; session.advance(() => encodeInput({}));
+    const second = sent.filter(message => message.type === "ping").at(-1)!;
+    assert.equal(second.type, "ping");
+    now = 7000; session.receive({ type: "pong", timestamp: second.timestamp });
+    assert.equal(session.metrics.rttDeviationMs, 5900);
+    assert.ok(Math.abs(session.metrics.targetPredictionLeadTicks - (session.metrics.rttMs / 2 / (1000 / 60) + 8)) < 0.000001);
+    assert.ok(session.metrics.targetPredictionLeadTicks < INPUT_HISTORY - 8);
+  } finally { session.dispose(); authoritative.dispose(); }
+});

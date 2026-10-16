@@ -8,6 +8,8 @@ export const INPUT_HISTORY = 128;
 export const REPLAY = 1;
 const STEP_MS = 1000 / 60;
 const PREDICTION_SAFETY_TICKS = 8;
+// The server queues eight early ticks; reserve two for clock-estimate error.
+const MAX_JITTER_MARGIN_TICKS = 6;
 const RTT_WINDOW = 32;
 /** Holding a remote control must never repeat a grenade/switch/reload/etc edge. */
 export function heldInput(input: Uint8Array): Uint8Array {
@@ -122,7 +124,7 @@ export class OnlineSession {
         this.sortedDeviations.fill(Infinity, count); this.sortedDeviations.sort();
         m.rttDeviationMs = this.sortedDeviations[Math.ceil(count * 0.95) - 1]!;
         m.targetPredictionLeadTicks = Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
-          (m.rttMs + m.rttDeviationMs) / 2 / STEP_MS + 2);
+          m.rttMs / 2 / STEP_MS + Math.min(MAX_JITTER_MARGIN_TICKS, m.rttDeviationMs / 2 / STEP_MS) + 2);
         this.ping = undefined;
       }
       return;

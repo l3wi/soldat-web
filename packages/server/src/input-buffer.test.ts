@@ -8,15 +8,17 @@ function frame(seq: number, tick: number, input = encodeInput({ Right: true })):
   return { seq, tick, viewTick: Math.max(0, tick - 3), input };
 }
 
-test("input lead is bounded to two future ticks and storage to three frames", () => {
+test("input lead is bounded to eight queued future ticks without granting time", () => {
   const buffer = new PlayerInputBuffer(0n);
   assert.deepEqual(buffer.offer([frame(3, 12), frame(2, 11), frame(1, 10)], 10, 0n), []);
   assert.equal(buffer.size, 3);
-  assert.deepEqual(buffer.offer([frame(4, 13)], 10, 0n), ["lead"]);
-  assert.equal(buffer.size, 3);
-  assert.equal(buffer.consume(10).seq, 1);
-  assert.equal(buffer.consume(11).seq, 2);
-  assert.equal(buffer.consume(12).seq, 3);
+  for (let tick = 13; tick <= 18; tick++) assert.deepEqual(buffer.offer([{ ...frame(tick - 9, tick), viewTick: 10 }], 10, 0n), []);
+  assert.equal(buffer.size, 9);
+  assert.equal(buffer.leadTicks(10), 8);
+  assert.equal(buffer.lastConsumedSequence, 0);
+  assert.deepEqual(buffer.offer([{ ...frame(10, 19), viewTick: 10 }], 10, 0n), ["lead"]);
+  assert.equal(buffer.size, 9);
+  for (let tick = 10; tick <= 18; tick++) assert.equal(buffer.consume(tick).seq, tick - 9);
   assert.equal(buffer.size, 0);
 });
 
@@ -94,7 +96,7 @@ test("present movement and jets keep genuine old view time without buying tick l
   const movement = { seq: 1, tick: 100, viewTick: 0, input: encodeInput({ Right: true, Jetpack: true }) };
   assert.deepEqual(buffer.offer([movement], 100, 0n), []);
   assert.equal(buffer.consume(100).input[0], 2 | 32);
-  assert.deepEqual(buffer.offer([{ ...movement, seq: 2, tick: 103 }], 100, 0n), ["lead"]);
+  assert.deepEqual(buffer.offer([{ ...movement, seq: 2, tick: 109 }], 100, 0n), ["lead"]);
   assert.deepEqual(buffer.offer([{ ...movement, seq: 2, tick: 101, viewTick: 103 }], 100, 0n), ["invalid"]);
 });
 

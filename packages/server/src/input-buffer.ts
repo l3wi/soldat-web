@@ -8,7 +8,7 @@ const MAX_SEQUENCE_JUMP = 128;
 export const INPUT_PACKETS_PER_SECOND = 90;
 export const INPUT_PACKET_BURST = 128;
 const HELD_CONTROL_BITS = 0x003f; // Left/Right/Up/Down/Fire/Jetpack; all actions are cleared on repeats.
-export const MAX_INPUT_LEAD = 2;
+export const MAX_INPUT_LEAD = 8;
 const STALE_HELD_TICKS = 15;
 
 export class PlayerInputBuffer {
@@ -107,5 +107,10 @@ export class PlayerInputBuffer {
   }
 
   get size(): number { return this.frames.size; }
+  leadTicks(currentTick: number): number {
+    let lead = 0;
+    for (const tick of this.frames.keys()) lead = Math.max(lead, tick - currentTick);
+    return lead;
+  }
   get lastConsumedSequence(): number { return this.consumedSequence; }
 }
