@@ -380,7 +380,7 @@ async function browserCapture(config, page, runtimeErrors) {
 }
 
 console.log(execFileSync("memory_pressure", { encoding: "utf8" }));
-const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--force-device-scale-factor=1"] });
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--force-device-scale-factor=1"] });
 let code = 0;
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });

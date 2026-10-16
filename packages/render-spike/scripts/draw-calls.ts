@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 const browser = await chromium.launch({
   channel: "chrome",
   headless: true,
-  args: ["--disable-frame-rate-limit", "--disable-gpu-vsync"],
+  args: ["--mute-audio", "--disable-frame-rate-limit", "--disable-gpu-vsync"],
 });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 } });
 await page.addInitScript(() => {

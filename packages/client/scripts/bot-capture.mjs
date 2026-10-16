@@ -18,7 +18,7 @@ const screenshots = resolve(root, "tests/fixtures/render"), out = resolve(root, 
 await mkdir(screenshots, { recursive: true }); await mkdir(out, { recursive: true });
 const receipt = { wasmSha256: expected, abiVersion: 0x00010004, runtime: "", privateHeadless: true, rows: [], errors: [], completed: false };
 const save = () => writeFile(resolve(out, "bots-browser.json"), JSON.stringify(receipt, null, 2) + "\n");
-const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--disable-background-timer-throttling", "--disable-renderer-backgrounding"] });
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
   page.on("pageerror", error => receipt.errors.push(String(error)));

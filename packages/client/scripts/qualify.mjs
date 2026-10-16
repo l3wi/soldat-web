@@ -11,7 +11,7 @@ const runId = `g2-${Date.now()}`;
 await fetch(`${base}/g2/start?run=${runId}`, { method: 'POST' });
 const url = `${base}/?g2&map=Airpirates&run=${runId}`;
 const engines = [
-  { name: 'chrome', executable: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', args: profile => ['--headless=new', '--no-first-run', `--user-data-dir=${profile}`, url] },
+  { name: 'chrome', executable: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', args: profile => ['--headless=new', '--mute-audio', '--no-first-run', `--user-data-dir=${profile}`, url] },
   { name: 'firefox', executable: '/Applications/Firefox.app/Contents/MacOS/firefox', args: profile => ['--headless', '--no-remote', '--profile', profile, url] },
 ];
 const accepted = new Map();
@@ -19,6 +19,8 @@ console.log(JSON.stringify({ runId, url, expected: config.fixtures.length * 3 * 
 for (const engine of engines) {
   console.log(execFileSync('memory_pressure', { encoding: 'utf8' }));
   const profile = await mkdtemp(resolve(tmpdir(), `${runId}-${engine.name}-`));
+  // Test browsers must never be audible on the host speakers.
+  if (engine.name === 'firefox') await writeFile(resolve(profile, 'user.js'), 'user_pref("media.volume_scale", "0.0");\n');
   const child = spawn(engine.executable, engine.args(profile), { stdio: 'ignore' });
   let launchError;
   child.on('error', error => { launchError = error; });

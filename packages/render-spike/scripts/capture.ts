@@ -9,6 +9,7 @@ const browser = await chromium.launch({
   channel: "chrome",
   headless: !process.argv.includes("--headed"),
   args: [
+    "--mute-audio",
     "--disable-frame-rate-limit",
     "--disable-gpu-vsync",
     "--force-device-scale-factor=1",

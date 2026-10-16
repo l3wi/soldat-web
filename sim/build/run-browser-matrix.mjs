@@ -30,6 +30,8 @@ for (const corpus of options.corpora.split(',')) for (const policy of policies) 
   const lane = join(output, corpus, policy), destination = join(lane, 'browser', options.engine);
   await mkdir(destination, { recursive: true });
   const profile = await mkdtemp(join(output, `private-${options.engine.toLowerCase()}-`));
+  // Test browsers must never be audible on the host speakers.
+  if (options.engine === 'Firefox') await writeFile(join(profile, 'user.js'), 'user_pref("media.volume_scale", "0.0");\n');
   const port = Number(options.port) + serial++, url = `http://127.0.0.1:${port}/`;
   const log = createWriteStream(join(destination, 'process.log'));
   const pressure=spawnSync('memory_pressure',{stdio:'inherit'});
@@ -46,7 +48,7 @@ for (const corpus of options.corpora.split(',')) for (const policy of policies) 
       server.stdout.on('data', chunk => { if (chunk.toString().includes('Fixture receipt server:')) { clearTimeout(deadline); done(); } });
     });
     const args = options.engine === 'Chrome'
-      ? ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', `--user-data-dir=${profile}`, url]
+      ? ['--headless=new', '--mute-audio', '--disable-gpu', '--no-first-run', '--no-default-browser-check', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', `--user-data-dir=${profile}`, url]
       : ['-headless', '-no-remote', '-profile', profile, url];
     browser = spawn(browserBinary, args, { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
     browser.stdout.pipe(log, { end: false }); browser.stderr.pipe(log, { end: false });

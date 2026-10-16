@@ -233,12 +233,14 @@ export async function createInstalledBrowserTask({ engine, out, signal = new Abo
         "dom.disable_open_during_load": false,
         "browser.link.open_newwindow": 2,
         "browser.link.open_newwindow.restriction": 0,
+        // Test browsers must never be audible on the host speakers.
+        "media.volume_scale": "0.0",
       };
       await writeFile(resolve(profile, "user.js"), Object.entries(prefs).map(([key, value]) => `user_pref(${JSON.stringify(key)}, ${JSON.stringify(value)});`).join("\n") + "\n");
       environment.profilePreferences = prefs;
     }
     const args = engine === "chrome"
-      ? ["--headless=new", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--window-size=1280,720", "about:blank"]
+      ? ["--headless=new", "--mute-audio", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--window-size=1280,720", "about:blank"]
       : ["--headless", "--no-remote", "--profile", profile, "--remote-debugging-port=0", "--width=1280", "--height=720", "about:blank"];
     environment.args = args;
     const protocol = makeLog("installed-browser-cdp.jsonl");

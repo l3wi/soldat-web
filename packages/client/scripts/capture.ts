@@ -7,7 +7,7 @@ import type {} from "../src/game";
 import { createHash } from "node:crypto";
 
 const root = resolve(import.meta.dir, "../../.."), out = resolve(root, "tests/fixtures/render");
-const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--force-device-scale-factor=1"] });
+const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--force-device-scale-factor=1"] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1 });
 const errors: string[] = [];
 page.on("pageerror", error => errors.push(error.message));
