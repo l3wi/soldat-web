@@ -24,13 +24,18 @@ try {
   const clock = new FixedStepAccumulator(process.hrtime.bigint());
   let nextMetrics = 60;
   let simEncodeMs: number[] = [], tickLatenessMs: number[] = [];
+  let inputWorkMs = 0;
   const wake = () => {
     try {
       clock.advance(process.hrtime.bigint(), lateness => {
         const start = performance.now();
         tickLatenessMs.push(lateness);
         match!.step();
-        simEncodeMs.push(performance.now() - start);
+        // Historical replay runs on message receipt, between fixed steps.
+        // Attribute that real work to the next tick rather than hiding it
+        // outside sim+encode accounting.
+        simEncodeMs.push(performance.now() - start + inputWorkMs);
+        inputWorkMs = 0;
       });
       if (match!.tick >= nextMetrics) {
         port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, tickLatenessMs, ...match!.takeLagMetrics() } satisfies WorkerResponse);
@@ -43,8 +48,10 @@ try {
   port.on("message", (message: WorkerRequest) => {
     if (stopped) return;
     if (message.type === "stop") { stop(); return; }
+    const start = performance.now();
     try { match!.receive(message, process.hrtime.bigint()); }
     catch (error) { fail(error); }
+    finally { if (message.type === "input") inputWorkMs += performance.now() - start; }
   });
   port.on("close", stop);
   port.postMessage({ type: "ready" } satisfies WorkerResponse);
