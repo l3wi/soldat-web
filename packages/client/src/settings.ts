@@ -5,7 +5,13 @@ export type ControlAction =
 export interface Settings {
   filter: 'nearest' | 'linear';
   mipmaps: boolean;
+  nickname: string;
   bindings: Record<ControlAction, string>;
+}
+
+/** Original names are at most 24 characters (PLAYERNAME_CHARS); the sim accepts printable ASCII. */
+export function validNickname(value: string): boolean {
+  return /^[\x20-\x7e]{1,24}$/.test(value) && value.trim().length > 0;
 }
 
 // Original controls.cfg; SDL MOUSE3 is the browser's right button (Mouse2).
@@ -13,6 +19,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   filter: 'linear',
   mipmaps: true,
+  nickname: 'Player',
   bindings: {
     left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS',
     fire: 'Mouse0', jetpack: 'Mouse2', throwNade: 'KeyE',
@@ -27,6 +34,7 @@ export function loadSettings(): Settings {
   const settings: Settings = {
     filter: DEFAULT_SETTINGS.filter,
     mipmaps: DEFAULT_SETTINGS.mipmaps,
+    nickname: DEFAULT_SETTINGS.nickname,
     bindings: { ...DEFAULT_SETTINGS.bindings },
   };
   try {
@@ -35,6 +43,7 @@ export function loadSettings(): Settings {
     const value = stored as Record<string, unknown>;
     if (value.filter === 'nearest' || value.filter === 'linear') settings.filter = value.filter;
     if (typeof value.mipmaps === 'boolean') settings.mipmaps = value.mipmaps;
+    if (typeof value.nickname === 'string' && validNickname(value.nickname)) settings.nickname = value.nickname;
     if (typeof value.bindings === 'object' && value.bindings !== null) {
       const bindings = value.bindings as Record<string, unknown>;
       for (const action of Object.keys(settings.bindings) as ControlAction[]) {

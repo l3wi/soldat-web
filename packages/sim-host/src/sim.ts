@@ -13,7 +13,7 @@ export type Control = Partial<Record<typeof CONTROL_NAMES[number], boolean>> & {
   MouseAimX?: number; MouseAimY?: number; MouseDist?: number; pressOrder?: number;
 };
 export type SimCommand =
-  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string }
+  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string; name?: string }
   | { kind: "thing"; style: number; owner?: number; x: number; y: number; ammo?: number }
   | { kind: "weapon-choice" | "weapon-apply"; slot: number; weapon: number; secondaryWeapon?: number; selection?: "primary" | "secondary" }
   | { kind: "bullet"; weapon: number; owner: number; x: number; y: number; vx: number; vy: number; hitMultiply?: number; timeout?: number; target?: number; hitCircle?: number }

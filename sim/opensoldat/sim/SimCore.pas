@@ -341,7 +341,7 @@ end;
 function sim_command(Tick: LongWord; Data: Pointer; Length: LongWord): LongInt;
 var Obj: TJSONObject; Kind, Key: string; S, Team, Spawn, Flag,W,Secondary,Ammo,Grenades: Int64;
   Position, Velocity: TVector2; P: TPlayer; J, Created: Integer; Health,Vest: Single; D: TJSONData;
-  IsBot:Boolean;Profile:string;
+  IsBot:Boolean;Profile,NameValue:string;
 begin
   if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
   SimInvalidateState;
@@ -358,7 +358,7 @@ begin
       if (Key <> 'kind') and (Key <> 'slot') and (Key <> 'team') and (Key <> 'spawn') and
          (Key <> 'x') and (Key <> 'y') and (Key <> 'health') and (Key <> 'heldFlag') and
          (Key <> 'weapon') and (Key <> 'secondaryWeapon') and (Key <> 'ammo') and
-         (Key <> 'grenades') and (Key <> 'vest') and (Key <> 'control') and (Key <> 'bot') then Exit(SIM_UNSUPPORTED);
+         (Key <> 'grenades') and (Key <> 'vest') and (Key <> 'control') and (Key <> 'bot') and (Key <> 'name') then Exit(SIM_UNSUPPORTED);
     end;
     if (Obj.Find('slot') = nil) or not JsonInteger(Obj,'slot',0,S) or (S < 1) or (S > MAX_PLAYERS) then Exit(SIM_INVALID);
     if not JsonInteger(Obj,'team',0,Team) or (Team < 0) or (Team > TEAM_SPECTATOR) then Exit(SIM_INVALID);
@@ -373,6 +373,16 @@ begin
       if (Pos('/',Profile)>0) or (Pos('\',Profile)>0) or (Pos('..',Profile)>0) then Exit(SIM_INVALID);
       Profile:='bots/'+Profile+'.bot';
       if not PHYSFS_exists(PChar(Profile)) then Exit(SIM_MISSING);
+    end;
+    // Optional human display name (presentation identity; default keeps the oracle-compatible 'oracle-<slot>').
+    NameValue:='';
+    D:=Obj.Find('name');
+    if D<>nil then begin
+      if (Kind<>'join') or IsBot or (D.JSONType<>jtString) then Exit(SIM_INVALID);
+      NameValue:=D.AsString;
+      if (System.Length(NameValue)<1) or (System.Length(NameValue)>PLAYERNAME_CHARS) then Exit(SIM_INVALID);
+      for J:=1 to System.Length(NameValue) do
+        if (Ord(NameValue[J])<32) or (Ord(NameValue[J])>126) then Exit(SIM_INVALID);
     end;
     if not JsonInteger(Obj,'weapon',255,W) or (W<0) or (W>255) or
       not JsonInteger(Obj,'secondaryWeapon',255,Secondary) or (Secondary<0) or (Secondary>255) or
@@ -423,7 +433,7 @@ begin
     if Kind = 'join' then
     begin
       P := TPlayer.Create; P.Team := Team; P.ControlMethod := HUMAN;
-      P.Name := 'oracle-' + IntToStr(S);
+      if NameValue<>'' then P.Name := NameValue else P.Name := 'oracle-' + IntToStr(S);
       if Obj.Get('control','human')='authoritative' then begin
         P.ControlMethod:=BOT;
       end;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { mountGame, unlockGameAudio, respawnGame } from './game';
-import { DEFAULT_SETTINGS, loadSettings, saveSettings, type ControlAction, type Settings } from './settings';
+import { DEFAULT_SETTINGS, loadSettings, saveSettings, validNickname, type ControlAction, type Settings } from './settings';
 import {
   HISTORIC_MAP_CREDITS, contentUrl, loadContentManifest, loadContentNotices, sourceUrl,
   type ContentManifest, type ContentNotice,
@@ -65,8 +65,15 @@ function SettingsPanel({ settings, onApply }: { settings: Settings; onApply: (se
       window.removeEventListener('contextmenu', contextMenu, true);
     };
   }, [binding]);
-  return <form onSubmit={event => { event.preventDefault(); onApply(draft); }}>
+  return <form onSubmit={event => { event.preventDefault(); if (validNickname(draft.nickname)) onApply(draft); }}>
     <p className="section-intro">Graphics and controls are stored on this device. Applying changes restarts the current map.</p>
+    <fieldset className="player-settings">
+      <legend>Player</legend>
+      <label>Name
+        <input type="text" maxLength={24} value={draft.nickname} aria-invalid={!validNickname(draft.nickname)} onChange={event => setDraft({ ...draft, nickname: event.target.value })} />
+      </label>
+      {!validNickname(draft.nickname) && <p className="muted">1–24 printable ASCII characters.</p>}
+    </fieldset>
     <fieldset className="graphics-settings">
       <legend>Graphics</legend>
       <label>Texture filtering

@@ -179,7 +179,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
           validateHello(message, options.match.contentSetHash);
           if (message.type !== "hello") throw new ProtocolError("TYPE", "Expected hello");
           session.state = "joining";
-          controller.send({ type: "join", slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon });
+          // The sim stores original 24-char printable-ASCII names; other admitted nicknames get a slot label.
+          const name = /^[\x20-\x7e]{1,24}$/.test(message.nickname) ? message.nickname : `Player ${slot}`;
+          controller.send({ type: "join", slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, name });
           return;
         }
         if (session.state !== "active") throw new ProtocolError("VALUE", "Admission is not complete");

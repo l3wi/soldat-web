@@ -91,7 +91,7 @@ export class AuthoritativeMatch {
     if (message.type === "stop") return;
     if (message.type === "join") {
       if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || this.bots.includes(message.slot)) throw new Error("Invalid player slot");
-      requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam() }), "sim_command(join)");
+      requireStatus(this.host.command(this.tick, { kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
       requireStatus(this.host.command(this.tick, { kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
       this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), baselineId: 0, baseline: undefined, sent: new Map(), events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now });

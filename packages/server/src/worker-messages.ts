@@ -11,7 +11,7 @@ export interface MatchConfiguration {
   botCount?: number;
 }
 export type WorkerRequest =
-  | { type: "join"; slot: number; weapon: number; secondaryWeapon: number }
+  | { type: "join"; slot: number; weapon: number; secondaryWeapon: number; name?: string }
   | { type: "leave"; slot: number }
   | { type: "input"; slot: number; frames: InputFrame[] }
   | { type: "weapon-choice"; slot: number; primary: number; secondary: number; selection: WeaponSelection }

@@ -302,7 +302,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (cancelled) return;
             diagnostics.simulation = `online unavailable: ${String(error)}`; onStatus(diagnostics.simulation);
           });
-          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox)).then(async loaded => {
+          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox, settings.nickname)).then(async loaded => {
             if (cancelled) { loaded.dispose(); return; }
             host = loaded;
             inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
