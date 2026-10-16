@@ -214,3 +214,31 @@ Previews allocate no Phaser game or WebGL context. They redraw only after load o
 The backdrop is a real local `world:"original"`, `ai:true`, keyed-seed match with eight original-profile bots and no human player. The existing Phaser/WebGL renderer draws it with no HUD, limbo, scoreboard, input sampler, or audio manager. A camera eases toward living bots and switches on death or after eight seconds. Bot-capable Arena/Airpirates/DesertWind/ctf_Ash/ctf_Death rotate every 90 seconds when present in the actual content index. The background is darkened by the shell, not replaced with a video or mockup capture. Hidden tabs and the Gameplay background toggle release the background scene; reduced-motion preference freezes a real initialized bot frame. Scene ownership is serialized across menu/game transitions, retaining only shared immutable session assets.
 
 Practice keeps all 99 imported maps accessible, including bot-incapable maps with the original waypoint warning. Mode, map, 0–31 bots, original difficulty, human CTF team, and balanced/all-Alpha/all-Bravo bot teams remain configurable. Lobby map choices are mode-compatible bot-capable stock maps.
+
+Friend lobbies preserve the approved two setup rows (game type, then map) and a fixed target of eight. Host/guest identity, readiness and roster all come from reliable server state. A started match is handed off once per match ID; subsequent roster broadcasts do not reopen an already-consumed admission ticket or restart the game.
+
+## Shell cutover verification (2026-10-16)
+
+Frozen WASM: `210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1`, unchanged ABI4. Final client TypeScript check, **66 isolated tests**, and production build passed. The build retains Vite's ordinary large Phaser-chunk warning.
+
+The serial muted installed Chrome **155.0.8059.80** shell harness recorded **19** `tests/fixtures/render/shell-*.png` images: real boot, first name, menu, credits/licenses, settings, graphics/controls, practice, map picker, original in-game limbo, Escape menu, in-game settings, region countdown, joined match, online game, host lobby, lobby map picker, invite Join, guest Ready, and ready roster. No fake region/player fixtures are installed by this harness. It uses the actual HTTPS/WSS development server; only that server certificate's exact SPKI is trusted by its owned browser.
+
+`build-out/client-shell/screens.json` records successful real quickplay admission, two-client host/guest lobby start, cancellation before a quickplay POST, reduced-motion still state, background-off disposal, preserved chat Escape, and eight additional menu/game transitions. Each transition ended with exactly one backdrop canvas and no leftover game surface; sampled JS heap ranged 69–95 MB with no monotonic growth. This is bounded transition evidence, not a long-duration heap soak. No page errors were observed. Attract startup reported nine discarded clock ticks during asset/startup work; the shell receipt is not a frame-rate qualification.
+
+Post-cutover regressions:
+
+- `capture`: Airpirates versus retained Phaser reference **0%** differing pixels; all six native comparisons passed their 1% limit. Real audio, native respawn command, four served notices, stored graphics/key bindings and three game remounts passed. The removed debug-toolbar respawn is exercised only through the explicit `?capture-check` qualification hook.
+- `combat-capture`: **33/33** rows passed; worst native full-HUD comparison **0.444770%**. Receipt: `build-out/client-g3/combat-results.json`.
+- `bot-capture`: **4/4** production-shell matches passed: Arena DM and ctf_Ash CTF with four/eight original bots, each exceeding 3,600 ticks; all bots moved, shot and respawned. All runs observed native medikits/grenade kits, both CTF flags where applicable, and eligible M79/knife limbo application without forced respawn. Zero page/resource/runtime errors and zero dropped ticks. Receipt: `build-out/client-g5/bots-browser.json`.
+
+The initial shell run exposed development-origin rejection and missing canonical lobby WSS URLs through the HTTP proxy; both server contracts were corrected before the passing final run. A combat attempt interrupted by Vite HMR was discarded and rerun after the source freeze. The bot harness now awaits the existing real on-demand audio-preparation boundary before asserting native weapon application; it does not inject loadouts or bypass native eligibility.
+
+```sh
+# Own separate client dev port and real local API/WSS:
+bun run --cwd packages/server dev
+bun run --cwd packages/client dev --port 5198 --strictPort
+CLIENT_URL=http://127.0.0.1:5198 node packages/client/scripts/shell-capture.mjs
+CLIENT_URL=http://127.0.0.1:5198 bun run --cwd packages/client capture
+CLIENT_URL=http://127.0.0.1:5198 bun packages/client/scripts/combat-capture.mjs --wasm-sha256 210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1
+CLIENT_URL=http://127.0.0.1:5198 WASM_SHA256=210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1 node packages/client/scripts/bot-capture.mjs
+```

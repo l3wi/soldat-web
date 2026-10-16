@@ -7,3 +7,5 @@
 @media(max-width:900px){.stage{padding:30px 20px}.shell,.boot .shell,.lobby-screen .shell,.maps-screen .shell,.credits-screen .shell{width:min(100%,650px)}.wordmark{font-size:31px}.boot .wordmark{font-size:82px}.boot .shell{max-width:420px}.panel{padding:25px 24px}}
 @media(max-width:500px){.stage{padding:24px 18px}.wordmark{font-size:30px}.boot .wordmark{font-size:70px}.panel,.lobby-screen .panel{padding:23px 20px}.lobby-setup,.map-picker{grid-template-columns:1fr;gap:18px}.map-list{max-height:250px}.map-picker .map-preview{height:125px}.menu-row{font-size:21px;min-height:47px}.settings-row input:not([type=checkbox]),.settings-row select{width:140px}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important}}
+.stage.menu{flex-direction:row;align-items:center}
+.license-links{gap:6px;margin:18px 0}.game-surface[style*="cursor: none"] canvas{cursor:none!important}

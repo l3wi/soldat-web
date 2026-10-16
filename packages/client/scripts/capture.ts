@@ -33,7 +33,7 @@ try {
     assert.ok(result.percent <= 1, `Native ${map} parity exceeds SPEC 1%: ${result.percent}`);
     nativeParity[map] = result;
   }
-  await page.goto(base);
+  await page.goto(`${base}/?capture-check`);
   await enterShell(page);
   await openPractice(page);
   await page.getByRole("button", { name: /^Map / }).click();
@@ -75,8 +75,7 @@ try {
     await page.waitForFunction(() => (window.__soldatClient?.playedSounds ?? 0) > 0, undefined, { timeout: 20_000 });
     await page.mouse.up({ button: "right" });
     if (cycle === 0) await game.screenshot({ path: resolve(out, "client-sim-Airpirates.png") });
-    // Test browser module boundary: a static Node import cannot invoke the page-owned live host.
-    await page.evaluate(async () => { const runtime = "/src/game.ts"; (await import(runtime)).respawnGame(); });
+    await page.evaluate(() => window.__soldatCapture!.respawn());
     const live = await page.evaluate(() => window.__soldatClient);
     assert.ok(live && live.tick > 0 && !/unavailable|stopped/i.test(live.simulation));
     soundRuns.push(live);

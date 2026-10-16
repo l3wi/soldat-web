@@ -65,6 +65,7 @@ export interface ClientDiagnostics {
   soundEvents: number; playedSounds: number; sparks: number;
 }
 declare global { interface Window { __soldatClient?: ClientDiagnostics } }
+declare global { interface Window { __soldatCapture?: { respawn(): void } } }
 interface PracticeSnapshot {
   tick: number; hash: string; bink: number; bullets: number; scores: number[];
   thingStyles: number[];
@@ -402,6 +403,9 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
               requireStatus(host!.command(world!.tick, { kind: "spawn", slot: 1 }), "sim_command(spawn)");
               world!.sync(); input?.reset(); hud?.spawned(); canvas.focus({ preventScroll: true });
             };
+            // The serial capture harness exercises the original spawn command after
+            // its former debug-toolbar button was removed from product gameplay.
+            if (!attract && new URLSearchParams(location.search).has("capture-check")) window.__soldatCapture = { respawn: respawnGame };
             if (attract) {
               // Finish native join/spawn initialization before freezing reduced motion.
               // No forced spawn, synthetic soldier, or second simulation path.
@@ -533,6 +537,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       delete window.__soldatGate;
       delete window.__soldatCombat;
       delete window.__soldatPractice;
+      delete window.__soldatCapture;
       hud?.destroy();
       input?.destroy();
       if (window.__soldatClient === diagnostics) delete window.__soldatClient;

@@ -43,6 +43,12 @@ try {
     // Secondary stays in limbo; primary applies immediately without fixture injections.
     const canvas = page.locator(".game-surface > canvas").first();
     await canvas.focus(); await page.keyboard.press("Control+Digit2"); await page.keyboard.press("Digit7");
+    // Selection prepares its actual on-demand samples before native application.
+    // Await that async boundary, not an arbitrary number of display frames.
+    await page.waitForFunction(() => {
+      const player = window.__soldatPractice().players.find(player => player.slot === 1);
+      return player?.weapon === 7 && player.secondaryWeapon === 11;
+    }, undefined, { timeout: 10_000 });
     const chosen = await page.evaluate(() => window.__soldatPractice().players.find(player => player.slot === 1));
     if (chosen?.weapon !== 7 || chosen.secondaryWeapon !== 11) throw new Error("Limbo choice did not apply primary+secondary immediately");
     row.immediateWeaponChoice = { primary: chosen.weapon, secondary: chosen.secondaryWeapon };
