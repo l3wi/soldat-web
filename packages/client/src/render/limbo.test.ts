@@ -49,7 +49,7 @@ test("native row hit geometry preserves the primary/secondary separator", () => 
   assert.equal(limboHitIndex(100, 153), -1);
 });
 
-test("limbo shows on first life, death and respawn without reopening every frame", () => {
+test("limbo shows on first life and each death; a choice made while dead stays closed through respawn", () => {
   const menu = new LimboMenu();
   menu.observe(false, 8, 12);
   assert.equal(menu.active, true);
@@ -62,9 +62,17 @@ test("limbo shows on first life, death and respawn without reopening every frame
   assert.equal(menu.primary, 1); // current inventory is not the queued choice
   menu.observe(true, 8, 12);
   assert.equal(menu.active, true);
-  menu.active = false;
-  menu.observe(false, 1, 12);
+  menu.observe(true, 8, 12);
   assert.equal(menu.active, true);
+  menu.choose(2); // picked while dead
+  menu.observe(false, 3, 12);
+  assert.equal(menu.active, false); // respawn does not reopen it
+  menu.observe(false, 3, 12);
+  assert.equal(menu.active, false);
+  menu.observe(true, 3, 12);
+  assert.equal(menu.active, true); // next death does
+  menu.observe(false, 3, 12);
+  assert.equal(menu.active, true); // unchosen menu stays available after spawning
   menu.active = false;
   menu.spawn(); // explicit spawn can replace an already-living soldier
   assert.equal(menu.active, true);

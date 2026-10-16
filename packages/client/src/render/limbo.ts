@@ -41,7 +41,9 @@ export function limboHitIndex(x: number, y: number): number {
   return -1;
 }
 
-/** LimboLock persists across lives. Alive Tab changes auto-show, not an inventory cheat. */
+/** LimboLock persists across lives. Alive Tab changes auto-show, not an inventory cheat.
+ * Auto-show happens on the first life and on each death; respawn keeps the current
+ * visibility, so a choice made while dead does not reopen the menu until the next death. */
 export class LimboMenu {
   active = false;
   locked = false;
@@ -54,7 +56,7 @@ export class LimboMenu {
       if (primary >= 1 && primary <= 10) this.primary = primary;
       if (secondary === 0 || (secondary >= 11 && secondary <= 13)) this.secondary = secondary;
     }
-    if (!this.observed || dead !== this.dead) this.spawn();
+    if (!this.observed || (dead && !this.dead)) this.spawn();
     this.dead = dead;
     this.observed = true;
   }

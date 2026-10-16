@@ -34,7 +34,7 @@ Required JSON fields: `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal
 | --- | --- | --- |
 | `host`, `port` | `0.0.0.0`, `443` | TLS listener |
 | `publicUrl` | local listener origin | External HTTPS origin; set explicitly behind a proxy |
-| `targetPlayers` | `16` | Humans plus bots per public match and friend lobby, 1–32 |
+| `targetPlayers` | `12` | Humans plus bots per public match and friend lobby, 1–32 |
 | `maxMatches` | `8` | Worker/WASM capacity; excess creation returns 503 |
 | `regions` | current listener as Local | Configured `{id,name,url}` entries with HTTPS origins |
 | `allowedOrigins` | localhost/127.0.0.1 HTTP port 5195 | Explicit CORS/WSS origin allowlist; no wildcard |
