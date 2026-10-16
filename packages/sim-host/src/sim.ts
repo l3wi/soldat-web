@@ -147,8 +147,8 @@ export class SimHost {
   dispose(): void { if (this.inputPtr) this.exports.sim_free(this.inputPtr); this.inputPtr = 0; }
 }
 
-export async function loadSim(bytes: BufferSource): Promise<SimHost> {
-  const module = await WebAssembly.compile(bytes);
+export async function loadSim(source: BufferSource | WebAssembly.Module): Promise<SimHost> {
+  const module = source instanceof WebAssembly.Module ? source : await WebAssembly.compile(source);
   let exports: SimExports;
   const { wasi, stdout } = deterministicWasi(() => exports.memory);
   requireDeterministicImports(module, wasi);

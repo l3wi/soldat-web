@@ -1,3 +1,7 @@
+import type { CombatGraphic } from './render/combat';
+import type { MapData } from './render/types';
+import { sessionJson } from './session-cache';
+
 export interface ContentPin {
   repo: string;
   commit: string;
@@ -19,15 +23,26 @@ export interface MapManifest {
   simContentSha256: string;
   botCapable: boolean;
   missing: { kind: string; requested: string; active: boolean; fallback: string | null }[];
+  simPack: { path: string; sha256: string; bytes: number };
 }
 
 /** Metadata only: loading this index never requests images, audio or map bodies. */
-export interface ContentManifest {
+export interface ContentIndex {
   schemaVersion: number;
   pins: { base: ContentPin; opensoldat: ContentPin };
   simContentSha256: string;
+  simPack: { path: string; sha256: string; bytes: number };
   alphaMode: string;
   maps: Record<string, MapManifest>;
+  core: {
+    graphics: Record<'weapons' | 'objects' | 'sparks' | 'gostek' | 'interface', CombatGraphic[]>;
+    font: string;
+    sfx: Record<string, { object: string; [key: string]: unknown }>;
+  };
+}
+
+export interface ContentManifest extends Omit<ContentIndex, 'maps' | 'simPack'> {
+  maps: Record<string, Omit<MapManifest, 'simPack'>>;
   objects: Record<string, { sha256: string; bytes: number; provenance: Provenance[] }>;
 }
 
@@ -35,10 +50,20 @@ export function contentUrl(path: string): string {
   return `/content/${path.split('/').map(encodeURIComponent).join('/')}`;
 }
 
-export async function loadContentManifest(signal?: AbortSignal): Promise<ContentManifest> {
-  const response = await fetch(contentUrl('manifest.json'), { signal });
-  if (!response.ok) throw new Error(`Content index could not load (HTTP ${response.status}).`);
-  return response.json() as Promise<ContentManifest>;
+export function loadContentIndex(signal?: AbortSignal): Promise<ContentIndex> {
+  return sessionJson<ContentIndex>(contentUrl('index.json'), signal);
+}
+
+/** Full provenance is deliberately requested only when the credits panel opens. */
+export function loadContentManifest(signal?: AbortSignal): Promise<ContentManifest> {
+  return sessionJson<ContentManifest>(contentUrl('manifest.json'), signal);
+}
+
+export async function loadRenderMap(name: string, signal?: AbortSignal): Promise<MapData> {
+  const index = await loadContentIndex(signal);
+  const entry = index.maps[name];
+  if (!entry) throw new Error(`Map absent from content index: ${name}`);
+  return sessionJson<MapData>(contentUrl(entry.path), signal);
 }
 
 export const CONTENT_NOTICES = [

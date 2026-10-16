@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { mountGame, unlockGameAudio, respawnGame } from './game';
 import { DEFAULT_SETTINGS, loadSettings, saveSettings, validNickname, type ControlAction, type Settings } from './settings';
 import {
-  HISTORIC_MAP_CREDITS, contentUrl, loadContentManifest, loadContentNotices, sourceUrl,
-  type ContentManifest, type ContentNotice,
+  HISTORIC_MAP_CREDITS, contentUrl, loadContentIndex, loadContentManifest, loadContentNotices, sourceUrl,
+  type ContentIndex, type ContentManifest, type ContentNotice,
 } from './content';
 import { DEFAULT_SANDBOX, type SandboxOptions } from './sandbox-options';
 
@@ -103,13 +103,17 @@ function SettingsPanel({ settings, onApply }: { settings: Settings; onApply: (se
   </form>;
 }
 
-function CreditsPanel({ manifest }: { manifest: ContentManifest | null }) {
+function CreditsPanel({ manifest: index }: { manifest: ContentIndex | null }) {
+  const [manifest, setManifest] = useState<ContentManifest | null>(null);
+  const [manifestError, setManifestError] = useState('');
   const [notices, setNotices] = useState<ContentNotice[] | null>(null);
   const [noticeError, setNoticeError] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    loadContentManifest(abort.signal).then(value => { if (!abort.signal.aborted) setManifest(value); })
+      .catch(error => { if (!abort.signal.aborted) setManifestError(errorMessage(error)); });
     loadContentNotices(abort.signal).then(setNotices).catch(error => { if (!abort.signal.aborted) setNoticeError(errorMessage(error)); });
     return () => abort.abort();
   }, []);
@@ -130,9 +134,9 @@ function CreditsPanel({ manifest }: { manifest: ContentManifest | null }) {
       <p>Play font: © 2011 Jonas Hecksher / Playtype / e-types AS, licensed under SIL OFL 1.1. The font is distributed unmodified.</p>
       <p>Toolchain recipe attribution: <a href="https://github.com/humanova/soldat-web">humanova/soldat-web</a> (MIT).</p>
       <p>Base assets: <a href="https://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0</a>. OpenSoldat source: MIT, except individually identified components. <a href="https://github.com/opensoldat/opensoldat/blob/bf43a43bdd7a069e02c906768807f66e621b2888/shared/Vector.pas">Vector.pas source and retained notice</a>: MPL 1.1, JEDI/Direct3DX-derived code. <a href="https://www.mozilla.org/MPL/1.1/">Read MPL 1.1</a>.</p>
-      {manifest && <dl className="pins">
-        <dt>Base content pin</dt><dd><a href={sourceUrl(manifest.pins.base.repo, manifest.pins.base.commit)}><code>{manifest.pins.base.commit}</code></a></dd>
-        <dt>OpenSoldat source pin</dt><dd><a href={sourceUrl(manifest.pins.opensoldat.repo, manifest.pins.opensoldat.commit)}><code>{manifest.pins.opensoldat.commit}</code></a></dd>
+      {index && <dl className="pins">
+        <dt>Base content pin</dt><dd><a href={sourceUrl(index.pins.base.repo, index.pins.base.commit)}><code>{index.pins.base.commit}</code></a></dd>
+        <dt>OpenSoldat source pin</dt><dd><a href={sourceUrl(index.pins.opensoldat.repo, index.pins.opensoldat.commit)}><code>{index.pins.opensoldat.commit}</code></a></dd>
       </dl>}
     </section>
     <details>
@@ -157,7 +161,8 @@ function CreditsPanel({ manifest }: { manifest: ContentManifest | null }) {
     </section>
     <section>
       <h3>Per-file provenance</h3>
-      {!manifest ? <p>The content index is unavailable. Its error is shown in the main menu.</p> : <>
+      {manifestError && <p role="alert">Could not load provenance: {manifestError}</p>}
+      {!manifest ? <p role="status">{manifestError ? 'Provenance unavailable.' : 'Loading full provenance…'}</p> : <>
         <p><a href={contentUrl('manifest.json')}>Open full content manifest</a>. Every contribution retains its credit, license, source pin, source hash and ordered transformations.</p>
         <label>Find a source path, creator or license<input type="search" value={query} onChange={event => { setQuery(event.target.value); setPage(0); }} /></label>
         <p className="muted" role="status">{matching.length} provenance records{matching.length > 0 ? `; showing ${page * pageSize + 1}–${Math.min((page + 1) * pageSize, matching.length)}` : ''}.</p>
@@ -196,7 +201,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 }
 
 function ClientShell({ settings, setSettings }: { settings: Settings; setSettings: (settings: Settings) => void }) {
-  const [manifest, setManifest] = useState<ContentManifest | null>(null);
+  const [manifest, setManifest] = useState<ContentIndex | null>(null);
   const [manifestError, setManifestError] = useState('');
   const [reload, setReload] = useState(0);
   const [selectedMap, setSelectedMap] = useState('Arena');
@@ -215,7 +220,7 @@ function ClientShell({ settings, setSettings }: { settings: Settings; setSetting
   useEffect(() => {
     const abort = new AbortController();
     setManifestError('');
-    loadContentManifest(abort.signal).then(index => {
+    loadContentIndex(abort.signal).then(index => {
       if (abort.signal.aborted) return;
       setManifest(index);
       setSelectedMap(current => Object.hasOwn(index.maps, current) ? current : (Object.keys(index.maps).sort()[0] ?? ''));

@@ -1,3 +1,5 @@
+import { BOT_PROFILES } from './sandbox-options';
+
 // OpenSoldat Sound.pas SAMPLE_FILES order (MIT); index zero is unused.
 export const SOUND_SAMPLES: readonly string[] = [
   "",
@@ -165,3 +167,78 @@ export const SOUND_SAMPLES: readonly string[] = [
   "sfx_snow.wav",
   "sfx_wind.wav"
 ];
+
+export interface SoundPreloadOptions {
+  /** Native weapon NUMs, not Guns[] menu indices (Colt=0, knife=11). */
+  loadout?: { weapon: number; secondaryWeapon: number };
+  /** Practice cycles BOT_PROFILES in this order; repeated profiles add no samples. */
+  bots?: number;
+}
+
+// Constants.pas SFX IDs; Sound.pas:471-474 is the complete loop allowlist.
+export const LOOPING_SOUND_SAMPLES = [2, 56, 133] as const;
+
+// Sprites.pas movement/death/hit, Control.pas jets/grenades, Things.pas pickups.
+// Deliberately excludes music, radio, weather, bonuses and unrelated weapons.
+const BASIC_SOUND_SAMPLES = [
+  2, 13, 14, 15, 19, 20, 21, 22, 24, 26, 28, 39, 43, 46, 47, 50, 59, 61, 64,
+  70, 71, 72, 73, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 99, 104, 105, 106,
+  107, 108, 109, 110, 111, 112, 117, 118, 119, 121, 122, 123, 126,
+] as const;
+
+// Weapons.pas *_NUM and Sprites.pas:991-1015,4232-4568; Control.pas reload/start/end.
+const WEAPON_SOUND_SAMPLES: Readonly<Record<number, readonly number[]>> = {
+  0: [41, 42, 44, 45],
+  1: [29, 30, 44, 45],
+  2: [9, 10, 44, 45],
+  3: [1, 3, 44, 45],
+  4: [31, 32, 44, 45],
+  5: [11, 12, 120],
+  6: [6, 7, 44, 45],
+  7: [16, 17, 18],
+  8: [33, 34, 44, 45, 97, 98, 142, 147],
+  9: [5, 8, 44, 45],
+  10: [35, 36, 37, 38, 44, 45],
+  11: [129, 130],
+  12: [131, 132, 133, 136],
+  13: [135, 147, 148, 20],
+  14: [56, 60, 95, 96],
+  15: [48, 49],
+  16: [48, 49],
+  30: [137, 138, 139, 141],
+  255: [46],
+};
+
+// Pinned server/configs/bots/*.bot Favourite_Weapon and Secondary_Weapon.
+// Secondary_Weapon is a zero-based Guns[COLT..LAW] index (Sprites.pas:378-381).
+export const BOT_SOUND_LOADOUTS: Readonly<Record<string, { weapon: number; secondaryWeapon: number }>> = {
+  Admiral: { weapon: 9, secondaryWeapon: 0 },
+  Billy: { weapon: 5, secondaryWeapon: 11 },
+  Blain: { weapon: 10, secondaryWeapon: 0 },
+  'Boogie Man': { weapon: 12, secondaryWeapon: 0 },
+  Commando: { weapon: 4, secondaryWeapon: 11 },
+  'D Dave': { weapon: 3, secondaryWeapon: 12 },
+  Danko: { weapon: 3, secondaryWeapon: 0 },
+  Dutch: { weapon: 9, secondaryWeapon: 0 },
+  John: { weapon: 1, secondaryWeapon: 11 },
+  Kruger: { weapon: 6, secondaryWeapon: 0 },
+  Poncho: { weapon: 2, secondaryWeapon: 0 },
+  Roach: { weapon: 7, secondaryWeapon: 0 },
+  'Sgt. Mac': { weapon: 5, secondaryWeapon: 0 },
+  Sniper: { weapon: 8, secondaryWeapon: 0 },
+  Stevie: { weapon: 4, secondaryWeapon: 0 },
+  Terminator: { weapon: 8, secondaryWeapon: 0 },
+};
+
+/** Only the selected local loadout and actual practice bots, never the full catalog. */
+export function soundPreloadSamples(options: SoundPreloadOptions = {}): number[] {
+  const samples = new Set<number>(BASIC_SOUND_SAMPLES);
+  const add = (loadout: { weapon: number; secondaryWeapon: number }) => {
+    for (const weapon of [loadout.weapon, loadout.secondaryWeapon]) {
+      for (const sample of WEAPON_SOUND_SAMPLES[weapon] ?? []) samples.add(sample);
+    }
+  };
+  add(options.loadout ?? { weapon: 4, secondaryWeapon: 0 });
+  for (const profile of BOT_PROFILES.slice(0, options.bots ?? 0)) add(BOT_SOUND_LOADOUTS[profile]!);
+  return [...samples].sort((a, b) => a - b);
+}

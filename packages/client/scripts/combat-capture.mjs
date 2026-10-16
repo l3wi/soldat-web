@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { execFileSync } from "node:child_process";
 import { chromium } from "playwright";
 import { compare } from "../../render-spike/scripts/compare.ts";
+import { SIM_ABI_VERSION } from "../../sim-host/src/sim.ts";
 
 // Usage: bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_SHA256
 // Prerequisites: running client dev server, installed Chrome, and native combat captures.
@@ -20,9 +21,8 @@ if (!/^[a-f0-9]{64}$/.test(options["wasm-sha256"])) throw new Error("An explicit
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 const out = resolve(root, "tests/fixtures/render"), receipts = resolve(root, "build-out/client-g3");
 await mkdir(out, { recursive: true }); await mkdir(receipts, { recursive: true });
-const identity = { expectedWasmSha256: options["wasm-sha256"], abiVersion: 0x00010003,
-  supersededWasmSha256: "181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393",
-  reason: "Coordinator-authorized presentation-only ABI3; no acceptance across artifact identities" };
+const identity = { expectedWasmSha256: options["wasm-sha256"], abiVersion: SIM_ABI_VERSION,
+  reason: "Explicit current WASM pin and shared ABI contract; no acceptance across artifact identities" };
 const localWasm = await readFile(resolve(root, "build-out/sim/sim.wasm"));
 if (hash(localWasm) !== identity.expectedWasmSha256) throw new Error("Local WASM differs from explicit capture pin");
 const servedResponse = await fetch(`${options.url}/sim.wasm`);

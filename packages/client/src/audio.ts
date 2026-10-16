@@ -1,8 +1,10 @@
 import type Phaser from 'phaser';
-import { SOUND_SAMPLES } from './sound-samples';
+import { SOUND_SAMPLES, soundPreloadSamples, type SoundPreloadOptions } from './sound-samples';
+import { contentUrl, loadContentIndex } from './content';
 import { SIM_PRESENTATION_EVENTS } from '@soldat-web/sim-host';
 
-let decodedSounds: Promise<Record<string, AudioBuffer>> | undefined;
+// Successful buffers and in-flight requests survive scene teardown for the session.
+const decodedSounds = new Map<number, Promise<AudioBuffer>>();
 
 const EVENT_HEADER_BYTES = 20;
 const PRESENTATION_BIT = 0x80000000;
@@ -44,7 +46,18 @@ export function soundPosition(
 
 export const SOUND_MAPPING_STATUS = 'ABI sound events mapped to original sample IDs and Phaser Web Audio; explicit gesture required.';
 
-interface Voice { sound: Phaser.Sound.WebAudioSound; sample: number; x: number; y: number; volume: number; nonpositional: boolean; maxDistance: number }
+interface Voice {
+  sound?: Phaser.Sound.WebAudioSound;
+  sample: number;
+  x: number;
+  y: number;
+  volume: number;
+  nonpositional: boolean;
+  maxDistance: number;
+  loop: boolean;
+  active: boolean;
+  paused: boolean;
+}
 
 /** Owns scene voices, never the game-wide Phaser sound manager. */
 export class Audio {
@@ -59,17 +72,34 @@ export class Audio {
   private destroyed = false;
   private eventView: DataView | undefined;
   private loading: Promise<void> | undefined;
+  private initialized = false;
+  private readonly sampleLoads = new Map<number, Promise<void>>();
+  private readonly readySamples = new Set<number>();
+  public lastError: Error | undefined;
   soundEvents = 0;
   playedSounds = 0;
   private unlocked = false;
   private readonly voices: (Voice | undefined)[] = new Array(256);
+  private readonly pendingVoices = new Set<Voice>();
   private readonly position = { x: 0, y: 0, z: 0 };
 
-  constructor(private readonly scene: Phaser.Scene) {}
+  constructor(
+    private readonly scene: Phaser.Scene,
+    private readonly onError: (error: Error) => void = error => console.error(error),
+  ) {}
 
-  prepare(): Promise<void> { return this.loading ??= this.load(); }
+  /** Additive match preload; later loadout changes reuse the same per-sample promises. */
+  async prepare(options: SoundPreloadOptions = {}): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    this.initialize();
+    return this.loading = Promise.all([
+      this.loading,
+      ...soundPreloadSamples(options).map(sample => this.loadSample(sample)),
+    ]).then(() => {});
+  }
 
-  private async load(): Promise<void> {
+  private initialize(): void {
+    if (this.initialized) return;
     const manager = this.scene.sound as Phaser.Sound.WebAudioSoundManager;
     if (!manager.context) throw new Error('Positional SFX unavailable: Web Audio required');
     manager.setListenerPosition(0, 0);
@@ -77,23 +107,35 @@ export class Audio {
     if (listener.positionX) {
       listener.positionX.value = 0; listener.positionY.value = 0; listener.positionZ.value = 0;
     } else listener.setPosition(0, 0, 0);
-    decodedSounds ??= fetch('/content/manifest.json').then(response => {
-      if (!response.ok) throw new Error(`Audio manifest HTTP ${response.status}`);
-      return response.json();
-    }).then(async manifest => {
-      const decoded: Record<string, AudioBuffer> = {};
-      await Promise.all(SOUND_SAMPLES.filter(Boolean).map(async sample => {
-        const asset = manifest.core.sfx[`sfx/${sample}`];
-        if (!asset) throw new Error(`Missing original sound sample: ${sample}`);
-        const response = await fetch(`/content/${asset.object}`);
-        if (!response.ok) throw new Error(`Sound ${sample}: HTTP ${response.status}`);
-        decoded[sample] = await manager.context.decodeAudioData(await response.arrayBuffer());
-      }));
-      return decoded;
+    this.initialized = true;
+  }
+
+  private loadSample(sample: number): Promise<void> {
+    const existing = this.sampleLoads.get(sample);
+    if (existing) return existing;
+    let decoded = decodedSounds.get(sample);
+    if (!decoded) {
+      const context = (this.scene.sound as Phaser.Sound.WebAudioSoundManager).context;
+      const name = SOUND_SAMPLES[sample]!;
+      decoded = loadContentIndex().then(async manifest => {
+        const asset = manifest.core.sfx[`sfx/${name}`];
+        if (!asset) throw new Error('Missing original sound sample');
+        const response = await fetch(contentUrl(asset.object));
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        // Opus-in-Ogg is decoded by Web Audio, not an HTMLAudio fallback.
+        return context.decodeAudioData(await response.arrayBuffer());
+      }).catch(error => {
+        throw new Error(`Sound ${name}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+      });
+      decodedSounds.set(sample, decoded);
+    }
+    const loading = decoded.then(buffer => {
+      if (this.destroyed) return;
+      this.scene.cache.audio.add(`sfx/${SOUND_SAMPLES[sample]}`, buffer);
+      this.readySamples.add(sample);
     });
-    const decoded = await decodedSounds;
-    if (this.destroyed) return;
-    for (const [sample, buffer] of Object.entries(decoded)) this.scene.cache.audio.add(`sfx/${sample}`, buffer);
+    this.sampleLoads.set(sample, loading);
+    return loading;
   }
 
   /** Invoke directly from the start/audio-enable gesture, not an update loop. */
@@ -107,8 +149,8 @@ export class Audio {
     };
     manager.unlock?.();
     if (manager.context?.state === 'suspended') await manager.context.resume();
-    await this.prepare();
-    this.unlocked = true;
+    await (this.loading ?? this.prepare());
+    if (!this.destroyed) this.unlocked = true;
   }
 
   /** Follow the player's particle position, not the aim-offset camera (Sound.pas:436-440). */
@@ -118,6 +160,7 @@ export class Audio {
   }
 
   private updateVoice(voice: Voice): void {
+    if (!voice.sound) return;
     const dx = voice.nonpositional ? 0 : voice.x - this.listenerX;
     const dy = voice.nonpositional ? 0 : voice.y - this.listenerY;
     voice.sound.setVolume(Math.max(0, voice.volume * attenuation(Math.hypot(dx, dy) * 750 / voice.maxDistance)));
@@ -127,37 +170,100 @@ export class Audio {
     else node?.setPosition(this.position.x, this.position.y, this.position.z);
   }
 
+  private startVoice(channel: number, voice: Voice): void {
+    if (this.destroyed || this.voices[channel] !== voice || !voice.active || voice.paused) return;
+    voice.sound ??= this.scene.sound.add(`sfx/${SOUND_SAMPLES[voice.sample]}`, {
+      source: { x: 0, y: 0, z: -0.5, rolloffFactor: 0, panningModel: 'equalpower' },
+    }) as Phaser.Sound.WebAudioSound;
+    voice.sound.setLoop(voice.loop);
+    this.updateVoice(voice);
+    if (!voice.sound.isPlaying) {
+      voice.sound.play({ loop: voice.loop });
+      this.updateVoice(voice);
+      this.playedSounds++;
+    }
+  }
+
   private soundEvent(view: DataView, offset: number, length: number): void {
     if (length !== 32) throw new RangeError('Sound event must contain 32 bytes');
     this.soundEvents++;
     const sample = view.getInt32(offset, true), requestedChannel = view.getInt32(offset + 4, true);
     const operation = view.getInt32(offset + 8, true), flags = view.getUint32(offset + 12, true);
     let channel = requestedChannel;
-    if (operation === 1) { this.voices[channel]?.sound.stop(); return; }
-    if (operation === 2) {
-      const volume = view.getFloat32(offset + 24, true);
-      if (channel === -1) { for (const voice of this.voices) voice?.sound.setVolume(volume); }
-      else this.voices[channel]?.sound.setVolume(volume);
+    if (operation === 1) {
+      const voice = this.voices[channel];
+      if (voice) { voice.active = false; voice.paused = false; voice.sound?.stop(); }
       return;
     }
-    if (operation === 3) { if (this.voices[channel]?.sound.isPlaying) this.voices[channel]!.sound.pause(); return; }
-    if (operation === 4) { if (this.voices[channel]?.sound.isPaused) this.voices[channel]!.sound.resume(); return; }
+    if (operation === 2) {
+      const volume = view.getFloat32(offset + 24, true);
+      if (channel === -1) {
+        for (const voice of this.voices) {
+          if (voice) { voice.volume = volume; voice.sound?.setVolume(volume); }
+        }
+      } else {
+        const voice = this.voices[channel];
+        if (voice) { voice.volume = volume; voice.sound?.setVolume(volume); }
+      }
+      return;
+    }
+    if (operation === 3) {
+      const voice = this.voices[channel];
+      if (voice?.active && (!voice.sound || voice.sound.isPlaying)) { voice.paused = true; voice.sound?.pause(); }
+      return;
+    }
+    if (operation === 4) {
+      const voice = this.voices[channel];
+      if (voice?.active && voice.paused) {
+        voice.paused = false;
+        if (voice.sound?.isPaused) voice.sound.resume();
+        else if (this.readySamples.has(voice.sample)) this.startVoice(channel, voice);
+      }
+      return;
+    }
     if (operation !== 0) throw new Error(`Unsupported sound operation ${operation}`);
     if (!SOUND_SAMPLES[sample]) throw new Error(`Unknown sound sample ID ${sample}`);
     if (!this.unlocked || this.destroyed) return;
     if (requestedChannel >= 128) return;
-    if (channel === -1) channel = this.voices.findIndex((voice, index) => index >= 128 && !voice?.sound.isPlaying);
+    // Pending default-channel requests reserve a voice until decode completes.
+    if (channel === -1) {
+      for (let candidate = 128; candidate < this.voices.length; candidate++) {
+        const voice = this.voices[candidate];
+        if (!voice || (voice.sound ? !voice.sound.isPlaying : !voice.active || voice.paused)) {
+          channel = candidate;
+          break;
+        }
+      }
+    }
     if (channel < 0 || channel > 255) return;
     let voice = this.voices[channel];
-    if (voice && !voice.sound.isPlaying && voice.sample !== sample) { voice.sound.destroy(); voice = undefined; }
+    // Native playing sources keep their current buffer; a pending or stopped
+    // source with a different sample is replaced, invalidating its continuation.
+    if (voice && !voice.sound?.isPlaying && voice.sample !== sample) { voice.sound?.destroy(); voice = undefined; }
     if (!voice) {
-      const sound = this.scene.sound.add(`sfx/${SOUND_SAMPLES[sample]}`, { source: { x: 0, y: 0, z: -0.5, rolloffFactor: 0, panningModel: 'equalpower' } }) as Phaser.Sound.WebAudioSound;
-      voice = { sound, sample, x: 0, y: 0, volume: 1, nonpositional: false, maxDistance: 750 }; this.voices[channel] = voice;
+      voice = { sample, x: 0, y: 0, volume: 1, nonpositional: false, maxDistance: 750, loop: false, active: true, paused: false };
+      this.voices[channel] = voice;
     }
     voice.x = view.getFloat32(offset + 16, true); voice.y = view.getFloat32(offset + 20, true);
     voice.volume = view.getFloat32(offset + 24, true); voice.nonpositional = (flags & 2) !== 0; voice.maxDistance = view.getFloat32(offset + 28, true);
-    voice.sound.setLoop((flags & 1) !== 0); this.updateVoice(voice);
-    if (!voice.sound.isPlaying) { voice.sound.play({ loop: (flags & 1) !== 0 }); this.updateVoice(voice); this.playedSounds++; }
+    voice.loop = (flags & 1) !== 0; voice.active = true; voice.paused = false;
+    if (this.readySamples.has(voice.sample)) this.startVoice(channel, voice);
+    else if (!voice.sound) {
+      // Attach once per pending voice, not on every simulation tick of a loop.
+      if (this.pendingVoices.has(voice)) return;
+      this.pendingVoices.add(voice);
+      const pending = voice;
+      void this.loadSample(pending.sample).then(() => {
+        this.pendingVoices.delete(pending);
+        this.startVoice(channel, pending);
+      }).catch(error => {
+        this.pendingVoices.delete(pending);
+        if (this.destroyed || this.voices[channel] !== pending || !pending.active) return;
+        pending.active = false;
+        this.lastError = error instanceof Error ? error : new Error(String(error));
+        this.onError(this.lastError);
+      });
+    }
   }
   /** Accepts a persistent capacity-sized view plus the actual sim_events byte count. */
   public drain(events: Uint8Array, length = events.byteLength): void {
@@ -197,8 +303,10 @@ export class Audio {
   }
 
   public destroy(): void {
-    for (const voice of this.voices) voice?.sound.destroy();
     this.destroyed = true;
+    for (const voice of this.voices) voice?.sound?.destroy();
+    this.voices.fill(undefined);
+    this.pendingVoices.clear();
     this.unmappedKinds.clear();
   }
 }

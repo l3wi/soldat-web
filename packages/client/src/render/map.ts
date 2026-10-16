@@ -9,6 +9,7 @@ import type {
 import type { Regions } from "./geometry";
 import { appendRun, quadGeometry, quadVertices } from "./geometry";
 import { QuadBatch } from "./quad-batch";
+import { loadSimulationPack } from "../sim-content";
 const excluded = new Set([1, 2, 3, 11, 24, 25]);
 const background = (p: Polygon) => p.polytype === 24 || p.polytype === 25;
 // Pascal Round uses ties-to-even, unlike JS Math.round (including negative ties).
@@ -37,11 +38,8 @@ export async function loadSectors(
   name: string,
   polygonCount: number,
 ): Promise<Sectors> {
-  const response = await fetch(
-    `/content/sim/maps/${encodeURIComponent(name)}.pms`,
-  );
-  if (!response.ok) throw Error(`PMS ${name}: ${response.status}`);
-  const view = new DataView(await response.arrayBuffer());
+  const bytes = (await loadSimulationPack(name)).get(`maps/${name.toLowerCase()}.pms`)!;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   let p = 92 + 121 * polygonCount;
   const division = view.getInt32(p, true),
     radius = view.getInt32(p + 4, true);

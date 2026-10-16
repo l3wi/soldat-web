@@ -1,0 +1,33 @@
+Browser media derivatives
+=========================
+
+The source OpenSoldat base assets retain their original CC-BY-4.0 license and
+attribution. See base-license.txt and base-credits.txt alongside this notice.
+The original source tables retain the MIT notice in opensoldat-mit.txt. The Play
+font is copied unchanged under play-OFL.txt. These transformations do not imply
+endorsement by the original contributors.
+
+Images: every composited RGBA8 frame is encoded with cwebp -lossless -exact -z 9.
+The importer independently decodes every WebP with dwebp and rejects any change
+to dimensions or straight-alpha RGBA bytes, including RGB under transparent
+pixels. Frame timing, native scale, color-key behavior, and NPOT dimensions are
+preserved. No premultiplication is baked into the derivative.
+
+Audio: original WAV files are build-time inputs only. Microsoft ADPCM is first
+decoded to PCM with its original fact sample count; PCM inputs are read without
+changing the source masters. Browser derivatives are Ogg Opus, libopus 64 kbps
+VBR, mono, 48 kHz. This is a lossy transformation; original sample values are not
+preserved. Original and encoded duration metadata, Opus pre-skip and final Ogg
+granule are recorded. Duration deviation must not exceed one 48-kHz sample.
+
+Native loop samples are sfx/rocketz.wav (2), sfx/flamer.wav (56), and
+sfx/chainsaw-r.wav (133), as selected in client/Sound.pas. Loop derivatives are
+not crossfaded, padded, or trimmed to hide discontinuities. The importer records
+normalized source/decoded seam jumps, first/last five-millisecond RMS, and
+adjacent-sample delta RMS. These are objective signal statistics, not audible
+listening or a claim that lossy encoding is perceptually indistinguishable.
+
+The complete source repository URL, pinned revision, source path, source hash,
+and ordered transformation records remain in manifest.json's objects index.
+Raw simulation payloads and sim/manifest.json serialization are not changed by
+media encoding or by the SPK1 transport envelopes.

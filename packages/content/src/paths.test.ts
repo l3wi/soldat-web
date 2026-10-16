@@ -34,6 +34,40 @@ describe('simulation content paths', () => {
       const result = await importContent({ base, out, source: join(root, 'reference/opensoldat'), pins: join(root, 'pins.json') });
       const manifest = JSON.parse(await readFile(join(out, 'sim/manifest.json'), 'utf8'));
       const content = JSON.parse(await readFile(join(out, 'manifest.json'), 'utf8'));
+      const index = JSON.parse(await readFile(join(out, 'index.json'), 'utf8'));
+      expect(Object.keys(index).sort()).toEqual(['alphaMode', 'core', 'maps', 'pins', 'schemaVersion', 'simContentSha256', 'simPack']);
+      expect(index.core).toEqual(content.core);
+      expect(index.simContentSha256).toBe(result.simContentSha256);
+      async function checkPack(pack: { path: string; sha256: string; bytes: number }, expectedIds: string[]) {
+        const bytes = await readFile(join(out, pack.path)), view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        expect(bytes.length).toBe(pack.bytes); expect(sha256(bytes)).toBe(pack.sha256);
+        expect(bytes.subarray(0, 4).toString()).toBe('SPK1');
+        expect(view.getUint32(4, true)).toBe(expectedIds.length);
+        const ids: string[] = [];
+        let offset = 8;
+        for (let i = 0; i < expectedIds.length; i++) {
+          const idLength = view.getUint16(offset, true), length = view.getUint32(offset + 2, true); offset += 6;
+          const id = bytes.subarray(offset, offset + idLength).toString('utf8'); offset += idLength;
+          const raw = bytes.subarray(offset, offset + length); offset += length;
+          ids.push(id);
+          expect(length).toBe(manifest.files[id].bytes); expect(sha256(raw)).toBe(manifest.files[id].sha256);
+          expect(raw).toEqual(await readFile(join(out, manifest.files[id].path)));
+        }
+        expect(ids).toEqual(expectedIds); expect(offset).toBe(bytes.length);
+      }
+      const allIds = Object.keys(manifest.files).sort();
+      await checkPack(index.simPack, allIds);
+      for (const [name, map] of Object.entries(index.maps) as [string, { path: string; simPack: { path: string; sha256: string; bytes: number } }][]) {
+        expect(Object.keys(map).sort()).toEqual(['botCapable', 'mapSha256', 'missing', 'path', 'simContentSha256', 'simPack']);
+        await checkPack(map.simPack, allIds.filter(id => !id.startsWith('maps/') || id === `maps/${name.toLowerCase()}.pms`));
+        const render = JSON.parse(await readFile(join(out, map.path), 'utf8'));
+        expect(render.terrain).toBeDefined(); expect(render.scenery).toBeDefined();
+      }
+      for (const image of Object.values(content.images) as { frames: { object: string }[] }[])
+        for (const frame of image.frames) expect(frame.object.endsWith('.webp')).toBe(true);
+      for (const asset of Object.values(index.core.sfx) as { object: string; codec: string; channels: number }[]) {
+        expect(asset.object.endsWith('.opus')).toBe(true); expect(asset.codec).toBe('opus'); expect(asset.channels).toBe(1);
+      }
       const pins = JSON.parse(await readFile(join(root, 'pins.json'), 'utf8'));
       const profiles = (await readdir(join(base, 'server/configs/bots'))).filter(name => name.toLowerCase().endsWith('.bot')).sort();
       const ids = profiles.map(name => `bots/${name.toLowerCase()}`).sort();
@@ -65,5 +99,5 @@ describe('simulation content paths', () => {
     } finally {
       await rm(out, { recursive: true, force: true });
     }
-  }, 120000);
+  }, 600000);
 });

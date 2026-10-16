@@ -8,13 +8,13 @@ From the repository root:
 
 ```sh
 bun install
-bun packages/content/src/cli.ts --base reference/base --out dist/content
-bun run --cwd packages/client dev --port 5195
+bun packages/content/src/cli.ts --base reference/base --out dist/content-next
+SOLDAT_CONTENT_ROOT=dist/content-next bun run --cwd packages/client dev --port 5195
 ```
 
 Open `http://127.0.0.1:5195/`, choose a map, DM/CTF mode and 0–31 original waypoint bots, then start practice. CTF offers your team and balanced/all-Alpha/all-Bravo bot assignment; difficulty uses the original 300/200/100/50/10 skill settings. Maps marked bot-incapable show **bots need waypoints on this map**. Settings persist on this browser. Click the canvas to focus keyboard/mouse controls; use **Enable audio** for the explicit Web Audio unlock gesture. **Respawn** issues the simulation's reliable `spawn` command at its current tick. Credits & Licenses is available both from the main menu and in-game About.
 
-The dev middleware serves `/content/` from `dist/content/` and `/sim.wasm` from `build-out/sim/sim.wasm`. Build the real module with `sim/build/build-sim.sh` before starting. Module/ABI/content failures leave the map visible with an explicit **simulation unavailable** notice; no placeholder soldier or TypeScript pose evaluator exists.
+Development serves `/content/` from `dist/content/` by default, or the repository-relative/absolute `SOLDAT_CONTENT_ROOT` directory when set. Use the explicit `dist/content-next` override above while retaining an older `dist/content` baseline: the current client needs the new index and simulation packs, which the old baseline import lacks. `/sim.wasm` serves the existing `build-out/sim/sim.wasm`. The real module must already exist; neither the client build nor preview rebuilds it. Module/ABI/content failures leave the map visible with an explicit **simulation unavailable** notice; no placeholder soldier or TypeScript pose evaluator exists.
 
 ```sh
 bun run --cwd packages/client check
@@ -29,7 +29,57 @@ node packages/client/scripts/qualify.mjs
 bun run --cwd packages/client capture --maps
 ```
 
-`build` writes `dist/client/`. Deploy that directory with `/content/` mapped to the imported `dist/content/` tree and `/sim.wasm` mapped to the real module, using `application/wasm`. Vite does not copy content into the browser bundle. The current Phaser bundle triggers Vite's ordinary large-chunk warning.
+## Production hosting and download comparison
+
+```sh
+# Import browser derivatives separately; do not replace a retained baseline.
+bun packages/content/src/cli.ts --base reference/base --out dist/content-next
+# Production defaults to dist/content-next; override with SOLDAT_CONTENT_ROOT.
+bun run --cwd packages/client build
+bun run --cwd packages/client preview --port 5196
+# Focused filtering, compression, MIME, caching and path/encoding tests:
+bun run --cwd packages/client test:hosting
+```
+
+`build` writes a self-contained `dist/client/`: React and Phaser have separate hash-named chunks; the unchanged current WASM is emitted as `assets/sim-<SHA-256>.wasm`. Runtime code imports its URL through `virtual:soldat-sim-wasm`; development resolves that module to `/sim.wasm`. The content copy includes `index.json`, the full on-demand credits manifest, map render JSON, browser images/audio, simulation packs and the **unchanged** `sim/manifest.json`. It excludes standalone raw `sim/**` files (except the manifest and `sim/packs/**`) and source WAV masters. Deploy the resulting directory together, including its `.br` and `.gz` sidecars. Vite's ordinary warning about the large third-party Phaser chunk is not a build failure.
+
+The included preview is a real static HTTP server, not Vite's development server. It negotiates Brotli/gzip/identity using `Accept-Encoding` quality weights, sets MIME for the original resource (including `application/wasm`, `audio/ogg` for `.opus`, and `application/octet-stream` for `.spk`), returns `Content-Encoding` for sidecars and `Vary: Accept-Encoding`, supports HEAD, and rejects traversal and symlink escapes. There is no HTML fallback for missing assets. `/sim.wasm` remains a short-cache alias to the emitted hashed WASM for existing capture tools.
+
+For a CDN or another static host, use these same policies:
+
+| Resource | Cache-Control |
+| --- | --- |
+| Hash-named `/assets/*` JS/CSS/WASM and SHA-256-named `/content/objects/*` | `public, max-age=31536000, immutable` |
+| `/`, HTML, `/content/index.json`, other manifests, map JSON and name-based `.spk` files | `public, max-age=0, must-revalidate` |
+
+Precompressed JS, CSS, HTML, WASM, JSON and packs are written during the build, with Brotli quality 9 and gzip level 9. Select the sidecar without changing the requested URL, retain the original MIME, send its actual compressed `Content-Length`, and never send an encoding the client refused. Serve the uncompressed file for identity-only clients. Do not give name-based maps/packs immutable caching: their bytes can change between imports.
+
+### Retained before bundle
+
+The preserved `build-out/client-size-before/` is the production bundle from before the download changes. Run it without recompiling old source:
+
+```sh
+bun run --cwd packages/client preview \
+  --root build-out/client-size-before --content-root dist/content --port 5197
+```
+
+`--root` / `SOLDAT_PREVIEW_ROOT` selects a repository-relative or absolute bundle directory. The optional `--content-root` / `SOLDAT_BASELINE_CONTENT_ROOT` mounts **all** baseline content, including raw simulation files, at `/content/`; it also serves the already-built real module at `/sim.wasm`. Before listening, baseline preview prepares the same Brotli/gzip representations under `build-out/client-preview-cache/`, without modifying the preserved bundle, `dist/content/`, or `build-out/sim/`. Both comparisons therefore use the same preview transport and header rules. Ordinary optimized preview needs no external content mount.
+
+With each server running, collect actual private-browser transfers separately:
+
+```sh
+CLIENT_URL=http://127.0.0.1:5197 TRANSFER_OUT=build-out/client-transfer-before.json \
+  node packages/client/scripts/measure-transfer.mjs
+CLIENT_URL=http://127.0.0.1:5196 TRANSFER_OUT=build-out/client-transfer-after.json \
+  node packages/client/scripts/measure-transfer.mjs
+# Decode every emitted Opus object in the installed browser, separately:
+CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=chrome AUDIO_OUT=build-out/audio-chrome.json \
+  node packages/client/scripts/verify-opus.mjs
+CLIENT_URL=http://127.0.0.1:5196 AUDIO_BROWSER=firefox AUDIO_OUT=build-out/audio-firefox.json \
+  node packages/client/scripts/verify-opus.mjs
+```
+
+The transfer script records wire and decoded bytes over Arena with four bots, Ash with four bots, then a reload to Arena with four bots. Browser timings and byte savings must come from the resulting receipts; these commands alone are not verification evidence.
 
 ## Runtime reference
 
@@ -37,9 +87,9 @@ bun run --cwd packages/client capture --maps
 - Logical height 480; width is rounded clamped-aspect × 480. Camera zoom is exponential with quarter-step easing and 0.01 snap; ordinary unscoped follow/aim is the original 0.14 source formula. Mouse world/canvas transforms are inverses before integer input rounding. The movement ABI does not expose weapon scope state.
 - The reused 12-byte input record contains original control bits, integer world aim, original unscoped MouseDist=150, press-order bits and zero reserved bytes. Defaults: A/D, W/S, X prone, mouse right jet, mouse left fire, R reload, Q switch, F drop, E grenade, Space flag throw. Settings can rebind keyboard and mouse inputs.
 - `WorldView` is the presentation boundary. `SimWorldView` imports sim-host `RENDER_LAYOUT` and `RenderView`, reads borrowed WASM data, and copies previous/current skeletons and ABI3 appearance/inventory fields into reused client arrays. Gostek transforms interpolate actual world points, use normalized pivots, native flex/flip transforms, all 131 part definitions, authoritative player colors, blood/dead-head flags, secondary weapons, primary gun/clip/muzzle parts, bows, minigun, grenade inventory, vest, jets and cosmetics. No pose evaluation occurs in the client.
-- Selected-map render JSON/PMS and required textures are lazy. Gostek metadata and decoded core images are cached across map mounts; scenery/terrain sources belong to the selected map. Raw core simulation files, original bot profiles and only the selected raw map are SHA-256 verified before VFS mount/init/load/join. Practice runs `ai:true`, keyed RNG and `world:"original"` (native startup/periodic flags, medikits, grenade kits and map-authored stationary guns), joins the human with `control:"authoritative"` and true AI opponents with `control:"bot"` plus a pinned original profile name. CTF balancing counts the local human. Controlled combat/prediction qualification explicitly uses `world:"fixture"`; online hosts preserve the server's world policy and disable only AI execution. The live sandbox intentionally has a selected-map VFS identity rather than preloading every map.
+- The small content index is fetched once per browser session; each selected-map render JSON is fetched once and reused. The full provenance manifest is fetched only when Credits & Licenses opens. Gostek metadata and decoded core images are cached across map mounts; scenery/terrain sources belong to the selected map. A selected-map `SPK1` pack contains exactly every original non-map simulation file plus the selected raw PMS, used by sandbox play and map-sector parsing (including captures). Its pack SHA-256, exact VFS ID set, and every original file hash/length are checked against the unchanged simulation manifest before VFS mount/init/load/join. Online play and G2 base-file loading use the complete `sim/packs/all.spk` referenced by `index.simPack`; no browser raw simulation paths are needed beyond `sim/manifest.json`. The immutable compiled WASM module is cached, while each match still receives fresh host memory/state. G2 fixture/map-overlay endpoints and the explicit gate/combat `/sim.wasm` identity remain unchanged. Practice runs `ai:true`, keyed RNG and `world:"original"` (native startup/periodic flags, medikits, grenade kits and map-authored stationary guns), joins the human with `control:"authoritative"` and true AI opponents with `control:"bot"` plus a pinned original profile name. CTF balancing counts the local human. Controlled combat/prediction qualification explicitly uses `world:"fixture"`; online hosts preserve the server's world policy and disable only AI execution. The live sandbox intentionally has a selected-map VFS identity rather than preloading every map.
 - `SoldatMap` preserves straight-alpha image inputs, a single GPU PMA upload, native vertex PMA and source-over blending, NPOT terrain repeat, absolute prop/edge rotation centers, world-anchored gradient and native layer order. Animation quads, batches, input/event buffers and render skeleton arrays are reused. Terrain/edge mipmaps follow the setting; atlas sprites stay base-level to prevent cross-sprite mip bleeding.
-- Sound event `0x80000004` is mapped by the original 163-slot `Sound.pas` sample-ID table (slot 4 is intentionally unused), using the imported/converted WAV objects. Decoded buffers are cached across scene mounts; Phaser owns the voices. Native linear attenuation, volume conversion, reserved/free channels, loops/stops/volume/pause/resume and `(dx/2000,dy/2000,-0.5)` spatial coordinates are retained; Web Audio distance rolloff is disabled to avoid applying attenuation twice. Playback starts only after the explicit unlock gesture. Unknown presentation kinds remain counted as unmapped.
+- Sound event `0x80000004` is mapped by the original 163-slot `Sound.pas` sample-ID table (slot 4 is intentionally unused), using browser `.opus` derivatives. Per-sample fetch/decode promises and decoded buffers are cached across scene mounts. Match preparation preloads original movement/jets/hit/death/grenade/pickup basics plus the selected local and pinned bot loadouts; it does not eagerly decode the whole catalog. Later loadout changes add their samples, and all other sounds load on demand. Queued playback still honors stop/pause, channel replacement and match destruction; fetch/decode failures identify the failed sound instead of silently substituting one. Phaser owns the voices. Native linear attenuation, volume conversion, reserved/free channels, loops/stops/volume/pause/resume and `(dx/2000,dy/2000,-0.5)` spatial coordinates are retained; Web Audio distance rolloff is disabled to avoid applying attenuation twice. Playback starts only after the explicit unlock gesture. Unknown presentation kinds remain counted as unmapped.
 - `fx_set_view` supplies cosmetic camera bounds/local slot, `fx_step` advances once per gameplay tick, and `fx_render_view` supplies independent cosmetic particles. The renderer consumes shared `FX_LAYOUT` offsets without mutating WASM, interpolates position/lifetime, and ports `TSpark.Render` texture/frame, tint, alpha, rotation, scale and multilayer formulas. Weather styles 38/39/53 use native alpha 105. Source-over sparks draw after soldiers/Things and before scenery L1; unsupported FX remains explicit.
 - React teardown is serialized with Phaser's asynchronous destroy. DOM listeners, resize observers and owned GL textures/buffers/programs are cleaned up; retained CPU sources restore the custom renderer on context restoration.
 

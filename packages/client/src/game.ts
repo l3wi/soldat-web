@@ -1,5 +1,5 @@
 import Phaser from "phaser";
-import { SimStatus, requireStatus, readTraceState, sha256, encodeInput, type SimHost, type SimCommand, type Control } from "@soldat-web/sim-host";
+import { SimStatus, requireStatus, readTraceState, encodeInput, type SimHost, type SimCommand, type Control } from "@soldat-web/sim-host";
 import { Audio, SOUND_MAPPING_STATUS } from "./audio";
 import { createCamera, resizeCamera, updateCamera, setZoom } from "./camera";
 import { ClientClock } from "./clock";
@@ -12,15 +12,17 @@ import { loadGostek, type GostekRenderer } from "./render/gostek";
 import { AnimatedScenery, buildMap, loadSectors } from "./render/map";
 import { QuadBatch } from "./render/quad-batch";
 import { SoldatMap, TextureBank } from "./render/soldat-map";
-import type { MapData } from "./render/types";
 import { preparePlayback, runGateSuite, type FixturePlayback } from "./gate";
 import { loadEffects, SimEffectsView, type EffectsRenderer } from "./render/effects";
 import { connectOnline, type BrowserOnline } from "./net/browser";
 import { loadCombat, type CombatRenderer } from "./render/combat";
-import { CombatHud, hudPresentationFromRender, type HudContent } from "./render/hud";
+import { CombatHud, hudPresentationFromRender, type HudOptions } from "./render/hud";
 import { createCombatGallery, type CombatGallery } from "./render/combat-gallery";
 import { CombatEvents } from "./combat-events";
 import { CursorBink } from "./render/bink";
+import { loadContentIndex, loadRenderMap } from "./content";
+import { sessionJson } from "./session-cache";
+import { loadSimulationCode } from "./sim-runtime";
 
 let lifecycle = Promise.resolve();
 let audio: Audio | undefined;
@@ -81,13 +83,11 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
     const diagnostics: ClientDiagnostics = { ready: false, map: mapName, simulation: "loading", tick: 0, fraction: 0, droppedTicks: 0, renders: 0, soundMapping: SOUND_MAPPING_STATUS, soundEvents: 0, playedSounds: 0, sparks: 0 };
     window.__soldatClient = diagnostics;
     try {
-      const response = await fetch(`/content/maps/${encodeURIComponent(mapName)}.json`, { signal: abort.signal });
-      if (!response.ok) throw new Error(`Map ${mapName}: HTTP ${response.status}`);
-      const map = await response.json() as MapData;
+      const map = await loadRenderMap(mapName, abort.signal);
       const [sectors, gostek, effects, combat, content, weapons] = await Promise.all([
         loadSectors(map.name, map.polygons.length), gostekData ??= loadGostek(), effectsData ??= loadEffects(), combatData ??= loadCombat(),
-        fetch("/content/manifest.json", { signal: abort.signal }).then(response => { if (!response.ok) throw new Error(`HUD manifest HTTP ${response.status}`); return response.json() as Promise<{ core: HudContent }>; }),
-        fetch("/content/weapons.json", { signal: abort.signal }).then(response => { if (!response.ok) throw new Error(`Weapon metadata HTTP ${response.status}`); return response.json(); }),
+        loadContentIndex(abort.signal),
+        sessionJson<HudOptions["weapons"]>("/content/weapons.json", abort.signal),
       ]);
       if (cancelled) return;
       const bank = new TextureBank();
@@ -106,21 +106,27 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       const gl = canvas.getContext("webgl2", { alpha: false, antialias: false, premultipliedAlpha: true, preserveDrawingBuffer: capture || combatCapture, powerPreference: "high-performance" });
       if (!gl) throw new Error("The map renderer requires WebGL2");
       const input = new InputSampler(canvas, settings);
+      let weaponPreparation = 0;
       if (!capture) hud = await CombatHud.create(container, content.core, {
         startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
         onInputCapture: () => input.reset(),
         weaponChoiceNotice: "Choose now after spawning; otherwise applies next respawn",
         onWeaponChoice(primary, secondary, selection) {
-          if (serverUrl) {
-            if (!online) throw new Error("Online connection unavailable");
-            online.weaponChoice(primary, secondary, selection);
-            return;
-          }
-          if (!host || !world) throw new Error("Simulation unavailable");
-          requireStatus(host.command(world.tick, { kind: "weapon-choice", slot: 1, weapon: primary, secondaryWeapon: secondary }), "sim_command(weapon-choice)");
-          const applied = host.command(world.tick, { kind: "weapon-apply", slot: 1, weapon: primary, secondaryWeapon: secondary, selection });
-          if (applied !== SimStatus.UNSUPPORTED) requireStatus(applied, "sim_command(weapon-apply)");
-          world.sync();
+          const choice = ++weaponPreparation;
+          void (async () => {
+            await audio?.prepare({ loadout: { weapon: primary, secondaryWeapon: secondary } });
+            if (cancelled || choice !== weaponPreparation) return;
+            if (serverUrl) {
+              if (!online) throw new Error("Online connection unavailable");
+              online.weaponChoice(primary, secondary, selection);
+              return;
+            }
+            if (!host || !world) throw new Error("Simulation unavailable");
+            requireStatus(host.command(world.tick, { kind: "weapon-choice", slot: 1, weapon: primary, secondaryWeapon: secondary }), "sim_command(weapon-choice)");
+            const applied = host.command(world.tick, { kind: "weapon-apply", slot: 1, weapon: primary, secondaryWeapon: secondary, selection });
+            if (applied !== SimStatus.UNSUPPORTED) requireStatus(applied, "sim_command(weapon-apply)");
+            world.sync();
+          })().catch(error => { if (!cancelled && choice === weaponPreparation) onStatus(`Weapon choice unavailable: ${String(error)}`); });
         },
       });
       let world: SimWorldView | undefined, render: SoldatMap | undefined;
@@ -187,7 +193,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       class Sandbox extends Phaser.Scene {
         create() {
           render = new SoldatMap(gl!, bank, settings.filter === "linear", capture ? false : settings.mipmaps);
-          audio = new Audio(this);
+          audio = new Audio(this, error => { if (!cancelled) onStatus(`Audio unavailable: ${error.message}`); });
           const extern = this.add.extern();
           const framebufferState = { bindings: { framebuffer: null as unknown } };
           extern.render = (renderer, context) => {
@@ -302,7 +308,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (cancelled) return;
             diagnostics.simulation = `online unavailable: ${String(error)}`; onStatus(diagnostics.simulation);
           });
-          else if (!capture && !qualification) void audio.prepare().then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox, settings.nickname)).then(async loaded => {
+          else if (!capture && !qualification) void audio.prepare({ loadout: hud?.loadout, bots: combatCapture ? 0 : sandbox.bots }).then(() => loadSandbox(map.name, abort.signal, combatCapture, hud?.loadout, sandbox, settings.nickname)).then(async loaded => {
             if (cancelled) { loaded.dispose(); return; }
             host = loaded;
             inputPtr = requireStatus(host.exports.sim_alloc(12), "sim_alloc(input)");
@@ -328,7 +334,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             const player = world.sprites[0]!; camera.x = player.x; camera.y = player.y;
             clock.reset();
             if (combatCapture) {
-              const wasmSha256 = await sha256(new Uint8Array(await (await fetch("/sim.wasm", { signal: abort.signal })).arrayBuffer()));
+              const wasmSha256 = (await loadSimulationCode(abort.signal, "/sim.wasm")).sha256;
               const draw = () => { game!.step(performance.now(), 0); gl!.finish(); };
               window.__soldatCombat = {
                 command(command) { gallery = undefined; requireStatus(host!.command(world!.tick, command), `sim_command(${command.kind})`); world!.sync(); },

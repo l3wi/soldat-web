@@ -12,12 +12,13 @@ try {
   if (!configResponse.ok) throw new Error("Fixture server configuration unavailable");
   const config = await configResponse.json() as { fixtures: { name: string; url: string }[]; rng?: "original" | "keyed" };
   const wasm = await bytes("/sim.wasm");
+  const compiledModule = await WebAssembly.compile(wasm);
   const manifest = JSON.parse(new TextDecoder().decode(await bytes("/content/sim/manifest.json"))) as SimManifest;
   for (const file of config.fixtures) {
     output.textContent = `Running ${file.name} in ${navigator.userAgent}`;
     const fixtureBytes = await bytes(file.url);
     const receipt = await runFixture({
-      wasm, manifest, fixture: JSON.parse(new TextDecoder().decode(fixtureBytes)) as Fixture,
+      wasm, compiledModule, manifest, fixture: JSON.parse(new TextDecoder().decode(fixtureBytes)) as Fixture,
       fixtureBytes, fixtureName: file.name, runtime: navigator.userAgent,
       rngPolicy: config.rng,
       readContent: path => bytes(`/content/${path.split("/").map(encodeURIComponent).join("/")}`),

@@ -38,6 +38,8 @@ export interface FixtureReceipt {
 }
 export interface FixtureRunOptions {
   wasm: Uint8Array;
+  /** Browser corpus runners reuse immutable code across fixture hosts. */
+  compiledModule?: WebAssembly.Module;
   fixture: Fixture;
   fixtureBytes: Uint8Array;
   fixtureName: string;
@@ -102,8 +104,9 @@ export async function runFixture(options: FixtureRunOptions): Promise<FixtureRec
   const declaredMapHash = fixture.mapSha256 ?? fixture.mapHash;
   if (declaredMapHash && declaredMapHash !== map.sha256) throw new Error("Fixture map identity mismatch");
   const checkpoints: Checkpoint[] = [];
+  const module = options.compiledModule ?? await WebAssembly.compile(options.wasm as Uint8Array<ArrayBuffer>);
   async function lane(restore: boolean): Promise<HashRow[]> {
-    const host = await loadSim(options.wasm as Uint8Array<ArrayBuffer>);
+    const host = await loadSim(module);
     try {
       await loadSimContent(host, manifest, name => overlay && name === fixture.mapPath ? Promise.resolve(overlay) : options.readContent(name));
       requireStatus(host.init({ ...fixture.rules, ...(options.rngPolicy ? { rng: options.rngPolicy } : {}) }, fixture.seed, 0, 0), "sim_init");

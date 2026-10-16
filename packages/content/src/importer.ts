@@ -3,7 +3,9 @@ import { dirname, extname, join } from 'node:path';
 import { ContentError } from './errors.ts';
 import { FileIndex, canonicalPath, imageScale } from './paths.ts';
 import { parsePms, parsePoa, parsePo, parseModIni, parseWeaponsIni, type IniData } from './readers.ts';
-import { importImage, encodePng, convertWav, readZip } from './media.ts';
+import { importImage, readZip } from './media.ts';
+import { AUDIO_LOOPS, encodeLosslessWebp, encodeOpus, type AudioLoopSource, type EncodedOpus } from './derivatives.ts';
+import { encodeSimPack } from './packs.ts';
 import { parseGraphics, parseGostek } from './gostek.ts';
 import { ObjectWriter, sha256, stableJson, walkFiles, type Provenance } from './output.ts';
 
@@ -11,6 +13,7 @@ interface ImageAsset {
   sourcePath: string; sourceSha256: string; format: string; width: number; height: number;
   scale: number; keyed: boolean; alphaMode: 'straight'; frames: { object: string; delayMs: number; delayTicks: number }[];
 }
+type AudioAsset = Omit<EncodedOpus, 'bytes'> & { object: string; loopSource?: AudioLoopSource };
 export async function importContent(options: { base: string; out: string; source?: string; pins?: string }) {
   const pins = JSON.parse(await readFile(options.pins ?? 'pins.json', 'utf8'));
   const files = await walkFiles(options.base), writer = new ObjectWriter(options.out);
@@ -43,9 +46,11 @@ export async function importContent(options: { base: string; out: string; source
     sourcePath: source, sourceSha256: sha256(bytes), licenseId: sourceCode ? 'MIT' : source.endsWith('.ttf') ? 'OFL-1.1' : 'CC-BY-4.0',
     credit: sourceCode ? 'Transhuman Design; OpenSoldat contributors' : source.endsWith('.ttf') ? 'Copyright 2011 Jonas Hecksher / Playtype / e-types AS' : 'OpenSoldat base contributors; see notices/base-credits.txt', transformations,
   });
-  const images: Record<string, ImageAsset> = {}, audio: Record<string, unknown> = {}, animations: Record<string, unknown> = {}, skeletons: Record<string, unknown> = {};
+  const images: Record<string, ImageAsset> = {}, audio: Record<string, AudioAsset> = {}, animations: Record<string, unknown> = {}, skeletons: Record<string, unknown> = {};
   const simFiles: Record<string, { path: string; sha256: string; object: string; bytes: number }> = {};
-  const maps: Record<string, unknown> = {}, archives: Record<string, unknown> = {};
+  const simBytes = new Map<string, Uint8Array>();
+  const maps: Record<string, unknown> = {}, mapSummaries: Record<string, unknown> = {}, archives: Record<string, unknown> = {};
+  let verifiedWebpFrames = 0;
   const counts = { maps: 0, poa: 0, po: 0, frames: 0, polygons: 0, props: 0, scenery: 0, colliders: 0, spawnpoints: 0, waypoints: 0,
     trailingMaps: 0, trailingBytes: 0, images: 0, png: 0, bmp: 0, gif: 0, npot: 0, decodedRgbaBytes: 0, signatureMismatches: 0,
     wav: 0, pcm: 0, adpcm: 0, pngOverrides: 0, caseOnlyResolutions: 0, declaredDependencies: 0, missingDeclared: 0, missingActive: 0 };
@@ -64,21 +69,28 @@ export async function importContent(options: { base: string; out: string; source
         scale: imageScale(id.startsWith('custom-interfaces/') ? id.split('/').slice(2).join('/') : id, scaleTable), keyed: decoded.keyed, alphaMode: 'straight', frames: [] };
       for (let frame = 0; frame < decoded.frames.length; frame++) {
         const f = decoded.frames[frame]!;
-        const transformations = [`decode-${decoded.format}`, ...(decoded.keyed ? [`exact-color-key:${(graphicKeyByPath.get(id) ?? [0,255,0,255]).join(',')}`] : []), `frame:${frame}`, 'encode-rgba8-png-straight-alpha'];
-        asset.frames.push({ object: await writer.put(encodePng(decoded.width, decoded.height, f.rgba), 'png', provenance(source, bytes, transformations)), delayMs: f.delayMs, delayTicks: f.delayTicks });
+        const transformations = [`decode-${decoded.format}`, ...(decoded.keyed ? [`exact-color-key:${(graphicKeyByPath.get(id) ?? [0,255,0,255]).join(',')}`] : []), `frame:${frame}`,
+          'encode-rgba8-png-straight-alpha', 'cwebp-lossless-exact-z9', 'verify-dwebp-rgba-byte-identical-to-png'];
+        const webp = await encodeLosslessWebp(decoded.width, decoded.height, f.rgba);
+        asset.frames.push({ object: await writer.put(webp, 'webp', provenance(source, bytes, transformations)), delayMs: f.delayMs, delayTicks: f.delayTicks });
+        verifiedWebpFrames++;
       }
       images[id] = asset;
       counts.images++; counts[decoded.format]++; counts.signatureMismatches += Number(ext !== decoded.format);
       counts.npot += Number((decoded.width & (decoded.width - 1)) !== 0 || (decoded.height & (decoded.height - 1)) !== 0);
       counts.decodedRgbaBytes += decoded.width * decoded.height * 4;
     } else if (ext === 'wav') {
-      const result = convertWav(bytes), id = canonicalPath(source.slice(source.indexOf('/') + 1));
-      audio[id] = { object: await writer.put(result.bytes, 'wav', provenance(source, bytes, result.converted ? ['ms-adpcm-to-pcm16', `samples-per-channel:${result.sampleCount}`] : ['pcm-passthrough'])),
-        sampleCount: result.sampleCount, sampleRate: result.sampleRate, channels: result.channels, durationSeconds: result.durationSeconds, converted: result.converted };
-      counts.wav++; counts[result.converted ? 'adpcm' : 'pcm']++;
+      const id = canonicalPath(source.slice(source.indexOf('/') + 1)), loopSource = AUDIO_LOOPS[id];
+      const { bytes: opus, ...metadata } = await encodeOpus(bytes, Boolean(loopSource));
+      const transformations = [...(metadata.converted ? ['ms-adpcm-to-pcm16'] : ['pcm-input']),
+        `source-samples-per-channel:${metadata.sampleCount}`, 'ffmpeg-libopus-64kbps-mono-48000hz', 'preserve-duration-opus-preskip-final-granule',
+        ...(loopSource ? ['measure-source-and-decoded-opus-loop-seam-no-crossfade'] : [])];
+      audio[id] = { object: await writer.put(opus, 'opus', provenance(source, bytes, transformations)), ...metadata, ...(loopSource ? { loopSource } : {}) };
+      counts.wav++; counts[metadata.converted ? 'adpcm' : 'pcm']++;
     } else if (ext === 'poa' || ext === 'po' || ext === 'pms') {
       const id = source.slice(source.indexOf('/') + 1), object = await writer.put(bytes, ext, provenance(source, bytes, []));
       simFiles[canonicalPath(id)] = { path: `sim/${id}`, sha256: sha256(bytes), object, bytes: bytes.length };
+      simBytes.set(canonicalPath(id), bytes);
       await writer.file(`sim/${id}`, bytes);
       if (ext === 'poa') { const parsed = parsePoa(bytes); animations[canonicalPath(id)] = parsed; counts.poa++; counts.frames += parsed.frames.length; }
       if (ext === 'po') { skeletons[canonicalPath(id)] = parsePo(bytes); counts.po++; }
@@ -91,15 +103,20 @@ export async function importContent(options: { base: string; out: string; source
   for (const id of ['mod.ini', 'configs/weapons.ini']) {
     const source = sourceFor(id), bytes = await readFile(join(options.base, source));
     simFiles[id] = { path: `sim/${id}`, sha256: sha256(bytes), object: await writer.put(bytes, 'ini', provenance(source, bytes, [])), bytes: bytes.length };
+    simBytes.set(id, bytes);
     await writer.file(`sim/${id}`, bytes);
   }
   for (const source of files.filter(path => /^server\/configs\/bots\/[^/]+\.bot$/i.test(path))) {
     const id = canonicalPath(source.slice('server/configs/'.length)), bytes = await readFile(join(options.base, source));
     simFiles[id] = { path: `sim/${id}`, sha256: sha256(bytes), object: await writer.put(bytes, 'bot', provenance(source, bytes, [])), bytes: bytes.length };
+    simBytes.set(id, bytes);
     await writer.file(`sim/${id}`, bytes);
   }
   const simHash = sha256(Object.keys(simFiles).sort().map(id => `${id}\t${simFiles[id]!.sha256}\n`).join(''));
   await writer.json('sim/manifest.json', { schemaVersion: 1, sha256: simHash, files: simFiles });
+  const fullPack = encodeSimPack(simBytes), fullPackPath = 'sim/packs/all.spk';
+  await writer.file(fullPackPath, fullPack);
+  const simPack = { path: fullPackPath, sha256: sha256(fullPack), bytes: fullPack.length };
   const weapons = parseWeaponsIni(await readFile(join(options.base, sourceFor('configs/weapons.ini'))));
   const resolveAsset = (requested: string, fallback?: string) => {
     const resolution = index.resolveImage(requested);
@@ -127,7 +144,12 @@ export async function importContent(options: { base: string; out: string; source
       backgroundTop: map.backgroundTop, backgroundBottom: map.backgroundBottom, weather: map.weather, steps: map.steps,
       startJet: map.startJet, botCapable: map.waypoints.length > 0, missing };
     await writer.json(`maps/${name}.json`, render);
-    maps[name] = { path: `maps/${name}.json`, mapSha256: sha256(raw), simContentSha256: simHash, terrain, edge, scenery, missing, botCapable: render.botCapable };
+    const pack = encodeSimPack(simBytes, canonicalPath(`maps/${name}.pms`)), packPath = `sim/packs/${name}.spk`;
+    await writer.file(packPath, pack);
+    const summary = { path: `maps/${name}.json`, mapSha256: sha256(raw), simContentSha256: simHash, botCapable: render.botCapable, missing,
+      simPack: { path: packPath, sha256: sha256(pack), bytes: pack.length } };
+    mapSummaries[name] = summary;
+    maps[name] = { ...summary, terrain, edge, scenery };
   }
   counts.missingActive = missingActive.length;
   const parts = parseGostek(gostekText, graphics, mod.gostek ?? {});
@@ -143,10 +165,17 @@ export async function importContent(options: { base: string; out: string; source
     await writer.file(target, await readFile(join(options.base, source)));
   await writer.file('notices/opensoldat-mit.txt', mitNotice);
   await writer.file('notices/play-OFL.txt', await readFile(new URL('../notices/play-OFL.txt', import.meta.url)));
+  await writer.file('notices/media-derivatives.txt', await readFile(new URL('../notices/media-derivatives.txt', import.meta.url)));
   const core = { gostek: gostekObject, font, animations: 'animations.json', skeletons: 'skeletons.json', weapons: 'weapons.json',
     graphics: Object.fromEntries(['gostek', 'weapons', 'sparks', 'interface', 'objects'].map(group => [group, graphics.filter(g => g.group === group).map(g => ({ ...g, ...resolveAsset(g.path) }))])), sfx: audio };
-  const summary = { ...counts, gostekParts: parts.length, graphicDefinitions: graphics.length, looseFiles: files.length, looseBytes: Object.values(inventory).reduce((n, s) => n + s.bytes, 0), inventory,
+  const mediaDerivatives = { verifiedWebpFrames, imageCodec: 'lossless-webp-exact-z9', audioCodec: 'ogg-opus-64kbps-mono',
+    maxDurationDeviationSeconds: Math.max(0, ...Object.values(audio).map(asset => Math.abs(asset.durationDeviationSeconds))),
+    loops: Object.fromEntries(Object.entries(audio).filter(([, asset]) => asset.loop).map(([id, asset]) => [id, {
+      source: asset.loopSource, durationDeviationSeconds: asset.durationDeviationSeconds, verification: asset.loopVerification }])) };
+  const summary = { ...counts, mediaDerivatives, gostekParts: parts.length, graphicDefinitions: graphics.length, looseFiles: files.length, looseBytes: Object.values(inventory).reduce((n, s) => n + s.bytes, 0), inventory,
     classicMapsWithoutMissingActive: Object.entries(maps).filter(([name]) => !['ctf_Aftermath', 'ctf_Amnesia'].includes(name) && !missingActive.some(m => m.map === name)).length, missingActive, archives };
-  await writer.json('manifest.json', { schemaVersion: 1, pins: { base: pins.base, opensoldat: pins.opensoldat }, alphaMode: 'straight; premultiply exactly once at GPU upload', simContentSha256: simHash, core, images, maps, objects: writer.objects, summary });
+  const header = { schemaVersion: 1, pins: { base: pins.base, opensoldat: pins.opensoldat }, alphaMode: 'straight; premultiply exactly once at GPU upload', simContentSha256: simHash, simPack, core };
+  await writer.json('index.json', { ...header, maps: mapSummaries });
+  await writer.json('manifest.json', { ...header, images, maps, objects: writer.objects, summary });
   return { summary, simContentSha256: simHash };
 }

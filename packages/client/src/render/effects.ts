@@ -1,5 +1,6 @@
 import type { ImageAsset, Quad } from './types';
 import { FX_LAYOUT, requireStatus, type SimHost } from '@soldat-web/sim-host';
+import { loadContentIndex } from '../content';
 
 export interface SparkView {
   style: number; owner: number; life: number; lifePrev: number;
@@ -145,7 +146,6 @@ export class EffectsRenderer {
   }
 }
 export async function loadEffects(): Promise<EffectsRenderer> {
-  const response=await fetch('/content/manifest.json');if(!response.ok)throw new Error(`Effect manifest HTTP ${response.status}`);
-  const manifest=await response.json();
+  const manifest=await loadContentIndex();
   return new EffectsRenderer([...manifest.core.graphics.sparks,...manifest.core.graphics.weapons]);
 }

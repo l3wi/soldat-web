@@ -1,7 +1,9 @@
-import { loadSim, loadSimContent, requireStatus, sha256, SIM_ABI_VERSION, type SimHost, type SimManifest } from "@soldat-web/sim-host";
+import { loadSim, requireStatus, SIM_ABI_VERSION, type SimHost } from "@soldat-web/sim-host";
 import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message, type ReliableEvent } from "@soldat-web/protocol";
 import { connectWss, type MessageTransport } from "@soldat-web/protocol/transport";
 import { OnlineSession, type OnlineMetrics } from "./session.ts";
+import { loadSimulationCode } from "../sim-runtime";
+import { loadSimulationManifest, mountSimulationPack } from "../sim-content";
 
 const FROZEN_WASM = "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1";
 export interface OnlineHook {
@@ -19,23 +21,16 @@ export interface BrowserOnline {
   weaponChoice(primary: number, secondary: number, selection: "primary" | "secondary"): void;
   updateOverlay(): void; dispose(): void;
 }
-async function bytes(url: string, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
-  return new Uint8Array(await response.arrayBuffer());
-}
 export async function connectOnline(options: {
   url: string; map: string; container: HTMLElement; signal: AbortSignal;
   onStatus(status: string): void; onEvent(event: ReliableEvent): void;
   onPresentation(bytes: Uint8Array): void;
   onLiveStep(tick: number, bytes: Uint8Array, slot: number): void;
 }): Promise<BrowserOnline> {
-  const wasm = await bytes("/sim.wasm", options.signal);
-  if (await sha256(wasm) !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen ABI4 WASM");
-  const response = await fetch("/content/sim/manifest.json", { signal: options.signal });
-  if (!response.ok) throw new Error(`Simulation manifest: HTTP ${response.status}`);
-  const manifest = await response.json() as SimManifest;
-  const prediction = await loadSim(wasm), extraction = await loadSim(wasm);
+  const code = await loadSimulationCode(options.signal);
+  if (code.sha256 !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen ABI4 WASM");
+  const manifest = await loadSimulationManifest(options.signal);
+  const prediction = await loadSim(code.module), extraction = await loadSim(code.module);
   let session: OnlineSession | undefined, disposed = false;
   let overlay: HTMLElement | undefined;
   let transport: MessageTransport | undefined;
@@ -52,16 +47,8 @@ export async function connectOnline(options: {
   try {
     // Server mounts the complete manifest. The VFS identity is gameplay state,
     // so a selected-map-only mount cannot safely restore server fullstates.
-    const cache = new Map<string, Uint8Array<ArrayBuffer>>();
-    const readContent = async (path: string) => {
-      if (path.startsWith("/") || path.includes("\\") || path.split("/").some(part => !part || part === "." || part === "..")) throw new Error("Unsafe simulation content path");
-      let data = cache.get(path);
-      if (!data) { data = await bytes(`/content/${path.split("/").map(encodeURIComponent).join("/")}`, options.signal); cache.set(path, data); }
-      return data;
-    };
-    await loadSimContent(prediction, manifest, readContent);
-    await loadSimContent(extraction, manifest, readContent);
-    cache.clear();
+    await mountSimulationPack(prediction, null, options.signal);
+    await mountSimulationPack(extraction, null, options.signal);
     if (options.signal.aborted) throw new DOMException("Online admission cancelled", "AbortError");
     options.signal.addEventListener("abort", aborted, { once: true });
     transport = connectWss(options.url);

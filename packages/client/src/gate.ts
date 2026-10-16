@@ -1,17 +1,15 @@
-import { encodeInput, loadSim, loadSimContent, requireStatus, sha256, type Control, type SimHost, type SimManifest } from "@soldat-web/sim-host";
+import { encodeInput, loadSim, loadSimContent, requireStatus, sha256, type Control, type SimHost } from "@soldat-web/sim-host";
 import type { Fixture, HashRow } from "../../sim-host/src/fixture";
+import { loadSimulationCode } from "./sim-runtime";
+import { loadSimulationManifest, loadSimulationPack } from "./sim-content";
+import { sessionBytes } from "./session-cache";
 
 export interface GateDriver {
   run(name: string, hz: number): Promise<unknown>;
   respawn(): void;
 }
 declare global { interface Window { __soldatGate?: GateDriver; __soldatGateRun?: { state: string; error?: string; completed: number } } }
-const files = new Map<string, Promise<Uint8Array>>();
-async function bytes(url: string): Promise<Uint8Array> {
-  let cached = files.get(url);
-  if (!cached) { cached = fetch(url).then(async response => { if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`); return new Uint8Array(await response.arrayBuffer()); }); files.set(url, cached); }
-  return cached;
-}
+const bytes = sessionBytes;
 export class FixturePlayback {
   readonly active = new Set<number>();
   readonly rows: HashRow[] = [];
@@ -35,8 +33,10 @@ export class FixturePlayback {
 export async function preparePlayback(name: string): Promise<{ playback: FixturePlayback; identity: { wasmSha256: string; fixtureSha256: string; contentSetHash: string } }> {
   const fixtureBytes = await bytes(`/g2/fixture?fixture=${encodeURIComponent(name)}`);
   const fixture = JSON.parse(new TextDecoder().decode(fixtureBytes)) as Fixture;
-  const wasm = await bytes("/sim.wasm");
-  const manifest = JSON.parse(new TextDecoder().decode(await bytes("/content/sim/manifest.json"))) as SimManifest;
+  const code = await loadSimulationCode(undefined, "/sim.wasm");
+  const manifest = await loadSimulationManifest();
+  const files = await loadSimulationPack(null);
+  const byPath = new Map(Object.entries(manifest.files).map(([id, entry]) => [entry.path, files.get(id)!] as const));
   let effective = manifest;
   let overlay: Uint8Array | undefined;
   if (fixture.mapPath) {
@@ -47,9 +47,13 @@ export async function preparePlayback(name: string): Promise<{ playback: Fixture
     effective = { schemaVersion: 1, files: entries, sha256: await sha256(new TextEncoder().encode(Object.keys(entries).sort().map(id => `${id}\t${entries[id]!.sha256}\n`).join(""))) };
   }
   if (effective.sha256 !== fixture.contentSetHash) throw new Error("Fixture content-set identity mismatch");
-  const host = await loadSim(wasm as Uint8Array<ArrayBuffer>);
+  const host = await loadSim(code.module);
   try {
-    await loadSimContent(host, effective, path => overlay && path === fixture.mapPath ? Promise.resolve(overlay) : bytes(`/content/${path}`));
+    await loadSimContent(host, effective, path => {
+      const data = overlay && path === fixture.mapPath ? overlay : byPath.get(path);
+      if (!data) throw new Error(`Simulation fixture content absent from pack: ${path}`);
+      return Promise.resolve(data);
+    });
     requireStatus(host.init(fixture.rules ?? {}, fixture.seed), "sim_init");
     requireStatus(host.loadMap(fixture.map), "sim_load_map");
     const playback = new FixturePlayback(fixture, host);
@@ -58,7 +62,7 @@ export async function preparePlayback(name: string): Promise<{ playback: Fixture
       requireStatus(host.command(0, { kind: "join", slot: i + 1, ...player, spawn: spawnpoint }), "sim_command(join)"); playback.active.add(i + 1);
     }
     playback.commands(0); playback.recordTick(0);
-    return { playback, identity: { wasmSha256: await sha256(wasm), fixtureSha256: await sha256(fixtureBytes), contentSetHash: effective.sha256 } };
+    return { playback, identity: { wasmSha256: code.sha256, fixtureSha256: await sha256(fixtureBytes), contentSetHash: effective.sha256 } };
   } catch (error) { host.dispose(); throw error; }
 }
 

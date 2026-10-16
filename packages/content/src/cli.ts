@@ -4,7 +4,7 @@ import { ContentError } from './errors.ts';
 
 const args = process.argv.slice(2);
 if (args.includes('--help')) {
-  console.log('bun packages/content/src/cli.ts --base reference/base --out dist/content [--source reference/opensoldat] [--pins pins.json]\nbun packages/content/src/cli.ts --hash dist/content');
+  console.log('bun packages/content/src/cli.ts --base reference/base --out dist/content-next [--source reference/opensoldat] [--pins pins.json]\nbun packages/content/src/cli.ts --hash dist/content-next');
 } else {
   try {
     const options: Record<string, string> = {};

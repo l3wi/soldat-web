@@ -1,6 +1,8 @@
 import { BULLET_PRESENTATION_FLAGS, RENDER_LAYOUT, THING_PRESENTATION_FLAGS, type RenderView } from '@soldat-web/sim-host';
 import type { Regions } from './geometry';
 import type { DrawRun, Geometry, ImageAsset, Quad } from './types';
+import { loadContentIndex } from '../content';
+import { sessionJson } from '../session-cache';
 
 export interface CombatGraphic { index: number; symbol: string; asset: ImageAsset | null }
 interface SkeletonAsset { points: { x: number; z: number }[]; constraints: number[][] }
@@ -290,10 +292,8 @@ export class CombatRenderer {
 }
 
 export async function loadCombat(): Promise<CombatRenderer> {
-  const responses=await Promise.all([fetch('/content/manifest.json'),fetch('/content/skeletons.json')]);
-  for(const response of responses)if(!response.ok)throw new Error(`Combat content HTTP ${response.status}`);
-  const [manifest,skeletons]=await Promise.all(responses.map(response=>response.json()));
-  return new CombatRenderer([...manifest.core.graphics.weapons,...manifest.core.graphics.objects,...manifest.core.graphics.sparks,...manifest.core.graphics.gostek],skeletons['objects/kit.po']);
+  const [manifest,skeletons]=await Promise.all([loadContentIndex(),sessionJson<Record<string,SkeletonAsset>>('/content/skeletons.json')]);
+  return new CombatRenderer([...manifest.core.graphics.weapons,...manifest.core.graphics.objects,...manifest.core.graphics.sparks,...manifest.core.graphics.gostek],skeletons['objects/kit.po']!);
 }
 
 /** Invoked by the integration verifier; no browser, WebGL or generated art required. */
