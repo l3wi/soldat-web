@@ -3,8 +3,8 @@ unit SimRender;
 interface
 uses Vector, Net, Sprites;
 const
-  SIM_ABI_VERSION = $00010003;
-  SIM_RENDER_STRIDE = 636;
+  SIM_ABI_VERSION = $00010004;
+  SIM_RENDER_STRIDE = 656;
   SIM_BULLET_STRIDE = 96;
   SIM_THING_STRIDE = 324;
   SIM_BULLETS_OFFSET = 32 + MAX_PLAYERS * SIM_RENDER_STRIDE;
@@ -19,7 +19,7 @@ procedure SimCapturePreviousPose;
 procedure SimResetRender;
 function SimRenderView: Pointer;
 implementation
-uses Game, PolyMap, Server, Weapons, Constants;
+uses Game, PolyMap, Server, Weapons, Constants, SimState;
 var View: array[0..SIM_RENDER_BYTES-1] of Byte;
 procedure U32(Offset: Integer; Value: LongWord);
 begin
@@ -73,6 +73,7 @@ begin
       if Sprite[I].OnGroundPermanent then Flags := Flags or 8;
       if Sprite[I].Position = POS_CROUCH then Flags := Flags or 16;
       if Sprite[I].Position = POS_PRONE then Flags := Flags or 32;
+      if SimBotOwned[I] then Flags:=Flags or 64;
       U32(Base, I); U32(Base+4, Flags);
       I32(Base+8, Sprite[I].Direction);
       I32(Base+12, Sprite[I].LegsAnimation.ID);
@@ -123,6 +124,16 @@ begin
       U32(Base+624,Sprite[I].Player.JetColor);
       I32(Base+628,WeaponNumToIndex(Sprite[I].Weapon.Num));
       I32(Base+632,WeaponNumToIndex(Sprite[I].SecondaryWeapon.Num));
+      I32(Base+636,Sprite[I].Weapon.Bink);
+      with Sprite[I].Control do
+        Flags:=Ord(Left) or (Ord(Right) shl 1) or (Ord(Up) shl 2) or
+          (Ord(Down) shl 3) or (Ord(Fire) shl 4) or (Ord(Jetpack) shl 5) or
+          (Ord(ThrowNade) shl 6) or (Ord(ChangeWeapon) shl 7) or
+          (Ord(ThrowWeapon) shl 8) or (Ord(Reload) shl 9) or
+          (Ord(Prone) shl 10) or (Ord(FlagThrow) shl 11);
+      U32(Base+640,Flags);I32(Base+644,Sprite[I].Control.MouseDist);
+      I32(Base+648,Sprite[I].Brain.CurrentWaypoint);
+      I32(Base+652,Sprite[I].Brain.NextWaypoint);
     end;
   U32(0, SIM_ABI_VERSION); U32(4, MainTickCounter); U32(8, Count);
   U32(12, MAX_PLAYERS); U32(16, SIM_RENDER_STRIDE);

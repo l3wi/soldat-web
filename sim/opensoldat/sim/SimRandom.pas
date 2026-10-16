@@ -13,12 +13,15 @@ var
   RandomState: array[0..3] of LongWord =
     ($AFF181C0, $73B13BA2, $1340D3B4, $61204305);
   KeyedEnabled: Boolean = False;
+  AIEnabled: Boolean = False;
   MatchSeed, OtherCounter, AISeed: QWord;
   ShotCounters, EventCounters: array[0..32] of LongWord;
 
 procedure SetRandomPolicy(Keyed:Boolean;SeedLo,SeedHi:LongWord);
 procedure BeginRandomEvent(Entity,Domain:LongWord;Shot:Boolean=False);
 procedure EndRandomEvent;
+procedure BeginAIRandom;
+procedure EndAIRandom;
 
 procedure ResetOriginalRNG(Seed: LongWord);
 function Random: Extended; overload;
@@ -84,6 +87,20 @@ begin
   if not KeyedEnabled then Exit;
   if ContextDepth=0 then RunError(202);
   Dec(ContextDepth);
+end;
+procedure BeginAIRandom;
+begin
+  if not KeyedEnabled then Exit;
+  if ContextDepth=Length(Contexts) then RunError(202);
+  Contexts[ContextDepth].State:=AISeed;
+  Inc(ContextDepth);
+end;
+procedure EndAIRandom;
+begin
+  if not KeyedEnabled then Exit;
+  if ContextDepth=0 then RunError(202);
+  Dec(ContextDepth);
+  AISeed:=Contexts[ContextDepth].State;
 end;
 function DrawKeyedWord:LongWord;
 var Value:QWord;

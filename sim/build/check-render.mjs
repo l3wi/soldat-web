@@ -103,7 +103,7 @@ try {
   }
   assert.deepEqual(result.crossInstanceFacing, [1, 0], 'must exercise both native creation variants');
   const state = host.saveState(); assert.ok(state instanceof Uint8Array);
-  assert.equal(new DataView(state.buffer, state.byteOffset).getUint32(4, true), 0x00010003);
+  assert.equal(new DataView(state.buffer, state.byteOffset).getUint32(4, true), 0x00010004);
   requireStatus(hosts[1].loadState(state), 'cross-instance load');
   const left = host.renderView(), right = hosts[1].renderView();
   assert.equal(left.thingCount, right.thingCount);

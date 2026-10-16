@@ -1,4 +1,4 @@
-# Simulation ABI 0x00010003
+# Simulation ABI 0x00010004
 
 Reference for TypeScript hosts of the original-mechanics simulation and isolated presentation subsystem. This ABI is distinct from the retained G0.2 particle-spike ABI. One WebAssembly instance owns one match; the host must not share an instance between matches.
 
@@ -6,7 +6,7 @@ Reference for TypeScript hosts of the original-mechanics simulation and isolated
 
 Exports use numeric WebAssembly arguments, a standard exported `memory`, and little-endian linear-memory buffers. Pointers and byte lengths are wasm32 numbers. Text is UTF-8 without a terminating NUL. JSON is encoded as ordinary JSON, not a Pascal record. Host-owned buffers come from `sim_alloc` and are released with `sim_free`; input/file/command/state bytes are consumed synchronously. Returned render pointers are borrowed, not freed by the host. Refresh borrowed views after simulation calls or memory growth.
 
-`sim_version()` returns `0x00010003`. Signed i32 status results are:
+`sim_version()` returns `0x00010004`. Signed i32 status results are:
 
 | Value | Meaning |
 | ---: | --- |
@@ -48,13 +48,17 @@ Exports use numeric WebAssembly arguments, a standard exported `memory`, and lit
 
 ## Initialization, virtual content, commands
 
-The fidelity configuration uses original FPC RNG, AI disabled: `flags=0`, `seedHigh=0`, and `seedLow` carrying the original 32-bit seed. `{}` selects normal DM defaults. Supported rules are `mode:"dm"|"ctf"`, `rng:"original"|"keyed"`, `ai:false`, `realistic:false`, `survival:false`, `bonusFrequency:0`, `tickRate:60`, and diagnostic `traceCombat:boolean`. Flag bit 1 (`2`) also selects keyed RNG; other init flag bits are rejected. Keyed mode accepts the full 64-bit low/high match seed. Original mode rejects nonzero seedHigh. Unsupported keys/values return `-4`.
+The fidelity configuration uses original FPC RNG: `flags=0`, `seedHigh=0`, and `seedLow` carrying the original 32-bit seed. `{}` selects normal DM defaults with AI disabled. Supported rules are `mode:"dm"|"ctf"`, `rng:"original"|"keyed"`, `ai:boolean` (default false), `botDifficulty:integer` (0–300, default 100), `realistic:false`, `survival:false`, `bonusFrequency:0`, `tickRate:60`, and diagnostic `traceCombat:boolean`. Flag bit 1 (`2`) also selects keyed RNG; other init flag bits are rejected. Keyed mode accepts the full 64-bit low/high match seed. Original mode rejects nonzero seedHigh. Unsupported keys/values return `-4`. Bot chat is always disabled; difficulty follows original server cvar semantics (lower is harder).
 
-Mount raw bytes before initialization, then initialize, load a map and join players. Virtual IDs are lowercase slash-separated paths (`maps/arena.pms`, `anims/…`, `objects/…`, `configs/weapons.ini`, `mod.ini`). The content loader reads `sim/manifest.json` schema 1, verifies every raw file's SHA-256 and byte count, and verifies the combined identity: SHA-256 of sorted `canonical-id<TAB>file-sha256<LF>` records. It does not send parsed render JSON to the sim. The manifest's `path` is relative to the content output root.
+Mount raw bytes before initialization, then initialize, load a map and join players. Virtual IDs are lowercase slash-separated paths (`maps/arena.pms`, `anims/…`, `objects/…`, `configs/weapons.ini`, `mod.ini`, `bots/admiral.bot`). All 16 pinned bot profiles are included, preserving original bytes and names, including spaces/punctuation. The content loader reads `sim/manifest.json` schema 1, verifies every raw file's SHA-256 and byte count, and verifies the combined identity: SHA-256 of sorted `canonical-id<TAB>file-sha256<LF>` records. It does not send parsed render JSON to the sim. The manifest's `path` is relative to the content output root.
 
 Command JSON has `kind: "join" | "leave" | "team" | "spawn"`, one-based `slot`, and applicable optional `team`, `spawn`, `x`, `y`. Setup supports `health`, `heldFlag`, `weapon`, `secondaryWeapon` (original weapon numbers), `ammo` (default original magazine), `grenades`, and `vest`. `spawn` is the original PMS spawn-array index. Commands apply at exactly the current tick, including tick zero. `thing` commands create original Things from `{style,owner,x,y,ammo}`. Diagnostic-only `bullet` and `fixture-sprite` injections require `traceCombat:true`; their canonical schemas are the `SimCommand` union in `packages/sim-host/src/sim.ts`. They are harness inputs, not admissible untrusted network messages.
 
 `control:"authoritative"` explicitly selects the original server-owned firing/switch/drop/grenade path with injected human inputs and AI disabled. Default `"human"` exists for pinned legacy oracle fixtures that model the original networked server's HUMAN role; product input-only players must choose authoritative. Both the sim and independent oracle harness apply the original HUMAN semi-auto release/burst guard at the input boundary. `weapon-choice` commands `{slot,weapon,secondaryWeapon?}` set serialized next-respawn choices; the original respawn runs before the shim reapplies both chosen guns. See the complete control-method audit in the role-divergence ledger.
+
+`join {control:"bot",bot:"Admiral"}` loads `bots/admiral.bot` through the original `SharedConfig.LoadBotConfig` parser. Admission retains original team-shirt setup, randomized spawn, sprite creation, profile parsing, respawn/weapon choice and scoreboard sort. Explicit fixture loadouts do not replace profile selection. Original profile `Dummy` is preserved. `ai:true` executes original `ControlBot` and PMS waypoint decisions; `ai:false` suppresses decisions, but still admits/loads bots and accepts injected bot controls for prediction. AI enablement is execution policy, not save-state identity: an authoritative AI-on snapshot loads into an otherwise matching AI-off instance. Hosts must disable AI in prediction/extraction instances and relay published control bits/aim/distance. `SPRITE_FLAGS.bot` identifies explicit bot admission independently of internal BOT control method or profile Dummy.
+
+`weapon-apply {slot,weapon,secondaryWeapon?,selection?}` applies the original limbo-menu selection immediately for input-authoritative owners. `selection:"primary"` (default) applies an enabled/selectable primary, optionally the secondary, and closes the serialized limbo opportunity; `selection:"secondary"` requires `secondaryWeapon`, applies only slot 2 and keeps limbo open. Join/respawn opens that opportunity, matching the original alive player's inability to reopen a closed menu. Dead players, invalid availability, primary bow replacement and a closed menu return `-4` without applying; malformed slot/weapon values return `-1`. `weapon-choice` remains the next-respawn selection command. No new ceasefire-time restriction is invented.
 
 An input for fixture step 1 is submitted with current simulation tick 0; stepping returns 1. The fixture runner resets controls every step, applies matching segments in source order, and uses the last overlapping segment as a whole-record replacement.
 
@@ -81,16 +85,16 @@ The 32-byte header consists of eight u32 values:
 
 | Offset | Field |
 | ---: | --- |
-| 0 | ABI/layout version, `0x00010003` |
+| 0 | ABI/layout version, `0x00010004` |
 | 4 | Current tick |
 | 8 | Active sprite count |
 | 12 | Fixed slot count, 32 |
-| 16 | Sprite stride, 636 |
+| 16 | Sprite stride, 656 |
 | 20 | Bullets offset, relative to render-view start |
 | 24 | Things offset, relative to render-view start |
 | 28 | Total byte length |
 
-Thirty-two fixed sprite records follow at `32 + index * 636`. Host index 0 corresponds to original slot 1; the record's `slot` is authoritative for active records. Inactive records are zero-filled slots, not a compacted active array.
+Thirty-two fixed sprite records follow at `32 + index * 656`. Host index 0 corresponds to original slot 1; the record's `slot` is authoritative for active records. Inactive records are zero-filled slots, not a compacted active array.
 
 | Record offset | Type | Field |
 | ---: | --- | --- |
@@ -124,14 +128,18 @@ Thirty-two fixed sprite records follow at `32 + index * 636`. Host index 0 corre
 | 576 | 48 bytes | UTF-8 name without terminator; unused bytes zero |
 | 624 | u32 | Original player JetColor |
 | 628, 632 | i32 | Primary / secondary WeaponNumToIndex result |
+| 636 | i32 | Original current weapon Bink (client-owned crosshair input, not an authoritative counter) |
+| 640 | u32 | Current TControl bit mask, same bits 0–11 as the input record |
+| 644 | i32 | Current TControl.MouseDist |
+| 648, 652 | i32 | Brain current / next waypoint (original one-based index; zero unset) |
 
 Names longer than the network's 48-byte admission limit are truncated at a UTF-8 codepoint boundary for presentation only. Original player-name/gameplay state is unchanged. `RenderSprite.playerName` decodes exactly the published bytes. Weapon capacity (`weaponAmmo`) is distinct from current magazine contents (`ammo`); the reload/fire interval fields are the original counters and configuration, not host estimates.
 
-Flag bits: active=1, dead=2, grounded=4, permanently grounded=8, crouching=16, prone=32. Borrowed skeleton `Float32Array`s must never be mutated. Render state is presentation data, not a rollback or oracle-state substitute.
+Flag bits: active=1, dead=2, grounded=4, permanently grounded=8, crouching=16, prone=32, explicitly bot-owned=64. Borrowed skeleton `Float32Array`s must never be mutated. Render state is presentation data, not a rollback or oracle-state substitute.
 
 The original server leaves a newly created skeleton in local template coordinates until its first pose evaluation. Publication recognizes only an exact match of the full 24-point immutable template and translates that render-only pose to the authoritative sprite position. Both initial current and previous render poses are world-space; gameplay skeletons remain untouched.
 
-Bullet and Thing sections have fixed-capacity storage. Bullet offset is **20,384**; Thing offset is **44,776**; the globals trailer starts at **73,944**; total render bytes are **73,988**. Consumers use the header's actual section offsets and exported `RENDER_LAYOUT` constants. Each section starts with u32 active count and u32 stride, then capacity for 254 bullets or 90 Things. Active records are compacted in ascending original slot order; unused capacity is zero. `RenderView.bullet(index)` and `.thing(index)` use compact zero-based indices and expose each record's original `slot`. `RENDER_LAYOUT.bullet` and `.thing` export offsets for allocation-free direct reads in hot render loops.
+Bullet and Thing sections have fixed-capacity storage. Bullet offset is **21,024**; Thing offset is **45,416**; the globals trailer starts at **74,584**; total render bytes are **74,628**. Consumers use the header's actual section offsets and exported `RENDER_LAYOUT` constants. Each section starts with u32 active count and u32 stride, then capacity for 254 bullets or 90 Things. Active records are compacted in ascending original slot order; unused capacity is zero. `RenderView.bullet(index)` and `.thing(index)` use compact zero-based indices and expose each record's original `slot`. `RENDER_LAYOUT.bullet` and `.thing` export offsets for allocation-free direct reads in hot render loops.
 
 Both records begin with u32 slot/style at 0/4, f32 current X/Y at 8/12, f32 original particle OldPos X/Y at 16/20 and u32 owner at 24.
 
@@ -180,11 +188,13 @@ An environmental death has weapon=250 and bulletStyle=0, matching the original n
 
 `0x80000004` is the original-sound event. Its **32-byte** packed payload is i32 sample ID at 0, i32 channel at 4 (`-1` = automatic), i32 operation at 8 (0 = play if channel not already playing, 1 = stop, 2 = set volume, 3 = pause, 4 = resume), u32 flags at 12 (loop=1, nonpositional=2), f32 emitter X/Y at 16/20, f32 volume at 24 (default 1), f32 maximum attenuation distance at 28 (750 world units). Sample IDs are the pinned `Constants.pas` SFX IDs; hosts resolve these through the original `Sound.pas` sample-name table. Loops are rocket jets, chainsaw-running and flamer samples. Original reserved channels are reload `slot-1`, jets `32+slot-1`, weapon startup `64+slot-1`, weapon ending `96+slot-1`, and weather 127. Automatic channels must not suppress unrelated simultaneous sounds. Distance/panning/listener settings stay in the host. `0x80000005` carries UTF-8 large-message text, with source=duration and target=color. Presentation events are suppressed during replay.
 
+`SIM_PRESENTATION_EVENTS.BINK = 0x80001001` has source=affected sprite, target=0 and one little-endian i32 amount. This uses a semantic presentation namespace distinct from original low-number packet IDs. Zero resets the client-owned HitSprayCounter at original respawn; positive values are exact original `CalculateBink` inputs from self-bink shots (including ties-even half amounts for crouch/prone), grenade release and eligible direct/explosion hit-spray sites. Hit eligibility retains self/friendly-fire/solo/opposing-team checks. These events carry no authoritative bink mutation or RNG draw, and are suppressed under REPLAY like other presentation events. Clients process only live-step events, deduplicate reconciliation and run the original per-tick decay. Current weapon Bink is published for inspection; the gameplay core retains SERVER accuracy.
+
 Call `fx_set_view` before the first cosmetic step to anchor weather to the real camera. Call `fx_step` after each ordinary `sim_step`, never once per rendered frame. Replay suppresses spark requests and cosmetic RNG calls; `fx_step` after a replay step leaves cosmetics untouched. Spark state, queues, channels and the independent xorshift32 FX RNG are excluded from save/load/hash. Loading gameplay does not rewind already-presented effects. Rendering uses interpolation and never writes back.
 
 `packages/sim-host/src/fx.ts` exports `FX_LAYOUT`, `FxView`, `FxSpark` and `readFxView`; `SimHost` exposes `fxStep`, `fxRenderView` and `fxSetView`. FX header is eight u32 words: ABI version, gameplay tick, active count, capacity (558), stride (64), total bytes (35,744), map weather, reserved zero. Records are compacted by original spark slot:
 
-The FX header version follows module/presentation ABI `0x00010003`; its byte layout is otherwise unchanged from ABI 2.
+The FX header version follows module/presentation ABI `0x00010004`; its byte layout is otherwise unchanged from ABI 2.
 
 | Offset | Type | Input |
 | ---: | --- | --- |
@@ -204,7 +214,7 @@ Save-state bytes have their own explicit field-wise serialization. They are not 
 | Offset | Type | Meaning |
 | ---: | --- | --- |
 | 0 | u32 | Magic bytes `SST1` |
-| 4 | u32 | Version `0x00010003` |
+| 4 | u32 | Version `0x00010004` |
 | 8 | u32 | Total byte length |
 | 12 | u32 | Map-name byte length N |
 | 16 | N bytes | Original map-name bytes |
@@ -219,7 +229,7 @@ The normative field-by-field schema is [`SimState.pas`](../../sim/opensoldat/sim
 
 Primitive widths are fixed: Byte/ShortInt/Boolean=1 byte, Word/SmallInt=2, LongWord/LongInt/Single=4, identity QWord=8, all little-endian with no padding. Boolean values are exactly 0 or 1. Single is its IEEE-754 binary32 bit pattern; nonfinite values are rejected. AnsiString/ShortString use a u32 byte length and exact bytes (maximum 65,535/255), without a terminator. Vectors are consecutive f32 X/Y. Variable Thing-collision lists have a u32 count at most 90, then u8 Thing slot and i32 cooldown-end per entry. Sprite-collision sets serialize 32 consecutive bool bytes, not compiler-dependent Pascal set storage.
 
-The pinned original FPC RNG is xoshiro128**. Restoring `RandSeed` alone is insufficient. `SimRandom` implements public-domain SplitMix64/xoshiro128** and the pinned FPC mappings; all six original words serialize. An all-zero four-word generator is malformed. After byte `56+N`, ABI 2 adds policy bool, 64-bit match seed, mode byte, 64-bit miscellaneous counter, 64-bit separate AI seed, 33 `(shotCounter,eventCounter)` pairs of u32, then 32 `(chosenPrimary,chosenSecondary)` pairs of u8. Policy, seed and mode are match identity and must agree on load. Keyed spread uses a per-owner shot scope; projectile/Thing events use per-owner event scopes. Each scope seeds SplitMix64 from match seed, entity, domain and counter; nested scopes are restored on exit. Cosmetic randomness never consumes these streams. See the role-divergence ledger for the deliberate keyed-policy divergence.
+The pinned original FPC RNG is xoshiro128**. Restoring `RandSeed` alone is insufficient. `SimRandom` implements public-domain SplitMix64/xoshiro128** and the pinned FPC mappings; all six original words serialize. An all-zero four-word generator is malformed. After byte `56+N`, the schema contains policy bool, 64-bit match seed, mode byte, ABI-4 bot-difficulty u16, 64-bit miscellaneous counter, 64-bit separate AI seed, 33 `(shotCounter,eventCounter)` pairs of u32, 32 `(chosenPrimary,chosenSecondary)` pairs of u8, then ABI-4 32 `(limboAvailable,botOwned)` bool pairs. Policy, seed, mode and difficulty are match identity and must agree on load; AI execution enablement deliberately is not. Original-policy AI uses the unchanged shared FPC stream. Keyed-policy ControlBot and non-Dummy bot respawn weapon decisions use the separately serialized AI SplitMix64 stream, restoring outer gameplay scopes afterward. Keyed spread uses a per-owner shot scope; projectile/Thing events use per-owner event scopes derived from match seed, entity, domain and counter. Cosmetic randomness never consumes these streams.
 
 After the prefix, top-level order is:
 
@@ -237,7 +247,7 @@ The maximum accepted state size is 32 MiB. Loading requires the same initialized
 
 Gameplay hashing is FNV-1a-64 over canonical encoded bytes, excluding previous-render-pose coordinates and representing the snapshot byte-length word as zero. Save encodes and validates once into reusable grow-only storage and hashes that contiguous buffer. Save/hash calls reuse the encoding until the next mutating ABI call; every mutation entry invalidates before any potentially partial change, and load invalidates internally. This cache is not dirty-field tracking and drops no state. No native padding participates. The VFS identity is an insertion-order-independent aggregate, not a replacement for the manifest SHA-256. Hosts keep state blobs opaque and version-bound.
 
-ABI 3 keeps all added render fields presentation-only except the explicitly authorized **CreationFacing** byte per Thing. It preserves creation-time dropped-weapon texture selection through rollback and cross-instance snapshots without consulting the owner's later direction. `SST1` state version is therefore **0x00010003**; the version word and 90 appended field bytes intentionally change state bytes and hashes relative to ABI 2. The SIM-only capture hook copies the existing CreateThing `k` without changing original arithmetic, control flow, RNG or mechanics; see ledger C10. Qualification must use the final ABI 3 artifact, not compare its hashes to a frozen ABI 2 receipt. Render/FX buffers remain distinct from loadable states.
+ABI 4 retains ABI 3's authorized cosmetic **CreationFacing** byte per Thing and adds serialized bot difficulty, limbo opportunity and explicit bot ownership. All original `TBotData` fields were already encoded individually and now have active AI consumers: profile strings, target/path/current/next/old/last waypoints, waypoint timeout/time, anger, Thing pursuit, accuracy, camp/fall-save and other timers remain lossless rollback state. Immutable PMS waypoint data is bound by map/content identity, not duplicated in each snapshot. `SST1` version is **0x00010004**; bytes/hashes intentionally differ from ABI 3 and require qualification on the final artifact. Bink remains client-owned; render/FX/event buffers are not loadable gameplay states.
 
 The optional diagnostic export `sim_trace_state(out,capacity)` returns a UTF-8 current-state JSON record in the existing [oracle trace format](fixtures-and-traces.md), with a `(0,0)` length query. It is not required for ordinary production loading. `readTraceState` fails explicitly if a trace-enabled build is unavailable. It captures tick boundaries; it does not fabricate intermediate upstream stage snapshots. Native/oracle traces retain their original stages. Use the existing streaming comparator's `--ticks-only` mode for target equivalence, not render-view comparisons.
 

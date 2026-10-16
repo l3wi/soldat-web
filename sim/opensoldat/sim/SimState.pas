@@ -6,6 +6,7 @@ uses Net;
 type TSimInputHistory = array[1..MAX_PLAYERS] of Boolean;
 var SimWasJumping, SimWasRunningLeft: TSimInputHistory;
 var SimChosenPrimary,SimChosenSecondary:array[1..MAX_PLAYERS] of Byte;
+var SimLimboAvailable,SimBotOwned:TSimInputHistory;
 { Every ABI entry point that can mutate gameplay or serialized content must
   invalidate before doing any work, including paths that can fail partway. }
 procedure SimInvalidateState;
@@ -16,7 +17,7 @@ function SimHashState: QWord;
 implementation
 uses SysUtils, Math, Game, Parts, Anims, Sprites, Bullets, Things,
   Weapons, Vector, MapFile, PolyMap, Server, SimRender, SimEvents, PhysFS, NetworkServerSprite, Constants, SimAnimationContent, SimRandom;
-const STATE_MAGIC = $31545353; STATE_VERSION = $00010003; MAX_STATE_BYTES = 32 * 1024 * 1024;
+const STATE_MAGIC = $31545353; STATE_VERSION = $00010004; MAX_STATE_BYTES = 32 * 1024 * 1024;
 procedure SimResetOriginalRNG(Seed: LongWord);
 begin
   SimInvalidateState;
@@ -663,10 +664,12 @@ begin
   if Number(Ord(KeyedEnabled),1)<>Ord(KeyedEnabled) then Fail;
   if Number(MatchSeed,8)<>MatchSeed then Fail;
   if Number(sv_gamemode.Value,1)<>QWord(sv_gamemode.Value) then Fail;
+  if Number(bots_difficulty.Value,2)<>QWord(bots_difficulty.Value) then Fail;
   Content:=Number(OtherCounter,8);if Reading and Apply then OtherCounter:=Content;
   Content:=Number(AISeed,8);if Reading and Apply then AISeed:=Content;
   for J:=0 to 32 do begin C(ShotCounters[J]);C(EventCounters[J]);end;
   for J:=1 to MAX_PLAYERS do begin WeaponNumber(SimChosenPrimary[J]);WeaponNumber(SimChosenSecondary[J]);end;
+  for J:=1 to MAX_PLAYERS do begin B(SimLimboAvailable[J]);B(SimBotOwned[J]);end;
   C(Ticks);
   C(TicksPerSecond);
   C(Frames);

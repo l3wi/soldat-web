@@ -161,17 +161,30 @@ var
   Filename: string;
   FavWeaponName: string = '';
   Headgear: Byte = 0;
+  {$IFDEF SIM}
+  Source: TStream;
+  {$ENDIF}
 begin
   Result := False;
   ini := nil;
   conf := nil;
 
   try
+    {$IFDEF SIM}
+    if not PHYSFS_exists(PChar(FilePath)) then
+      raise Exception.Create('Bot file not found');
+    conf := TStringList.Create;
+    Source := PHYSFS_readAsStream(PChar(FilePath));
+    try conf.LoadFromStream(Source); finally Source.Free; end;
+    ini := TMemIniFile.Create('');
+    ini.SetStrings(conf);
+    conf.Clear;
+    {$ELSE}
     if not FileExists(FilePath) then
       raise Exception.Create('Bot file not found');
-
     conf := TStringList.Create;
     ini := TMemIniFile.Create(FilePath);
+    {$ENDIF}
 
     if ini.SectionExists('BOT') then
     begin

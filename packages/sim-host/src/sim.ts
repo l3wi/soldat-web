@@ -4,17 +4,18 @@ import { readFxView } from "./fx.ts";
 export { FX_LAYOUT, readFxView, type FxView, type FxSpark } from "./fx.ts";
 export { SIM_GAMEPLAY_EVENTS, SIM_GAMEPLAY_PAYLOAD } from "./gameplay-events.ts";
 
-export const SIM_ABI_VERSION = 0x00010003;
+export const SIM_ABI_VERSION = 0x00010004;
 export const SimStatus = { OK: 0, INVALID: -1, NOT_INITIALIZED: -2, NOT_FOUND: -3, UNSUPPORTED: -4, CAPACITY: -5, MALFORMED: -6 } as const;
 export const INPUT_BYTES = 12;
+export const SIM_PRESENTATION_EVENTS = { BINK: 0x80001001 } as const;
 export const CONTROL_NAMES = ["Left", "Right", "Up", "Down", "Fire", "Jetpack", "ThrowNade", "ChangeWeapon", "ThrowWeapon", "Reload", "Prone", "FlagThrow"] as const;
 export type Control = Partial<Record<typeof CONTROL_NAMES[number], boolean>> & {
   MouseAimX?: number; MouseAimY?: number; MouseDist?: number; pressOrder?: number;
 };
 export type SimCommand =
-  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" }
+  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string }
   | { kind: "thing"; style: number; owner?: number; x: number; y: number; ammo?: number }
-  | { kind: "weapon-choice"; slot: number; weapon: number; secondaryWeapon?: number }
+  | { kind: "weapon-choice" | "weapon-apply"; slot: number; weapon: number; secondaryWeapon?: number; selection?: "primary" | "secondary" }
   | { kind: "bullet"; weapon: number; owner: number; x: number; y: number; vx: number; vy: number; hitMultiply?: number; timeout?: number; target?: number; hitCircle?: number }
   | { kind: "fixture-sprite"; slot: number; bodyAnimation: "Throw"; bodyFrame: number; grenadeWeapon?: number };
 export type SimExports = WebAssembly.Exports & {

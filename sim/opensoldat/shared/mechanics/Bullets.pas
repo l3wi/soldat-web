@@ -1734,6 +1734,7 @@ begin
                   if CanHitSpray(j, Owner) then
                     HitSpray();
                   {$ENDIF}
+                  {$IFDEF SIM}EmitHitBink(j,Owner);{$ENDIF}
 
                   {$IFDEF SERVER}
                   Trace('TBullet.CheckSpriteCollision a ');
@@ -2678,6 +2679,7 @@ begin
         if CanHitSpray(i, Owner) then
           HitSpray();
         {$ENDIF}
+        {$IFDEF SIM}EmitHitBink(i,Owner);{$ENDIF}
       end;  // s < explosion radius
     end;  // not DeadMeat
 

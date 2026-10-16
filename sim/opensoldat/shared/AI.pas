@@ -38,6 +38,9 @@ procedure ControlBot(var SpriteC: TSprite);
 implementation
 
 uses
+  {$IFDEF SIM}
+  SimRandom,
+  {$ENDIF}
   // Helper units
   Calc,
   Vector,
@@ -550,6 +553,11 @@ begin
       not SpriteC.DeadMeat and not SpriteC.Dummy then
   //if (MainTickCounter mod (SECOND * 2) = 0) then
   begin
+    {$IFDEF SIM}
+    if not AIEnabled then Exit;
+    BeginAIRandom;
+    try
+    {$ENDIF}
     tempb := SpriteC.Control.ThrowNade;
 
     SpriteC.FreeControls;
@@ -1120,6 +1128,9 @@ begin
         if SpriteC.Weapon.Num <> Guns[NOWEAPON].Num then
           SpriteC.Weapon := Guns[NOWEAPON];
     }
+    {$IFDEF SIM}
+    finally EndAIRandom; end;
+    {$ENDIF}
   end;  // Bot
 end;
 

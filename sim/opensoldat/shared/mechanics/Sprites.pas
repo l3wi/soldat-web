@@ -3721,6 +3721,7 @@ begin
     HitSprayCounter := 0;
   end;
   {$ENDIF}
+  {$IFDEF SIM}EmitBink(Num,0);{$ENDIF}
 
   BodyAnimation := Stand;
   LegsAnimation := Stand;
@@ -3794,6 +3795,10 @@ begin
   {$IFDEF SERVER}
   if Player.ControlMethod = BOT then
   begin
+    {$IFDEF SIM}
+    if not Dummy then BeginAIRandom;
+    try
+    {$ENDIF}
     Brain.CurrentWaypoint := 0;
 
     if (sv_gamemode.Value = GAMESTYLE_CTF) or (sv_gamemode.Value = GAMESTYLE_INF) or
@@ -3884,6 +3889,9 @@ begin
     if (WeaponIndex >= 1) and (WeaponIndex <= PRIMARY_WEAPONS) then
       if (WeaponActive[WeaponIndex] = 0) or (WeaponSel[Num][WeaponIndex] = 0) then
         Weapon := Guns[NOWEAPON];
+    {$IFDEF SIM}
+    finally if not Dummy then EndAIRandom;end;
+    {$ENDIF}
   end;
   {$ENDIF}
 
@@ -4801,6 +4809,13 @@ begin
 
   if BurstCount < 255 then
     Inc(BurstCount);
+  {$IFDEF SIM}
+  if Weapon.Bink<0 then
+    if (LegsAnimation.ID=Crouch.ID) or (LegsAnimation.ID=CrouchRun.ID) or
+      (LegsAnimation.ID=CrouchRunBack.ID) or (LegsAnimation.ID=Prone.ID) or
+      (LegsAnimation.ID=ProneMove.ID) then EmitBink(Num,Round(-Weapon.Bink/2))
+    else EmitBink(Num,-Weapon.Bink);
+  {$ENDIF}
 
   // TODO: Make bink and self-bink sprite-specific so bots can also use it
   {$IFNDEF SERVER}
@@ -5075,6 +5090,9 @@ begin
         if (Num = MySprite) and (Guns[FRAGGRENADE].Bink < 0) then
           HitSprayCounter := CalculateBink(HitSprayCounter, -Guns[FRAGGRENADE].Bink);
 {$ENDIF}
+        {$IFDEF SIM}
+        if Guns[FRAGGRENADE].Bink<0 then EmitBink(Num,-Guns[FRAGGRENADE].Bink);
+        {$ENDIF}
 
         PlaySound(SFX_GRENADE_THROW, a);
         {$IFDEF SIM}end;{$UNDEF Random}{$UNDEF RandomRange}{$ENDIF}

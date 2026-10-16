@@ -81,7 +81,8 @@ begin
       Selected[Slot] := Input;
     end;
   end;
-  for Slot := 1 to MAX_PLAYERS do if Sprite[Slot].Active then
+  for Slot := 1 to MAX_PLAYERS do if Sprite[Slot].Active and
+    ((Sprite[Slot].Player.ControlMethod<>BOT) or Sprite[Slot].Dummy) then
     if Selected[Slot] = nil then SetControl(Slot,nil,0)
     else SetControl(Slot,Selected[Slot].Objects['control'],Selected[Slot].Get('pressOrder',0));
 end;
@@ -167,7 +168,8 @@ begin
       for K := 0 to Spec.Count-1 do
         if (Spec.Names[K] = 'weapon') or (Spec.Names[K] = 'secondaryWeapon') or
            (Spec.Names[K] = 'ammo') or (Spec.Names[K] = 'grenades') or
-           (Spec.Names[K] = 'vest') or (Spec.Names[K] = 'control') then Cmd.Add(Spec.Names[K],Spec.Items[K].Clone);
+           (Spec.Names[K] = 'vest') or (Spec.Names[K] = 'control') or
+           (Spec.Names[K] = 'bot') then Cmd.Add(Spec.Names[K],Spec.Items[K].Clone);
       if (Spec.Find('control') = nil) and
          (GetEnvironmentVariable('SIM_CONTROL_POLICY') = 'authoritative') then
         Cmd.Add('control','authoritative');

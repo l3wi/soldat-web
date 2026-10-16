@@ -35,7 +35,7 @@ uses Classes, SysUtils, Math, fpjson, jsonparser, PhysFS, Anims,
   Constants, Cvar, Demo, Game, Net, Parts, PolyMap, Server, Sprites,
   Things, Bullets, Util, Vector, Weapons, SimState, SimRender, SimEvents,
   NetworkServerSprite, NetworkServerGame, SimAnimationContent, SimRandom, Sparks, SimFXRandom,
-  SimPresentation, CombatDiagnostics;
+  SimPresentation, CombatDiagnostics, SharedConfig, ServerHelper;
 var
   Initialized, MapLoaded, CvarsReady: Boolean;
   Fixture: TJSONObject = nil;
@@ -93,7 +93,12 @@ begin
     begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'dm') and (Value.AsString <> 'ctf')) then Exit; end
     else if Name = 'rng' then
     begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'original') and (Value.AsString <> 'keyed')) then Exit; end
-    else if (Name = 'ai') or (Name = 'realistic') or (Name = 'survival') then
+    else if Name = 'ai' then
+    begin if Value.JSONType <> jtBoolean then Exit; end
+    else if Name = 'botDifficulty' then
+    begin if (Value.JSONType <> jtNumber) or (Frac(Value.AsFloat)<>0) or
+      (Value.AsFloat<0) or (Value.AsFloat>300) then Exit; end
+    else if (Name = 'realistic') or (Name = 'survival') then
     begin if (Value.JSONType <> jtBoolean) or Value.AsBoolean then Exit; end
     else if Name = 'bonusFrequency' then
     begin if (Value.JSONType <> jtNumber) or (Value.AsFloat <> 0) then Exit; end
@@ -135,7 +140,7 @@ const RequiredFiles: array[0..49] of PChar = (
   'anims/kolba.poa', 'anims/rucha.poa', 'objects/gostek.po',
   'objects/kit.po', 'objects/flag.po', 'objects/para.po',
   'objects/stat.po', 'objects/karabin.po');
-var Obj: TJSONObject; J,Mode: Integer; Keyed,TraceCombat:Boolean;
+var Obj: TJSONObject; J,Mode,Difficulty: Integer; Keyed,TraceCombat,EnableAI:Boolean;
 begin
   if Initialized then Exit(SIM_UNSUPPORTED);
   SimInvalidateState;
@@ -148,6 +153,7 @@ begin
     Mode:=GAMESTYLE_DEATHMATCH;
     if Obj.Get('mode','dm')='ctf' then Mode:=GAMESTYLE_CTF;
     TraceCombat:=Obj.Get('traceCombat',False);
+    EnableAI:=Obj.Get('ai',False);Difficulty:=Obj.Get('botDifficulty',100);
   finally Obj.Free; end;
   for J := Low(RequiredFiles) to High(RequiredFiles) do
     if not PHYSFS_exists(RequiredFiles[J]) then Exit(SIM_MISSING);
@@ -156,6 +162,7 @@ begin
   SimResetOriginalRNG(SeedLo);
   SetRandomPolicy(Keyed,SeedLo,SeedHi);
   if not CvarsReady then begin CvarInit; CvarsReady := True; end;
+  AIEnabled:=EnableAI;bots_difficulty.SetValue(Difficulty);bots_chat.SetValue(False);
   sv_gamemode.SetValue(Mode);
   sv_bonus_frequency.SetValue(0); sv_survivalmode.SetValue(False);
   sv_realisticmode.SetValue(False); sv_lobby.SetValue(False);
@@ -175,6 +182,7 @@ begin
     SimWasJumping[J] := False; SimWasRunningLeft[J] := False;
     NoClientUpdateTime[J] := 0;
     SimChosenPrimary[J]:=NOWEAPON_NUM;SimChosenSecondary[J]:=NOWEAPON_NUM;
+    SimLimboAvailable[J]:=False;SimBotOwned[J]:=False;
   end;
   LoadAnimObjects('');
   SimBindAnimationContent;
@@ -219,15 +227,38 @@ begin
 end;
 function CombatCommand(Obj:TJSONObject;const Kind:string):LongInt;
 var S,W,Owner,Ammo,Target,Circle,Timeout,Frame,Secondary:Int64;
-  Pos,Velocity:TVector2;HitM:Single;Index:Integer;
+  Pos,Velocity:TVector2;HitM:Single;Index:Integer;Selection:string;
 begin
   Result:=SIM_INVALID;
-  if Kind='weapon-choice' then begin
+  if (Kind='weapon-choice') or (Kind='weapon-apply') then begin
     if not JsonInteger(Obj,'slot',0,S) or (S<1) or (S>MAX_PLAYERS) or not Sprite[S].Active then Exit;
     if (Sprite[S].Player.ControlMethod<>BOT) or not Sprite[S].Dummy then Exit(SIM_UNSUPPORTED);
     if not JsonInteger(Obj,'weapon',-1,W) or (W<0) or (W>255) or (WeaponNumToIndex(W)<1) or
       not JsonInteger(Obj,'secondaryWeapon',SimChosenSecondary[S],Secondary) or
       (Secondary<0) or (Secondary>255) or (WeaponNumToIndex(Secondary)<1) then Exit;
+    if Kind='weapon-apply' then begin
+      Selection:=Obj.Get('selection','primary');
+      if (Selection<>'primary') and (Selection<>'secondary') then Exit(SIM_UNSUPPORTED);
+      if not SimLimboAvailable[S] or Sprite[S].DeadMeat then Exit(SIM_UNSUPPORTED);
+      if Selection='primary' then begin
+        Index:=WeaponNumToIndex(W);
+        if (Index<1) or (Index>PRIMARY_WEAPONS) or (WeaponActive[Index]<>1) or
+          (Sprite[S].Weapon.Num in [BOW_NUM,BOW2_NUM]) then Exit(SIM_UNSUPPORTED);
+      end else if Obj.Find('secondaryWeapon')=nil then Exit(SIM_INVALID);
+      Index:=WeaponNumToIndex(Secondary);
+      if (Obj.Find('secondaryWeapon')<>nil) and
+        ((Index<COLT) or (Index>LAW) or (WeaponActive[Index]<>1)) then Exit(SIM_UNSUPPORTED);
+      if Selection='primary' then begin
+        SimLimboAvailable[S]:=False;
+        Sprite[S].SelWeapon:=W;
+        Sprite[S].ApplyWeaponByNum(W,1);
+      end;
+      if Obj.Find('secondaryWeapon')<>nil then begin
+        Sprite[S].Player.SecWep:=Index-COLT;
+        Sprite[S].ApplyWeaponByNum(Secondary,2);
+      end;
+      if Selection='secondary' then begin SimChosenSecondary[S]:=Secondary;Exit(SIM_OK);end;
+    end;
     SimChosenPrimary[S]:=W;SimChosenSecondary[S]:=Secondary;Sprite[S].Brain.FavWeapon:=W;
     Exit(SIM_OK);
   end;
@@ -279,6 +310,7 @@ end;
 function sim_command(Tick: LongWord; Data: Pointer; Length: LongWord): LongInt;
 var Obj: TJSONObject; Kind, Key: string; S, Team, Spawn, Flag,W,Secondary,Ammo,Grenades: Int64;
   Position, Velocity: TVector2; P: TPlayer; J, Created: Integer; Health,Vest: Single; D: TJSONData;
+  IsBot:Boolean;Profile:string;
 begin
   if not Initialized or not MapLoaded then Exit(SIM_NOT_INITIALIZED);
   SimInvalidateState;
@@ -287,7 +319,7 @@ begin
   try
     D := Obj.Find('kind'); if (D = nil) or (D.JSONType <> jtString) then Exit(SIM_MALFORMED);
     Kind := D.AsString;
-    if (Kind='thing') or (Kind='bullet') or (Kind='fixture-sprite') or (Kind='weapon-choice') then Exit(CombatCommand(Obj,Kind));
+    if (Kind='thing') or (Kind='bullet') or (Kind='fixture-sprite') or (Kind='weapon-choice') or (Kind='weapon-apply') then Exit(CombatCommand(Obj,Kind));
     if (Kind <> 'join') and (Kind <> 'leave') and (Kind <> 'team') and (Kind <> 'spawn') then Exit(SIM_UNSUPPORTED);
     for J := 0 to Obj.Count-1 do
     begin
@@ -295,11 +327,22 @@ begin
       if (Key <> 'kind') and (Key <> 'slot') and (Key <> 'team') and (Key <> 'spawn') and
          (Key <> 'x') and (Key <> 'y') and (Key <> 'health') and (Key <> 'heldFlag') and
          (Key <> 'weapon') and (Key <> 'secondaryWeapon') and (Key <> 'ammo') and
-         (Key <> 'grenades') and (Key <> 'vest') and (Key <> 'control') then Exit(SIM_UNSUPPORTED);
+         (Key <> 'grenades') and (Key <> 'vest') and (Key <> 'control') and (Key <> 'bot') then Exit(SIM_UNSUPPORTED);
     end;
     if (Obj.Find('slot') = nil) or not JsonInteger(Obj,'slot',0,S) or (S < 1) or (S > MAX_PLAYERS) then Exit(SIM_INVALID);
     if not JsonInteger(Obj,'team',0,Team) or (Team < 0) or (Team > TEAM_SPECTATOR) then Exit(SIM_INVALID);
-    if (Obj.Get('control','human')<>'human') and (Obj.Get('control','human')<>'authoritative') then Exit(SIM_UNSUPPORTED);
+    if (Obj.Get('control','human')<>'human') and (Obj.Get('control','human')<>'authoritative') and
+      (Obj.Get('control','human')<>'bot') then Exit(SIM_UNSUPPORTED);
+    IsBot:=Obj.Get('control','human')='bot';
+    Profile:='';
+    if IsBot then begin
+      D:=Obj.Find('bot');
+      if (D=nil) or (D.JSONType<>jtString) or (D.AsString='') then Exit(SIM_INVALID);
+      Profile:=LowerCase(D.AsString);
+      if (Pos('/',Profile)>0) or (Pos('\',Profile)>0) or (Pos('..',Profile)>0) then Exit(SIM_INVALID);
+      Profile:='bots/'+Profile+'.bot';
+      if not PHYSFS_exists(PChar(Profile)) then Exit(SIM_MISSING);
+    end;
     if not JsonInteger(Obj,'weapon',255,W) or (W<0) or (W>255) or
       not JsonInteger(Obj,'secondaryWeapon',255,Secondary) or (Secondary<0) or (Secondary>255) or
       not JsonInteger(Obj,'ammo',-1,Ammo) or (Ammo< -1) or (Ammo>255) or
@@ -347,12 +390,25 @@ begin
       P := TPlayer.Create; P.Team := Team; P.ControlMethod := HUMAN;
       P.Name := 'oracle-' + IntToStr(S);
       if Obj.Get('control','human')='authoritative' then begin
-        P.ControlMethod:=BOT;bots_chat.SetValue(False);bots_difficulty.SetValue(100);
+        P.ControlMethod:=BOT;
+      end;
+      if IsBot then begin
+        P.ApplyShirtColorFromTeam;
+        RandomizeStart(Position,Team);
       end;
     end
     else P := Sprite[S].Player;
     Created := CreateSprite(Position,Velocity,1,S,P,True);
     if Created <> S then Exit(SIM_CAPACITY);
+    SimLimboAvailable[S]:=True;
+    if Kind='join' then SimBotOwned[S]:=IsBot;
+    if IsBot then begin
+      for J:=1 to PRIMARY_WEAPONS do WeaponSel[S,J]:=WeaponActive[J];
+      if not LoadBotConfig(Profile,Sprite[S]) then begin Sprite[S].Kill;Exit(SIM_MALFORMED);end;
+      Sprite[S].Respawn;
+      Sprite[S].Player.ChatWarnings:=0;Sprite[S].Player.GrabsPerSecond:=0;
+      SortPlayers;SimResetRender;Exit(SIM_OK);
+    end;
     Sprite[S].Health := Health;
     if P.ControlMethod=BOT then begin
       if Kind='join' then begin
@@ -589,6 +645,7 @@ begin
         Sprite[J].Dummy and (Sprite[J].Player.ControlMethod=BOT) then begin
         Sprite[J].ApplyWeaponByNum(SimChosenPrimary[J],1);
         Sprite[J].ApplyWeaponByNum(SimChosenSecondary[J],2);
+        SimLimboAvailable[J]:=True;
       end;
       Stage('tick');
     except

@@ -1,15 +1,16 @@
-export const RENDER_ABI_VERSION = 0x00010003;
+export const RENDER_ABI_VERSION = 0x00010004;
 export const RENDER_LAYOUT = {
-  headerBytes: 32, spriteBytes: 636, slots: 32, skeletonPoints: 24,
+  headerBytes: 32, spriteBytes: 656, slots: 32, skeletonPoints: 24,
   header: { version: 0, tick: 4, spriteCount: 8, slots: 12, spriteStride: 16, bulletsOffset: 20, thingsOffset: 24, totalBytes: 28 },
   sprite: { slot: 0, flags: 4, direction: 8, legsId: 12, legsFrame: 16, bodyId: 20, bodyFrame: 24, aimX: 28, aimY: 32, weapon: 36, posX: 40, posY: 44, health: 48, fuel: 52, previousSkeleton: 56, currentSkeleton: 248, team: 440, inventory: 444,
     fired: 448, clipTexture: 452, clipInTime: 456, clipOutTime: 460, secondaryWeapon: 464, tertiaryWeapon: 468, vest: 472, jetpack: 476,
     alpha: 480, wearHelmet: 484, hasCigar: 488, chain: 492, headCap: 496, hairStyle: 500, shirtColor: 504, pantsColor: 508, skinColor: 512, hairColor: 516,
     ceaseFireCounter: 520, visible: 524, style: 528, demoPlayer: 532, weaponAmmo: 536, weaponReloadTime: 540, weaponFireInterval: 544, fireIntervalCount: 548,
-    kills: 552, deaths: 556, ping: 560, playerFlags: 564, controlMethod: 568, playerNameLength: 572, playerName: 576, jetColor: 624, primaryIndex: 628, secondaryIndex: 632 },
+    kills: 552, deaths: 556, ping: 560, playerFlags: 564, controlMethod: 568, playerNameLength: 572, playerName: 576, jetColor: 624, primaryIndex: 628, secondaryIndex: 632,
+    weaponBink: 636, controlBits: 640, mouseDist: 644, currentWaypoint: 648, nextWaypoint: 652 },
   playerNameBytes: 48,
   sectionHeaderBytes: 8, bulletBytes: 96, thingBytes: 324, maxBullets: 254, maxThings: 90,
-  bulletsOffset: 20384, thingsOffset: 44776, globalsOffset: 73944, globalsBytes: 44, totalBytes: 73988,
+  bulletsOffset: 21024, thingsOffset: 45416, globalsOffset: 74584, globalsBytes: 44, totalBytes: 74628,
   bullet: { owner: 24, ownerWeapon: 28, velocityX: 32, velocityY: 36, timeout: 40, imageStyle: 44,
     velocityPrevX: 48, velocityPrevY: 52, hitMultiply: 56, hitMultiplyPrev: 60, timeoutPrev: 64, initialX: 68, initialY: 72, hitBody: 76, pingAdd: 80, pingAddStart: 84, active: 88, presentationFlags: 92 },
   thing: { owner: 24, ammo: 28, holdingSprite: 32, flags: 36, pointCount: 40, skeleton: 48, timeout: 304, interest: 308, color: 312, presentationFlags: 316, creationFacing: 320 },
@@ -17,7 +18,7 @@ export const RENDER_LAYOUT = {
   section: { count: 0, stride: 4 },
   movingEntity: { slot: 0, style: 4, posX: 8, posY: 12, oldPosX: 16, oldPosY: 20, owner: 24 },
 } as const;
-export const SPRITE_FLAGS = { active: 1, dead: 2, ground: 4, permanent: 8, crouch: 16, prone: 32 } as const;
+export const SPRITE_FLAGS = { active: 1, dead: 2, ground: 4, permanent: 8, crouch: 16, prone: 32, bot: 64 } as const;
 export const BULLET_PRESENTATION_FLAGS = { pingUnavailable: 1 } as const;
 export const THING_PRESENTATION_FLAGS = { colorAvailable: 1 } as const;
 const nameDecoder = new TextDecoder();
@@ -36,6 +37,7 @@ export interface RenderSprite {
   ceaseFireCounter: number; visible: number; style: number; demoPlayer: boolean;
   weaponAmmo: number; weaponReloadTime: number; weaponFireInterval: number; fireIntervalCount: number;
   kills: number; deaths: number; ping: number; playerFlags: number; controlMethod: number; playerName: string;
+  weaponBink: number; controlBits: number; mouseDist: number; currentWaypoint: number; nextWaypoint: number;
   previousSkeleton: Float32Array; currentSkeleton: Float32Array;
 }
 export interface RenderMovingEntity {
@@ -176,6 +178,9 @@ export function readRenderView(memory: WebAssembly.Memory, ptr: number): RenderV
         kills: view.getInt32(s.kills,true), deaths: view.getInt32(s.deaths,true), ping: view.getUint32(s.ping,true),
         playerFlags: view.getUint32(s.playerFlags,true), controlMethod: view.getUint32(s.controlMethod,true),
         playerName: nameDecoder.decode(new Uint8Array(memory.buffer, base + s.playerName, nameLength)),
+        weaponBink: view.getInt32(s.weaponBink,true), controlBits: view.getUint32(s.controlBits,true),
+        mouseDist: view.getInt32(s.mouseDist,true), currentWaypoint: view.getInt32(s.currentWaypoint,true),
+        nextWaypoint: view.getInt32(s.nextWaypoint,true),
         previousSkeleton: new Float32Array(memory.buffer, base + s.previousSkeleton, RENDER_LAYOUT.skeletonPoints * 2),
         currentSkeleton: new Float32Array(memory.buffer, base + s.currentSkeleton, RENDER_LAYOUT.skeletonPoints * 2),
       };
