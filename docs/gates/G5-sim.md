@@ -42,7 +42,7 @@ The bot corpus has **18 captured, repeated-byte-identical oracle fixtures**: 14 
 | Node T3 original + keyed, save/load every 50 ticks | **336 / 336**, 168 per policy |
 | Chrome T3 original + keyed | 0 / 336 |
 | Firefox T3 original + keyed | 0 / 336 |
-| Presentation/render/menu/bink checks | Not run on final artifact |
+| Presentation/render/menu/bink checks | **PASS**: 3 weather lanes; 722 render publications; 180 replay comparisons; limbo, bink and bot snapshot checks |
 | Five-minute robustness, eight bots, DM + CTF | 0 / 194 map/mode runs |
 | Optional thirty-minute probes, Arena/Ash/Laos, DM + CTF | 0 / 6 |
 
@@ -74,3 +74,9 @@ Both harness and extracted simulation intentionally have an **empty map-rotation
 `build-out/sim/g5/final/execution.json` records zero-exit captures, movement/combat/bot T1 and all three T2/Node corpus stages. The authoritative-control command exits 1 for the three deliberate C08 secondary-inventory differences; its explicit `movementAndPoseIdentical:98` acceptance passes. Full results are `movement-t1/results.json`, `movement-authoritative/{results,all-differences}.json`, and `{movement,combat,bots}/results-{t1,t2}.json` under that directory (movement T1 uses `movement-t1/`). T1 bot fixtures include both complete 10,000-tick Arena runs, not a shortened pre-kill-limit comparison.
 
 The original serial runner was deliberately stopped as its first Chrome lane opened, to obey coordinator browser-slot arbitration and mandatory audio muting. No incomplete browser lane is counted. Remaining stages resume with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence is not discarded or rerun just because browser scheduling was interrupted.
+
+## Presentation checks
+
+Final-artifact render evidence (`final/render-check.json`) records 722 publications, 577 bullet and 282 Thing observations, cross-instance creation-facing `[1,0]`, and 180 replay comparisons. Immediate limbo secondary/primary application and rejection after closure pass. Exact-input bink amount 65 is observed, replay suppresses its presentation event, and gameplay hashes are identical. Explicit bot respawn retains AI, waypoints are observed, and an AI-off instance loads the authoritative snapshot with identical hash.
+
+The three 600-tick weather lanes each pass 600 FX-on/off hash comparisons and 600 rewind/replay comparisons, with alpha 105. Rain observes 1,867 sounds / 24,250 active-spark observations; sand 1,866 / 27,836; snow 1,866 / 29,317. Commands are `node sim/build/check-render.mjs build-out/sim/sim.wasm build-out/sim/g5/final/render-check.json` and `node sim/build/check-presentation.mjs N build-out/sim/g5/final/presentation-N.json` for N=1,2,3, each preceded by `memory_pressure`. These checks ran during the coordinator-imposed browser hold, without overlapping another G5 heavy job.
