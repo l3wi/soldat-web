@@ -93,6 +93,10 @@ begin
     begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'dm') and (Value.AsString <> 'ctf')) then Exit; end
     else if Name = 'rng' then
     begin if (Value.JSONType <> jtString) or ((Value.AsString <> 'original') and (Value.AsString <> 'keyed')) then Exit; end
+    else if Name='world' then
+    begin if (Value.JSONType<>jtString) or ((Value.AsString<>'original') and (Value.AsString<>'fixture')) then Exit;end
+    else if Name='stationaryGuns' then
+    begin if Value.JSONType<>jtBoolean then Exit;end
     else if Name = 'ai' then
     begin if Value.JSONType <> jtBoolean then Exit; end
     else if Name = 'botDifficulty' then
@@ -140,7 +144,7 @@ const RequiredFiles: array[0..49] of PChar = (
   'anims/kolba.poa', 'anims/rucha.poa', 'objects/gostek.po',
   'objects/kit.po', 'objects/flag.po', 'objects/para.po',
   'objects/stat.po', 'objects/karabin.po');
-var Obj: TJSONObject; J,Mode,Difficulty: Integer; Keyed,TraceCombat,EnableAI:Boolean;
+var Obj: TJSONObject; J,Mode,Difficulty: Integer; Keyed,TraceCombat,EnableAI,OriginalWorld,Stationary:Boolean;
 begin
   if Initialized then Exit(SIM_UNSUPPORTED);
   SimInvalidateState;
@@ -154,6 +158,7 @@ begin
     if Obj.Get('mode','dm')='ctf' then Mode:=GAMESTYLE_CTF;
     TraceCombat:=Obj.Get('traceCombat',False);
     EnableAI:=Obj.Get('ai',False);Difficulty:=Obj.Get('botDifficulty',100);
+    OriginalWorld:=Obj.Get('world','original')='original';Stationary:=Obj.Get('stationaryGuns',False);
   finally Obj.Free; end;
   for J := Low(RequiredFiles) to High(RequiredFiles) do
     if not PHYSFS_exists(RequiredFiles[J]) then Exit(SIM_MISSING);
@@ -163,6 +168,7 @@ begin
   SetRandomPolicy(Keyed,SeedLo,SeedHi);
   if not CvarsReady then begin CvarInit; CvarsReady := True; end;
   AIEnabled:=EnableAI;bots_difficulty.SetValue(Difficulty);bots_chat.SetValue(False);
+  SimOriginalWorld:=OriginalWorld;sv_stationaryguns.SetValue(Stationary);
   sv_gamemode.SetValue(Mode);
   sv_bonus_frequency.SetValue(0); sv_survivalmode.SetValue(False);
   sv_realisticmode.SetValue(False); sv_lobby.SetValue(False);
@@ -191,6 +197,25 @@ begin
   CombatDiagnostics.Reset; CombatDiagnostics.Enabled:=TraceCombat;
   Result := SIM_OK;
 end;
+procedure SpawnOriginalWorld;
+var A:TVector2;I:Integer;
+begin
+  A:=Default(TVector2);
+  if sv_gamemode.Value=GAMESTYLE_CTF then begin
+    if RandomizeStart(A,5) then TeamFlag[1]:=CreateThing(A,255,OBJECT_ALPHA_FLAG,255);
+    if RandomizeStart(A,6) then TeamFlag[2]:=CreateThing(A,255,OBJECT_BRAVO_FLAG,255);
+  end;
+  if not sv_survivalmode.Value then begin
+    SpawnThings(OBJECT_MEDICAL_KIT,Map.Medikits);
+    if sv_maxgrenades.Value>0 then SpawnThings(OBJECT_GRENADE_KIT,Map.Grenades);
+  end;
+  if sv_stationaryguns.Value then
+    for I:=1 to MAX_SPAWNPOINTS do
+      if Map.SpawnPoints[I].Active and (Map.SpawnPoints[I].Team=16) then begin
+        A.X:=Map.SpawnPoints[I].X;A.Y:=Map.SpawnPoints[I].Y;
+        CreateThing(A,255,OBJECT_STATIONARY_GUN,255);
+      end;
+end;
 function sim_load_map(Name: Pointer; NameLength: LongWord): LongInt;
 var S: AnsiString; Info: TMapInfo; J,K: Integer;
 begin
@@ -209,6 +234,7 @@ begin
     for K:=1 to PRIMARY_WEAPONS do WeaponSel[J,K]:=WeaponActive[K];
   MapChangeCounter := -60; BulletTimeTimer := -1; TimeLimitCounter := 360000;
   for J := 1 to MAX_PLAYERS do Sprite[J].Player := DummyPlayer;
+  if SimOriginalWorld then SpawnOriginalWorld;
   MapLoaded := True; SimResetRender;
   Result := SIM_OK;
 end;

@@ -7,6 +7,7 @@ type TSimInputHistory = array[1..MAX_PLAYERS] of Boolean;
 var SimWasJumping, SimWasRunningLeft: TSimInputHistory;
 var SimChosenPrimary,SimChosenSecondary:array[1..MAX_PLAYERS] of Byte;
 var SimLimboAvailable,SimBotOwned:TSimInputHistory;
+var SimOriginalWorld:Boolean=True;
 { Every ABI entry point that can mutate gameplay or serialized content must
   invalidate before doing any work, including paths that can fail partway. }
 procedure SimInvalidateState;
@@ -665,6 +666,8 @@ begin
   if Number(MatchSeed,8)<>MatchSeed then Fail;
   if Number(sv_gamemode.Value,1)<>QWord(sv_gamemode.Value) then Fail;
   if Number(bots_difficulty.Value,2)<>QWord(bots_difficulty.Value) then Fail;
+  if Number(Ord(SimOriginalWorld),1)<>Ord(SimOriginalWorld) then Fail;
+  if Number(Ord(sv_stationaryguns.Value),1)<>Ord(sv_stationaryguns.Value) then Fail;
   Content:=Number(OtherCounter,8);if Reading and Apply then OtherCounter:=Content;
   Content:=Number(AISeed,8);if Reading and Apply then AISeed:=Content;
   for J:=0 to 32 do begin C(ShotCounters[J]);C(EventCounters[J]);end;

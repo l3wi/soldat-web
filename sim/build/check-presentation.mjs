@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { loadSim, loadSimContent, requireStatus } from '../../packages/sim-host/src/sim.ts';
 const wasm = new Uint8Array(await readFile('build-out/sim/sim.wasm'));
 const weather = Number(process.argv[2] ?? 1);
+const output=process.argv[3]??`build-out/sim/g3/presentation-${weather}.json`;
 if (![1,2,3].includes(weather)) throw new Error("Weather must be 1, 2 or 3");
 const manifest = JSON.parse(await readFile('dist/content/sim/manifest.json','utf8'));
 const hosts = await Promise.all([loadSim(wasm),loadSim(wasm)]);
@@ -43,6 +44,6 @@ try {
     }
   }
   if(!result.sparks||!result.soundEvents||!result.weatherAlpha105)throw new Error('presentation was not exercised');
-  await mkdir('build-out/sim/g3',{recursive:true});await writeFile(`build-out/sim/g3/presentation-${weather}.json`,JSON.stringify(result,null,2)+'\n');
+  await mkdir(resolve(output,'..'),{recursive:true});await writeFile(output,JSON.stringify(result,null,2)+'\n');
   console.log(JSON.stringify(result));
 } finally {for(const host of hosts)host.dispose();}
