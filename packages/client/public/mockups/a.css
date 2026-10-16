@@ -38,6 +38,8 @@ input { caret-color: #d5ddbf; }
 .theme-a .boot .shell { width: 420px; }
 .theme-a .boot .masthead { margin-bottom: 38px; }
 .theme-a .boot .wordmark { font-size: 88px; letter-spacing: -5px; }
+.theme-a .panel { min-height: 0; }
+.theme-a .error:empty { min-height: 0; margin: 0; }
 .theme-a .boot .panel { background: none; border: 0; box-shadow: none; min-height: 0; padding: 0; }
 .theme-a .boot .progress { height: 9px; background: #07110c88; border-color: #d0d4a75c; }
 .theme-a .boot .load-file { margin: 14px 0 0; font-size: 14px; color: #e3e5cb; text-shadow: 1px 2px #000; }

@@ -45,7 +45,6 @@ const escape = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;
 const later = (callback, delay) => timers.push(setTimeout(callback, delay));
 const identity = () => escape(state.name || 'Player');
 const action = (label, command, primary = false) => `<button class="action${primary ? ' primary' : ''}" data-action="${command}">${label}</button>`;
-const topline = label => `<div class="topline"><span>${label}</span><span class="callsign"><i class="status-dot"></i><span class="call-name" title="${identity()}">${identity()}</span></span></div>`;
 const preview = (map = maps[state.map]) => `<div class="preview-map" style="--preview-map:url('./assets/${map.image}')"><span>${map.name}</span></div>`;
 
 function syncBackground() {
@@ -67,7 +66,7 @@ reducedMotion.addEventListener('change', syncBackground);
 syncBackground();
 
 function wordmark() {
-  return `<header class="masthead"><h1 class="wordmark"><span>Field</span><span>Sandbox</span></h1>${state.screen === 'boot' ? '' : '<span class="edition">Working title<br>Original art / browser edition</span>'}</header>`;
+  return `<header class="masthead"><h1 class="wordmark"><span>Field</span><span>Sandbox</span></h1></header>`;
 }
 function roster(friends = false) {
   // A plain wrapping row of names; bots are one aggregate entry. In friend lobbies, unready names are dimmed.
@@ -89,67 +88,60 @@ function content() {
     case 'boot':
       return `<div class="progress" role="progressbar" aria-label="Loading assets" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="load-fill"></span></div><p id="load-status" class="load-file" role="status">Loading maps…</p>`;
     case 'name':
-      return `${topline('Before you drop in')}<h2>What’s your name?</h2><p class="muted">The one they’ll see above your head.</p>
-        <form id="name-form" novalidate><div class="field"><label for="player-name">Player name</label>
-          <input id="player-name" maxlength="24" autocomplete="nickname" spellcheck="false" value="${escape(state.name)}" placeholder="Type your name" aria-describedby="name-hint name-error">
-          <div class="field-info" id="name-hint"><span>1–24 printable ASCII characters</span><span id="name-count">${state.name.length} / 24</span></div>
+      return `<h2>Your name</h2>
+        <form id="name-form" novalidate><div class="field">
+          <input id="player-name" maxlength="24" autocomplete="nickname" spellcheck="false" value="${escape(state.name)}" placeholder="Type your name" aria-label="Player name" aria-describedby="name-error">
           <p class="error" id="name-error" role="alert"></p></div><button class="action primary" type="submit">Continue [Enter]</button>
-        </form><p class="menu-note">Remembered on this browser. No account needed.</p>`;
+        </form>`;
     case 'menu':
-      return `${topline('Choose your game')}<p class="key-hint">Press 1–6 or click to select</p>
-        <nav class="menu" aria-label="Main menu">${menuLabels.map((label, index) => `<button class="menu-row${state.selected === index ? ' active' : ''}" data-action="${menuScreens[index]}" data-menu-index="${index}"><span class="number">${index + 1}</span><span>${label}</span></button>`).join('')}</nav>
-        <p class="menu-note">Quick play finds the lowest-ping lobby.<br>Bots fill the empty slots.</p>`;
+      return `<nav class="menu" aria-label="Main menu">${menuLabels.map((label, index) => `<button class="menu-row${state.selected === index ? ' active' : ''}" data-action="${menuScreens[index]}" data-menu-index="${index}"><span class="number">${index + 1}</span><span>${label}</span></button>`).join('')}</nav>`;
     case 'quickplay':
-      return `${topline('Quick play')}<h2>Finding a game</h2><p class="muted">Testing the route to each region.</p>
-        <div class="region-results"><table class="regions"><thead><tr><th>Region</th><th>Latency</th><th>Availability</th></tr></thead><tbody id="region-rows"></tbody></table></div>
+      return `<h2>Finding a game</h2>
+        <div class="region-results"><table class="regions"><tbody id="region-rows"></tbody></table></div>
         <div class="search-status" id="search-status" role="status"><i class="spinner"></i><span>Testing Sydney…</span></div>
-        <p class="rules-note">Players replace bots when they join.<br>Bots return when players leave.</p>
-        <div class="actions">${action('Cancel [Esc]', 'cancel-search')}</div>
-        <p class="small" style="margin-top:16px">Illustrative ping test. Additional regions are a stretch goal.</p>`;
+        <div class="actions">${action('Cancel [Esc]', 'cancel-search')}</div>`;
     case 'joined':
-      return `${topline('Quick play / Joined')}<h2>Arena</h2><p class="match-label">Deathmatch / Sydney / 18 ms</p>${preview(maps[0])}
-        ${roster()}<p class="rules-note">Players replace bots as they join; bots return when players leave.</p>
-        <div class="actions">${action('Enter game [Enter]', 'enter-game', true)}${action('Back to menu', 'menu')}</div>
-        <p class="preview-notice" id="game-status" role="status">UI preview only. No server connection.</p>`;
+      return `<h2>Arena</h2><p class="match-label">Deathmatch / 18 ms</p>${preview(maps[0])}
+        ${roster()}
+        <div class="actions">${action('Enter game [Enter]', 'enter-game', true)}${action('Back', 'menu')}</div>
+        <p class="preview-notice" id="game-status" role="status"></p>`;
     case 'lobby':
-      return `${topline(state.host ? 'Friends / You are the host' : 'Friends / Guest')}<h2>${state.host ? 'Your friend game' : 'Friend game'}</h2>
+      return `<h2>Friend game</h2>
         <div class="lobby-setup">${setupRows()}${preview()}</div>
-        <div class="lobby-code"><div><small>Lobby code</small><strong>${escape(state.code)}</strong></div>${action('Copy link', 'copy-link')}</div>
-        ${roster(true)}<p class="rules-note">Friends replace bots when they join. Bots return when they leave.</p>
-        <div class="actions">${action(state.host ? (state.matchReady ? 'Match ready' : 'Start [Enter]') : (state.ready ? 'Ready ✓' : 'Ready up [Enter]'), state.host ? 'start' : 'ready', true)}${action('Leave game', 'menu')}</div>
-        <p class="preview-notice" id="lobby-status" role="status">${state.matchReady ? `${maps[state.map].name} is ready. Gameplay would open here.` : 'UI preview / Sydney, 18 ms / Only people with the link can join.'}</p>`;
+        <div class="lobby-code"><strong>${escape(state.code)}</strong>${action('Copy link', 'copy-link')}</div>
+        ${roster(true)}
+        <div class="actions">${action(state.host ? (state.matchReady ? 'Starting…' : 'Start [Enter]') : (state.ready ? 'Ready ✓' : 'Ready up [Enter]'), state.host ? 'start' : 'ready', true)}${action('Leave', 'menu')}</div>
+        <p class="preview-notice" id="lobby-status" role="status"></p>`;
     case 'maps':
-      return `${topline(state.mapReturn === 'practice' ? 'Practice / Map selection' : 'Friends / Map selection')}<h2>Choose a map</h2><p class="key-hint">Press 1–8, click, or use ↑ / ↓ and Enter</p>
+      return `<h2>Choose a map</h2>
         <div class="map-picker"><div class="map-list" role="listbox" aria-label="Maps">${maps.map((map, index) => `<button class="menu-row" role="option" aria-selected="${index === state.highlightedMap}" data-map="${index}"><span class="number">${index + 1}</span><span>${map.name}</span></button>`).join('')}</div>
           <div id="map-detail">${mapDetail()}</div>
         </div><div class="actions">${action('Back [Esc]', 'close-maps')}</div>`;
     case 'join':
-      return `${topline('Play with friends')}<h2>Join a friend game</h2><p class="muted">Paste a link, or type the six-character code.</p>
-        <form id="join-form" novalidate><div class="field"><label for="lobby-link">Lobby link or code</label><input id="lobby-link" autocomplete="off" spellcheck="false" value="${escape(query.get('lobby') || '')}" placeholder="K7M4Q2" aria-describedby="join-error" style="font-size:18px"><p id="join-error" class="error" role="alert"></p></div><button class="action primary" type="submit">Join game [Enter]</button></form>
-        <div class="actions">${action('Back to menu', 'menu')}</div><p class="menu-note">Try K7M4Q2 in this prototype.<br>Lobby and player data are simulated.</p>`;
+      return `<h2>Join a friend game</h2>
+        <form id="join-form" novalidate><div class="field"><input id="lobby-link" autocomplete="off" spellcheck="false" value="${escape(query.get('lobby') || '')}" placeholder="Link or code" aria-label="Lobby link or code" aria-describedby="join-error" style="font-size:18px"><p id="join-error" class="error" role="alert"></p></div><button class="action primary" type="submit">Join [Enter]</button></form>
+        <div class="actions">${action('Back', 'menu')}</div>`;
     case 'practice':
-      return `${topline('Local sandbox')}<h2>Practice vs bots</h2><p class="muted">Pick a map and get your aim back.</p>${setupRows()}
+      return `<h2>Practice vs bots</h2>${setupRows()}
         <label class="menu-row config" for="bot-count"><span class="number">3</span><span>Bots</span><input id="bot-count" type="number" min="0" max="31" value="${state.bots}"></label>
         ${preview()}<div class="actions">${action('Start practice [Enter]', 'practice-start', true)}${action('Back', 'menu')}</div>
-        <p id="practice-status" class="preview-notice" role="status">Current sandbox controls. Gameplay is outside this UI study.</p>`;
+        <p id="practice-status" class="preview-notice" role="status"></p>`;
     case 'settings':
-      return `${topline('Settings')}<h2>Make yourself at home</h2>
+      return `<h2>Settings</h2>
         <label class="settings-row" for="volume"><span>Master volume <small id="volume-value">${state.volume}%</small></span><input id="volume" type="range" min="0" max="100" value="${state.volume}"></label>
         <label class="settings-row" for="motion"><span>Gameplay background</span><input id="motion" type="checkbox" ${state.motion ? 'checked' : ''}></label>
-        <div class="settings-row"><span>Player name</span><button class="text-button" data-action="change-name">${identity()} / Change</button></div>
-        <p class="small" style="margin-top:20px">Saved here. System reduced-motion preferences always win. The background has no audio.</p>
-        <div class="actions">${action('Back to menu', 'menu', true)}</div>`;
+        <div class="settings-row"><span>Name</span><button class="text-button" data-action="change-name">${identity()}</button></div>
+        <div class="actions">${action('Back', 'menu', true)}</div>`;
     case 'credits':
-      return `${topline('Credits & licenses')}<h2>The people behind the pixels</h2>
-        <p class="small">Field Sandbox is a working title, not the Soldat brand.</p>
-        <ul class="credit-list"><li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li><li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li><li>Play typeface: Play contributors, SIL Open Font License 1.1.</li><li>Art and captures: CC BY 4.0. Backdrops are cropped or tinted; the cursor is scaled down.</li><li>Background: 26 seconds recorded in our local ctf_Ash sandbox with eight original waypoint bots. Encoded as a muted, crossfaded loop. The shipped version would run live attract mode.</li></ul>
-        <nav class="menu" aria-label="License documents"><a class="small" href="./assets/base-license.txt">Read CC BY 4.0 license</a><a class="small" href="./assets/base-credits.txt">Read base-content contributor credits</a><a class="small" href="./assets/play-OFL.txt">Read Play font license</a></nav>
-        <p class="permission" style="margin-top:14px">The Soldat name and logo require written THD permission for product branding.</p><div class="actions">${action('Back to menu', 'menu', true)}</div>`;
+      return `<h2>Credits</h2>
+        <ul class="credit-list"><li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li><li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li><li>Play typeface: Play contributors, SIL Open Font License 1.1.</li><li>Art and captures: CC BY 4.0, cropped or tinted.</li></ul>
+        <nav class="menu" aria-label="License documents"><a class="small" href="./assets/base-license.txt">CC BY 4.0 license</a><a class="small" href="./assets/base-credits.txt">Contributor credits</a><a class="small" href="./assets/play-OFL.txt">Play font license</a></nav>
+        <div class="actions">${action('Back', 'menu', true)}</div>`;
   }
 }
 function mapDetail() {
   const map = maps[state.highlightedMap];
-  return `${preview(map)}<p class="map-name">${map.name}</p><p class="small">${map.note}<br>${modes[state.mode]}</p>`;
+  return `${preview(map)}<p class="map-name">${map.name}</p>`;
 }
 function navigate(screen, remember = true) {
   if (remember && screen !== state.screen) state.history.push(state.screen);
@@ -162,8 +154,8 @@ function render() {
   const tabScreens = ['boot', 'name', 'menu', 'quickplay', 'lobby'];
   const tabLabels = ['Load', 'Name', 'Menu', 'Quick play', 'Friends'];
   app.innerHTML = `<div class="demo-bar"><a href="./index.html">← All options / A</a><span>Chosen direction / Round 2</span><nav class="screen-tabs" aria-label="Preview screens">${tabScreens.map((screen, index) => `<button data-action="${screen}" ${screen === state.screen || (screen === 'quickplay' && state.screen === 'joined') || (screen === 'lobby' && state.screen === 'maps') ? 'aria-current="step"' : ''}>${tabLabels[index]}</button>`).join('')}</nav></div>
-    <main class="stage ${state.screen}${['joined', 'lobby', 'maps', 'credits'].includes(state.screen) ? ` ${state.screen}-screen` : ''}"><div class="shell">${wordmark()}<section class="panel" aria-label="${state.screen}">${content()}</section></div>${state.screen === 'boot' ? '' : '<div class="map-caption" aria-hidden="true"><strong>ctf_Ash</strong><span>8 bots / Original simulation</span></div>'}</main>
-    ${state.screen === 'boot' ? '' : '<footer class="footer"><span>1–6: menu &nbsp; Enter: select &nbsp; Backspace: back</span><span><button data-action="credits">Credits & licenses</button> &nbsp; UI preview / no server connection</span></footer>'}`;
+    <main class="stage ${state.screen}${['joined', 'lobby', 'maps', 'credits'].includes(state.screen) ? ` ${state.screen}-screen` : ''}"><div class="shell">${wordmark()}<section class="panel" aria-label="${state.screen}">${content()}</section></div></main>
+    `;
   bind();
   if (state.screen === 'boot') load();
   if (state.screen === 'quickplay') ping();
@@ -182,7 +174,7 @@ function bind() {
   const nameInput = app.querySelector('#player-name');
   if (nameInput) {
     nameInput.focus({ preventScroll: true });
-    nameInput.addEventListener('input', () => { app.querySelector('#name-count').textContent = `${nameInput.value.length} / 24`; nameInput.removeAttribute('aria-invalid'); app.querySelector('#name-error').textContent = ''; });
+    nameInput.addEventListener('input', () => { nameInput.removeAttribute('aria-invalid'); app.querySelector('#name-error').textContent = ''; });
     app.querySelector('#name-form').addEventListener('submit', event => { event.preventDefault(); saveName(); });
   }
   app.querySelector('#join-form')?.addEventListener('submit', event => { event.preventDefault(); join(); });
@@ -204,7 +196,7 @@ function load() {
 }
 function ping() {
   regions.forEach((region, index) => later(() => {
-    app.querySelector('#region-rows').insertAdjacentHTML('beforeend', `<tr data-region="${region.name}"><td>${region.name}</td><td>${region.latency} ms</td><td>${region.stretch ? '<small>Stretch goal</small>' : 'Available'}</td></tr>`);
+    app.querySelector('#region-rows').insertAdjacentHTML('beforeend', `<tr data-region="${region.name}"><td>${region.name}</td><td>${region.latency} ms</td></tr>`);
     if (index < regions.length - 1) app.querySelector('#search-status').innerHTML = `<i class="spinner"></i><span>Testing ${regions[index + 1].name}…</span>`;
     else {
       const best = regions.reduce((winner, region) => region.latency < winner.latency ? region : winner);
@@ -221,7 +213,7 @@ function ping() {
 function saveName() {
   const input = app.querySelector('#player-name');
   if (!validName(input.value)) {
-    app.querySelector('#name-error').textContent = 'Use 1–24 printable ASCII characters and at least one non-space character.';
+    app.querySelector('#name-error').textContent = 'Use 1–24 letters, numbers or symbols.';
     input.setAttribute('aria-invalid', 'true'); input.focus(); return;
   }
   state.name = input.value; storage.set('name', state.name); navigate(state.afterName);
@@ -230,7 +222,7 @@ function join() {
   const input = app.querySelector('#lobby-link');
   let code = input.value.trim();
   try { code = new URL(code).searchParams.get('lobby') || ''; } catch { /* Plain codes are allowed. */ }
-  if (!/^[a-z0-9]{6}$/i.test(code)) { input.setAttribute('aria-invalid', 'true'); app.querySelector('#join-error').textContent = 'Use a six-character code or a lobby link.'; input.focus(); return; }
+  if (!/^[a-z0-9]{6}$/i.test(code)) { input.setAttribute('aria-invalid', 'true'); app.querySelector('#join-error').textContent = 'Paste a lobby link or 6-character code.'; input.focus(); return; }
   state.code = code.toUpperCase(); state.host = false; state.ready = false;
   if (!state.name) { state.afterName = 'lobby'; navigate('name'); }
   else navigate('lobby');
@@ -257,13 +249,13 @@ async function perform(command) {
   }
   if (command === 'close-maps') { navigate(state.mapReturn, false); return; }
   if (command === 'change-name') { state.afterName = 'settings'; navigate('name'); return; }
-  if (command === 'start') { state.matchReady = true; app.querySelector('#lobby-status').textContent = `${maps[state.map].name} / ${modes[state.mode]} is ready. Gameplay would open here.`; app.querySelector('[data-action="start"]').textContent = 'Match ready'; return; }
+  if (command === 'start') { state.matchReady = true; app.querySelector('[data-action="start"]').textContent = 'Starting…'; return; }
   if (command === 'ready') { state.ready = !state.ready; render(); return; }
-  if (command === 'practice-start') { app.querySelector('#practice-status').textContent = `${maps[state.map].name} / ${modes[state.mode]} / ${state.bots} bots selected. Gameplay would open here.`; return; }
-  if (command === 'enter-game') { app.querySelector('#game-status').textContent = 'Arena is ready. Gameplay would open here in the connected game.'; return; }
+  if (command === 'practice-start') { app.querySelector('[data-action="practice-start"]').textContent = 'Starting…'; return; }
+  if (command === 'enter-game') { app.querySelector('[data-action="enter-game"]').textContent = 'Joining…'; return; }
   if (command === 'copy-link') {
     const url = new URL(location.href); url.search = ''; url.hash = ''; url.searchParams.set('lobby', state.code);
-    try { await navigator.clipboard.writeText(url.href); app.querySelector('[data-action="copy-link"]').textContent = 'Link copied'; app.querySelector('#lobby-status').textContent = 'Link copied. Send it to a friend.'; }
+    try { await navigator.clipboard.writeText(url.href); app.querySelector('[data-action="copy-link"]').textContent = 'Link copied'; }
     catch { app.querySelector('#lobby-status').innerHTML = `<label for="copy-link">Copy this link:</label><input id="copy-link" readonly style="width:100%;margin-top:7px;font-size:12px" value="${escape(url.href)}">`; const input = app.querySelector('#copy-link'); input.focus(); input.select(); }
     return;
   }
