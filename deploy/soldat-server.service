@@ -1,0 +1,103 @@
+[Unit]
+# Describe the process in status and journal output.
+Description=Soldat Online authoritative HTTPS/WSS server
+# Wait for configured network interfaces before binding the public listener.
+After=network-online.target
+# Ask the host's network manager to provide the online target.
+Wants=network-online.target
+# Bound restart attempts during persistent configuration/startup failures.
+StartLimitIntervalSec=300
+# Stop crash loops after six starts within the interval.
+StartLimitBurst=6
+
+[Service]
+# Node stays in the foreground and is the service's main process.
+Type=exec
+# Run without root privileges under a dedicated system identity.
+User=soldat
+# Permit read-only access to root-managed configuration and TLS files.
+Group=soldat
+# Resolve workspace imports and relative artifact paths within the selected release.
+WorkingDirectory=/opt/soldat/current
+# Keep deployment configuration outside immutable release artifacts.
+Environment=SOLDAT_SERVER_CONFIG=/etc/soldat/server.json
+# Use the verified Node 24 installation, not a package-manager or shell wrapper.
+ExecStart=/usr/local/bin/node /opt/soldat/current/packages/server/src/main.ts
+# Reload TLS in place; failed reloads keep the previous context and live connections.
+ExecReload=/bin/kill -HUP $MAINPID
+# Grant only the privilege needed to bind HTTPS port 443 as soldat.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Prevent the process or its descendants from acquiring other capabilities.
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+# Forbid gaining privileges through exec, setuid binaries, or file capabilities.
+NoNewPrivileges=yes
+# Make the host filesystem read-only, including every application release.
+ProtectSystem=strict
+# Hide administrator and user home directories from the service.
+ProtectHome=yes
+# Provide isolated writable temporary space; the app has no persistent write paths.
+PrivateTmp=yes
+# Hide physical devices while retaining standard pseudo-devices such as urandom.
+PrivateDevices=yes
+# Forbid changes to kernel tunables and proc/sys configuration.
+ProtectKernelTunables=yes
+# Forbid loading or unloading kernel modules.
+ProtectKernelModules=yes
+# Deny direct access to kernel logs.
+ProtectKernelLogs=yes
+# Prevent modifying host cgroups.
+ProtectControlGroups=yes
+# Forbid changes to the host clock.
+ProtectClock=yes
+# Isolate and protect the host name and domain name.
+ProtectHostname=yes
+# Forbid creating additional namespaces from within the service.
+RestrictNamespaces=yes
+# Prevent real-time scheduling from starving other services.
+RestrictRealtime=yes
+# Forbid creating setuid or setgid files.
+RestrictSUIDSGID=yes
+# Prevent changes to the execution personality.
+LockPersonality=yes
+# Allow TCP/TLS, future UDP, DNS, and local runtime sockets only.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Retain the standard service syscall set required by Node threads and V8/WASM JIT.
+SystemCallFilter=@system-service
+# Fail denied syscalls with EPERM rather than killing the process.
+SystemCallErrorNumber=EPERM
+# Explicitly preserve the read-only application/config/runtime boundary.
+ReadOnlyPaths=/opt/soldat /etc/soldat /usr/local/lib/nodejs
+# No ReadWritePaths: only the PrivateTmp temporary directories need writes.
+# MemoryDenyWriteExecute is intentionally omitted: V8 and WebAssembly JIT need executable memory.
+# Make any process-created temporary files private to the service identity.
+UMask=0077
+# Bound descriptors while allowing the configured player/connection capacity.
+LimitNOFILE=65536
+# Apply memory pressure before reaching the hard ceiling on an 8 GB VPS.
+MemoryHigh=5G
+# Leave roughly 2 GB for the kernel, SSH, certbot, and other host services.
+MemoryMax=6G
+# Bound Node worker and helper threads without restricting the 24-match pool.
+TasksMax=256
+# Recover from crashes, not intentional administrative stops.
+Restart=on-failure
+# Begin crash recovery with a ten-second delay.
+RestartSec=10s
+# Increase retry delays over five failures instead of a tight crash loop.
+RestartSteps=5
+# Cap exponential restart backoff at two minutes.
+RestartMaxDelaySec=2min
+# Ask the server to drain its matches and close its listener gracefully.
+KillSignal=SIGTERM
+# Give shutdown time to complete, then let systemd reap the service cgroup.
+TimeoutStopSec=45s
+# Keep structured stdout logs in the bounded system journal.
+StandardOutput=journal
+# Keep startup, reload, and runtime errors in the same journal.
+StandardError=journal
+# Give journal records a stable unit-specific identifier.
+SyslogIdentifier=soldat-server
+
+[Install]
+# Start the game server during normal multi-user boot.
+WantedBy=multi-user.target

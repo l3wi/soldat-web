@@ -1,0 +1,43 @@
+{
+  "wasmPath": "/opt/soldat/current/build-out/sim/sim.wasm",
+  "contentRoot": "/opt/soldat/current/dist/content-next",
+  "map": "Arena",
+  "matchSeed": "123456789",
+  "rules": {
+    "mode": "dm",
+    "rng": "keyed",
+    "world": "original",
+    "botDifficulty": 100
+  },
+  "host": "0.0.0.0",
+  "port": 443,
+  "publicUrl": "https://us.play.example.com",
+  "allowedOrigins": ["https://play.example.com"],
+  "regions": [
+    { "id": "us", "name": "US Dallas", "url": "https://us.play.example.com" },
+    { "id": "eu", "name": "Europe", "url": "https://eu.play.example.com" }
+  ],
+  "tlsKeyPath": "/etc/soldat/tls/current/key.pem",
+  "tlsCertPath": "/etc/soldat/tls/current/fullchain.pem",
+  "maxMatches": 24,
+  "targetPlayers": 12,
+  "maxLobbies": 128,
+  "idleMs": 60000,
+  "reservationMs": 30000,
+  "maxHostedLobbiesPerIp": 2,
+  "maxPrivateMatchesPerIp": 2,
+  "maxQuickplayReservationsPerIp": 4,
+  "lobbyExpiryMs": 1800000,
+  "afkMs": 300000,
+  "lobbyBufferedBytes": 262144,
+  "maxPendingUpgrades": 256,
+  "maxWebSocketsPerIp": 16,
+  "maxConnectionsPerIp": 32,
+  "outboundQueueBytes": 4194304,
+  "replayTicksPerSecond": 60,
+  "controlBurst": 60,
+  "controlPerSecond": 30,
+  "failedLookupsPerMinute": 10,
+  "globalFailedLookupsPerSecond": 100,
+  "globalCreationsPerSecond": 20
+}
