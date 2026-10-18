@@ -351,7 +351,6 @@ export function ClientShell({ settings, setSettings }: { settings: Settings; set
   else if (screen === 'credits') content = <>
     <h2>Credits</h2>
     <ul className="credit-list">
-      
       <li>A port of the original OpenSoldat game logic, compiled to WebAssembly and verified bit-for-bit against the original server. Art and sound re-encoded for the web (lossless WebP, Opus).</li>
       <li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li>
       <li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li>

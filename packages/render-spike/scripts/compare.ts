@@ -1,5 +1,6 @@
 import { PNG } from "pngjs";
 import { readFile } from "node:fs/promises";
+import { receiptPath } from "../../../scripts/receipt-paths.mjs";
 export async function compare(
   referencePath: string,
   actualPath: string,
@@ -29,8 +30,8 @@ export async function compare(
   }
   const pixels = reference.width * reference.height;
   return {
-    reference: referencePath,
-    actual: actualPath,
+    reference: receiptPath(referencePath),
+    actual: receiptPath(actualPath),
     width: reference.width,
     height: reference.height,
     threshold,

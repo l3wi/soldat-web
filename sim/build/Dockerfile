@@ -24,7 +24,7 @@ RUN make -j"$JOBS" all OPT="-O-" \
     && printf '%s\n' "$FPC_COMMIT" > /opt/fpc/COMMIT
 RUN sha256sum /tmp/fpc-aarch64-unaligned-smallint.patch | cut -d ' ' -f 1 > /opt/fpc/PATCH_SHA256
 
-FROM debian:bookworm-slim
+FROM node:24-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates git make build-essential clang cmake libssl-dev \
     protobuf-compiler libprotobuf-dev zlib1g-dev pkg-config libphysfs-dev python3 \

@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { resolve, join, relative, isAbsolute, dirname } from 'node:path';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const options = { tier: 'all', rng: 'both', out: 'build-out/sim/combat', wasm: 'build-out/sim/sim.wasm', native: 'build-out/sim/linux/sim-native', corpus: 'tests/fixtures/combat/corpus.json', engines: 'Chrome,Firefox,Safari' };
@@ -119,6 +120,6 @@ for (const policy of policies) {
 }
 const identities = { wasmSha256, nativeSha256: await hashFile(resolve(root, options.native)), fixtures: Object.fromEntries(await Promise.all(fixtures.map(async file => [file.name, await hashFile(resolve(root, file.path))]))) };
 const summary = { version: 1, corpus, policies, engines, tier: options.tier, identities, status: results.length > 0 && results.every(result => result.status === 'pass') ? 'pass' : 'fail', results };
-await writeFile(join(output, `results-${options.tier}.json`), `${JSON.stringify(summary, null, 2)}\n`);
+await writeFile(join(output, `results-${options.tier}.json`), `${stringifyReceipt(summary)}\n`);
 for (const result of results) console.log(JSON.stringify(result));
 if (summary.status !== 'pass') process.exitCode = 1;

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { chromium } from "playwright";
 import { enterShell, openPractice, chooseGameMode, choosePracticeMap } from "./shell-driver.mjs";
 import { SIM_ABI_VERSION } from "../../sim-host/src/sim.ts";
+import { stringifyReceipt } from "../../../scripts/receipt-paths.mjs";
 
 // One installed Chrome, one disposable private profile, one page, serial matches.
 const root = resolve(import.meta.dirname, "../../..");
@@ -19,7 +20,7 @@ console.log(execFileSync("memory_pressure", { encoding: "utf8" }));
 const screenshots = resolve(root, "tests/fixtures/render"), out = resolve(root, "build-out/client-g5");
 await mkdir(screenshots, { recursive: true }); await mkdir(out, { recursive: true });
 const receipt = { wasmSha256: expected, abiVersion: SIM_ABI_VERSION, runtime: "", privateHeadless: true, rows: [], errors: [], completed: false };
-const save = () => writeFile(resolve(out, "bots-browser.json"), JSON.stringify(receipt, null, 2) + "\n");
+const save = () => writeFile(resolve(out, "bots-browser.json"), stringifyReceipt(receipt) + "\n");
 const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"] });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 });
@@ -98,4 +99,4 @@ try {
   if (!receipt.completed) throw new Error(`Browser errors: ${receipt.errors.join("; ")}`);
 } catch (error) { receipt.errors.push(String(error)); await save(); throw error; }
 finally { await browser.close(); }
-console.log(JSON.stringify(receipt, null, 2));
+console.log(stringifyReceipt(receipt));

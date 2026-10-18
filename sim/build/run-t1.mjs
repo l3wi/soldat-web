@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { resolve, join, basename } from 'node:path';
 import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const corpus = join(root, 'tests/fixtures/movement');
@@ -114,5 +115,5 @@ for (const fixture of fixtures) {
 }
 const summary = { tier: 'T1', invocation, artifacts, control: authoritative ? 'authoritative' : 'human', passed: results.filter(result => result.status === 'pass').length,
   total: results.length, ...(authoritative?{movementAndPoseIdentical:results.filter(result=>result.movementAndPoseIdentical).length}:{}), results };
-await writeFile(join(output, 'results.json'), `${JSON.stringify(summary, null, 2)}\n`);
+await writeFile(join(output, 'results.json'), `${stringifyReceipt(summary)}\n`);
 if (summary.passed !== summary.total) process.exitCode = 1;

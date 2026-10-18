@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
 import { createGzip } from 'node:zlib';
 import { pipeline } from 'node:stream/promises';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 const root=process.cwd(), directory='tests/fixtures/movement', output='build-out/movement-oracle';
 const image='sha256:c6c157119f132948a81784aba8e49e51afab22421e70637f39feae191eabb46c';
@@ -98,7 +99,7 @@ for(const name of names) {
     command:['docker',...args],exitCode:result.code,stdout:result.stdout,stderr:result.stderr,wallSeconds:Math.round((performance.now()-started)/10)/100,
     golden:retained?`golden/${basename}.jsonl.gz`:null,bytes,sha256,compressedBytes,compressedSha256,compression:'gzip level9 mtime0',...(repeat?{repeat}:{}),summary};
   captures.set(name,capture);await unlink(raw);
-  await writeFile(`${directory}/capture-results.json`,JSON.stringify({version:1,image,platform:'linux/arm64',network:'none',oracleBinarySha256,harnessSha256,sharedTraceSha256,captures:[...captures.values()].sort((a,b)=>a.fixture.localeCompare(b.fixture))},null,2)+'\n');
+  await writeFile(`${directory}/capture-results.json`,stringifyReceipt({version:1,image,platform:'linux/arm64',network:'none',oracleBinarySha256,harnessSha256,sharedTraceSha256,captures:[...captures.values()].sort((a,b)=>a.fixture.localeCompare(b.fixture))})+'\n');
   console.log(JSON.stringify({fixture:name,exitCode:0,bytes,compressedBytes,sha256,retained,ticks:summary.ticks,legs:summary.legs,background:summary.background,health:[summary.minHealth,summary.maxHealth]}));
 }
 console.log(JSON.stringify({captured:names.length,total:captures.size,rawBytes:[...captures.values()].reduce((n,c)=>n+c.bytes,0),gzipBytes:[...captures.values()].reduce((n,c)=>n+c.compressedBytes,0)}));

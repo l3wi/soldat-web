@@ -4,6 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve, join } from 'node:path';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 const root=process.cwd(),out=resolve(process.argv[2]??'build-out/sim/g5/final');
 const frozen=process.argv[3];
@@ -21,7 +22,7 @@ async function run(name,command,args=[],env={},allowFailure=false){
     child.stdout.pipe(log,{end:false});child.stderr.pipe(log,{end:false});child.once('error',reject);child.once('close',code=>done(code??-1));
   });log.end();
   const stage={name,command:[command,...args],env,code,wallSeconds:(performance.now()-started)/1000,log:logPath};stages.push(stage);
-  await writeFile(join(out,'execution.json'),JSON.stringify({version:1,frozenWasmSha256:frozen,stages},null,2)+'\n');
+  await writeFile(join(out,'execution.json'),stringifyReceipt({version:1,frozenWasmSha256:frozen,stages})+'\n');
   console.log(JSON.stringify(stage));
   if(code!==0&&!allowFailure)throw new Error(`${name} failed; inspect ${logPath}`);
 }
@@ -43,4 +44,4 @@ await run('render',process.execPath,['sim/build/check-render.mjs','build-out/sim
 for(const weather of [1,2,3])await run(`presentation-${weather}`,process.execPath,['sim/build/check-presentation.mjs',String(weather),join(out,`presentation-${weather}.json`)]);
 await run('robustness-5min',process.execPath,['--expose-gc','sim/build/check-bots.mjs','--minutes','5','--out',join(out,'robustness-5min.json')]);
 await run('robustness-30min',process.execPath,['--expose-gc','sim/build/check-bots.mjs','--minutes','30','--maps','Arena,ctf_Ash,ctf_Laos','--out',join(out,'robustness-30min.json')]);
-await writeFile(join(out,'qualification.json'),JSON.stringify({version:1,status:'pass',frozenWasmSha256:frozen,nativeSha256:await hash('build-out/sim/linux/sim-native'),macNativeSha256:await hash('build-out/sim/sim-native'),oracleSha256:await hash('build-out/oracle/cmake/bin/opensoldatserver'),stages,omittedEngines:['Safari']},null,2)+'\n');
+await writeFile(join(out,'qualification.json'),stringifyReceipt({version:1,status:'pass',frozenWasmSha256:frozen,nativeSha256:await hash('build-out/sim/linux/sim-native'),macNativeSha256:await hash('build-out/sim/sim-native'),oracleSha256:await hash('build-out/oracle/cmake/bin/opensoldatserver'),stages,omittedEngines:['Safari']})+'\n');

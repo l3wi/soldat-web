@@ -2,6 +2,7 @@ import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { compare } from "./compare";
+import { stringifyReceipt } from "../../../scripts/receipt-paths.mjs";
 const root = resolve("../.."),
   out = resolve(root, "tests/fixtures/render");
 await mkdir(out, { recursive: true });
@@ -143,9 +144,9 @@ const result = {
 };
 await writeFile(
   resolve(out, `${backend}-results.json`),
-  JSON.stringify(result, null, 2) + "\n",
+  stringifyReceipt(result) + "\n",
 );
-console.log(JSON.stringify(result, null, 2));
+console.log(stringifyReceipt(result));
 await browser.close();
 if (
   errors.length ||

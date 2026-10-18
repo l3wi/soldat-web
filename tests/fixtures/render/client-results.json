@@ -1,4 +1,5 @@
 {
+  "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged.",
   "wasmSha256": "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1",
   "browser": "155.0.8059.80",
   "runtime": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/155.0.0.0 Safari/537.36",

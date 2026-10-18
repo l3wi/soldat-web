@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import { chromium } from "playwright";
 import { compare } from "../../render-spike/scripts/compare.ts";
 import { SIM_ABI_VERSION } from "../../sim-host/src/sim.ts";
+import { stringifyReceipt } from "../../../scripts/receipt-paths.mjs";
 
 // Usage: bun packages/client/scripts/combat-capture.mjs --wasm-sha256 FINAL_SHA256
 // Prerequisites: running client dev server, installed Chrome, and native combat captures.
@@ -101,7 +102,7 @@ const plan = [...galleries.map(g => ({ name: `native-${g.mode}`, source: "native
   ...["grenade", "clusters", "knife-throw", "pickup-16", "pickup-17", "pickup-7", "flag-grab-drop-1", "flag-grab-drop-2", "death-ragdoll-respawn", "hud-reload"]
     .map(name => ({ name, source: "actual-local-sim", status: "pending", observations: [] }))];
 const config = { runId, plan, root, out, receipts, url: options.url, map: options.map, identity, lane, anchors, galleries, weapons, nativeCapture, mapSha256: map.mapSha256 };
-await writeFile(resolve(receipts, "combat-browser.json"), JSON.stringify({ version: 1, runId, ...identity, rows: plan, errors: [], completed: false }, null, 2) + "\n");
+await writeFile(resolve(receipts, "combat-browser.json"), stringifyReceipt({ version: 1, runId, ...identity, rows: plan, errors: [], completed: false }) + "\n");
 
 // Installed Chrome runs in a disposable Playwright-owned headless profile.
 // Firefox combat is unsupported; no user browser processes are touched.
@@ -112,11 +113,11 @@ async function browserCapture(config, page, runtimeErrors) {
   let completed = false;
   await fs.writeFile(`${config.receipts}/combat-frames.jsonl`, "");
   const save = async () => {
-    await fs.writeFile(reportPath, JSON.stringify({ version: 1, runId: config.runId, ...config.identity, map: config.map, mapSha256: config.mapSha256, nativeCapture: config.nativeCapture,
+    await fs.writeFile(reportPath, stringifyReceipt({ version: 1, runId: config.runId, ...config.identity, map: config.map, mapSha256: config.mapSha256, nativeCapture: config.nativeCapture,
       lane: config.lane, anchors: config.anchors, runtime, browser: "chrome", headless: true, rows, errors,
       captureMethod: "browser-canvas-framebuffer-readback",
       captureLimitations: "Actual preserved WebGL framebuffer plus actual HUD 2D canvas; external DOM chat/menus are not covered",
-      evidenceBoundary: "Native gallery is rendering-only; gameplay rows use original local sim commands and input-driven updates", completed }, null, 2) + "\n");
+      evidenceBoundary: "Native gallery is rendering-only; gameplay rows use original local sim commands and input-driven updates", completed }) + "\n");
   };
   const evaluate = async (action, args = null) => page.evaluate(async ({ action, args }) => {
     const hook = window.__soldatCombat;
@@ -191,7 +192,7 @@ async function browserCapture(config, page, runtimeErrors) {
     if (bytes.length < 24 || bytes.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" || bytes.readUInt32BE(16) !== 1280 || bytes.readUInt32BE(20) !== 720) throw new Error("Framebuffer PNG does not match native 1280x720 capture");
     const path = `${config.out}/combat-${name}.png`;
     await fs.writeFile(path, bytes);
-    await fs.writeFile(`${config.receipts}/${name}.state.json`, JSON.stringify(snapshot, null, 2) + "\n");
+    await fs.writeFile(`${config.receipts}/${name}.state.json`, stringifyReceipt(snapshot) + "\n");
     return path;
   };
   const aim = (snapshot, slot = 2) => {
@@ -399,7 +400,7 @@ for (const gallery of galleries) {
   const row = browserResult.rows.find(r => r.name === `native-${gallery.mode}`);
   if (row?.status !== "captured-awaiting-comparison") { comparisons.push({ mode: gallery.mode, status: row?.status ?? "pending", reason: row?.reason ?? row?.error }); continue; }
   try {
-    const metrics = await compare(resolve(out, `combat-native-${gallery.mode}.png`), row.image, 8);
+    const metrics = await compare(resolve(out, `combat-native-${gallery.mode}.png`), resolve(root, row.image), 8);
     row.status = metrics.pass ? "pass" : "fail";
     comparisons.push({ mode: gallery.mode, source: "actual-native-framebuffer-versus-browser-canvas", status: row.status, ...metrics });
   } catch (error) { row.status = "pending"; comparisons.push({ mode: gallery.mode, status: "pending", reason: String(error) }); }
@@ -407,6 +408,6 @@ for (const gallery of galleries) {
 const unchanged = hash(await readFile(resolve(root, "build-out/sim/sim.wasm"))) === identity.expectedWasmSha256;
 const result = { ...browserResult, comparisons, wasmUnchangedDuringCapture: unchanged, threshold: { channelDeltaExclusive: 8, maxDifferingPixelPercent: 1 },
   status: code === 0 && unchanged && browserResult.completed && browserResult.errors.length === 0 && browserResult.rows.every(row => row.status === "pass") ? "pass" : "fail" };
-await writeFile(resolve(receipts, "combat-results.json"), JSON.stringify(result, null, 2) + "\n");
-console.log(JSON.stringify(result, null, 2));
+await writeFile(resolve(receipts, "combat-results.json"), stringifyReceipt(result) + "\n");
+console.log(stringifyReceipt(result));
 if (result.status !== "pass") process.exitCode = 1;

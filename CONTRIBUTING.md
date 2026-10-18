@@ -9,7 +9,9 @@ Start with the [development guide](docs/development.md) and [current porting sta
 3. Run the relevant [serial check layers](docs/development.md#run-checks-in-layers). Stop on failures and report them accurately. There is no root test/build aggregator or current CI gate to substitute for this evidence; statements in the original plan about CI are planning intent, not an installed workflow.
 4. Submit a commit/pull request describing the behavior, touched contracts, actual commands/results, artifact/content/runtime identities where relevant, and remaining qualification gaps. Distinguish automated results, observed browser/human smoke and unexercised recipes. Do not label an old gate receipt as proof of the new artifact.
 
-No particular branch naming or automated release pipeline is prescribed here. Prefer small commits that can be reviewed against the pinned source and reproduced without the originating chat.
+No particular branch naming or automated release pipeline is prescribed here. Prefer small commits that can be reviewed against the pinned source and reproduced from the documented contracts.
+
+Keep personal project-owner links, local home-directory paths, private design-workspace URLs and raw chat dumps out of committed source, documentation and captures. Use repository-relative paths in evidence, preserve measured results, and retain required upstream author/license attribution. Review author/committer identities before publication; choose an appropriate repository-local identity rather than changing global Git settings. Historical redaction requires a protected backup outside the repository and coordination with anyone holding another copy.
 
 ## Preserve the Pascal mechanics
 

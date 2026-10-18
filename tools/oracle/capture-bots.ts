@@ -9,6 +9,7 @@ import { resolve } from 'node:path';
 import { parseCombatTraceRow, type CombatTraceRow } from './combat-evidence.ts';
 import type { Fixture } from '../../packages/sim-host/src/fixture.ts';
 import type { SimManifest } from '../../packages/sim-host/src/sim.ts';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 // Uses the existing run.sh Docker isolation/binds and combat JSONL validation.
 // A generated corpus is not evidence: only attempted runs write capture-results.
@@ -191,7 +192,7 @@ for (const name of names) {
   } finally {
     if (fixture.capturePickups) await unlink(pickupRaw).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; });
   }
-  await writeFile(`${directory}/capture-results.json`, `${JSON.stringify({ version: 1, tier: 'bot-oracle-evidence', image, platform, rng: 'original', chat: false, network: 'none', captures: [...captures.values()].sort((a, b) => a.fixture.localeCompare(b.fixture)) }, null, 2)}\n`);
+  await writeFile(`${directory}/capture-results.json`, `${stringifyReceipt({ version: 1, tier: 'bot-oracle-evidence', image, platform, rng: 'original', chat: false, network: 'none', captures: [...captures.values()].sort((a, b) => a.fixture.localeCompare(b.fixture)) })}\n`);
   console.log(JSON.stringify({ fixture: name, status: captures.get(name)!.status }));
 }
 if (failed) process.exitCode = 1;

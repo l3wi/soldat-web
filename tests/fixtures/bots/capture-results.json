@@ -430,7 +430,8 @@
         "sha256": "ae2441248f40e0ff0f2050c7a2deb2de232454a3b55da0fbada12dbe7dee5b01",
         "pickupSha256": "9c11d9519067d8126b379afba285df5d8da78a077c3e75d5d320d349e92e53d8",
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-eight-bot-dm-10000.fixture.json",
@@ -1279,7 +1280,8 @@
         "sha256": "ea777908458fd7fce8d65e313c8594520fb3e5a8f8100474c437c99c75046c94",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-four-bot-dm-difficulty-0.fixture.json",
@@ -1564,7 +1566,8 @@
         "sha256": "d3c702e302cb7e97974cbf66e8c2538a98f3c8e0098be24d296e2b93a528ec2e",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-four-bot-dm-difficulty-300.fixture.json",
@@ -1864,7 +1867,8 @@
         "sha256": "5cd5989b380673d46cbba296ac186c5413214d75c34762f53c73513cadbe2ce2",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-four-bot-dm.fixture.json",
@@ -2175,7 +2179,8 @@
         "sha256": "3c437514cae5dceb52e07c82eb92f47e850abb47c46eaf77fb70dd7926f04d15",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-human-and-bot.fixture.json",
@@ -2329,7 +2334,8 @@
         "sha256": "ac562efe0f2d1372072668e598a1b0d518f81cd6ba5ce3b92252d75baedd5e57",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "arena-original-world-eight-bot-dm-10000.fixture.json",
@@ -3484,7 +3490,8 @@
         "sha256": "c9045a28ffcf73c18057c806e827767577a4d2947469b63f34f9d46a55f70ab7",
         "pickupSha256": "534a085d632a193d7cde5c05a221123c278275589214e00b27ca77759677104a",
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-ash-four-bot-ctf.fixture.json",
@@ -3781,7 +3788,8 @@
         "sha256": "ffc6904f0265b00199b5a02767dd8326043017691091db98df4baff5ccd1a08a",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-ash-four-bot-dm.fixture.json",
@@ -4062,7 +4070,8 @@
         "sha256": "e0904f65dee7f8f66fc72ed41bbc16990458f9f23de9af212d902674cdfa4247",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-ash-human-and-bot.fixture.json",
@@ -4212,7 +4221,8 @@
         "sha256": "2bdf0577313a6584d2a8e9d5d6015fd6a876f2bcd9b8cb222d6428db2dde6cf3",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-ash-original-world-four-bot-ctf.fixture.json",
@@ -4641,7 +4651,8 @@
         "sha256": "a6758d9a88f36a189ca14e4def3538c934924d4c8b121f97e9c0e6eb71f81646",
         "pickupSha256": "07fb7ae893007b4e833b202b4df25c2629da7091269f0c50c67493eeb94622c4",
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-ash-original-world-human-and-bot.fixture.json",
@@ -4830,7 +4841,8 @@
         "sha256": "c246defa729233cf231f485c8b92b280304a5f1d227073d8d0d5454f39f7ba59",
         "pickupSha256": "ae6677df06823eae7028f35c74a51a784a732aa343df642869eb34e01cbac808",
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-b2b-four-bot-ctf.fixture.json",
@@ -5147,7 +5159,8 @@
         "sha256": "5e572c73064d9e9e819661cf581133cf0955071cdeb12c6cc22a33a4b9b89c4d",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-b2b-four-bot-dm.fixture.json",
@@ -5416,7 +5429,8 @@
         "sha256": "5d6fce61de07d63119afcc14c113e7519d0ca8ffd0a5188801d72a0fad67d1c4",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-b2b-human-and-bot.fixture.json",
@@ -5581,7 +5595,8 @@
         "sha256": "80aa9099f455a18cf6c9933e1eb90e430ff5fd664775038fa7ee96ecdc32968d",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-laos-four-bot-ctf.fixture.json",
@@ -5933,7 +5948,8 @@
         "sha256": "7a5c8f3d5e9f44af264da07665dba6d2fddcbbe374c83d53f90dde4ab540ba8b",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-laos-four-bot-dm.fixture.json",
@@ -6245,7 +6261,8 @@
         "sha256": "8b19a95819ec9431f20dd010f9e2be25d69d5f8601dbd7083bae77e85686d1dc",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-laos-human-and-bot.fixture.json",
@@ -6421,7 +6438,8 @@
         "sha256": "3d77fda0e4ad083174b661bc00bc02f3ad70e08af6b64c11896a9150fb2eb8f0",
         "pickupSha256": null,
         "byteIdentical": true
-      }
+      },
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     }
   ]
 }

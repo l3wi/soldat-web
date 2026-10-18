@@ -8,6 +8,7 @@ import { RENDER_LAYOUT, BULLET_PRESENTATION_FLAGS } from '../../packages/sim-hos
 import { SIM_GAMEPLAY_EVENTS } from '../../packages/sim-host/src/gameplay-events.ts';
 import { runFixture } from '../../packages/sim-host/src/fixture.ts';
 import { readFixture, readManifest } from '../../packages/sim-host/src/fixture-files.ts';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 const wasmPath = process.argv[2] ?? 'build-out/sim/sim.wasm';
 const outputPath = process.argv[3] ?? 'build-out/sim/g5/render-check.json';
@@ -178,5 +179,5 @@ try {
   result.botSnapshot={explicitRespawnRetainsAI:true,waypointObserved:waypoint,aiOffLoadIdentical:true};
 } finally {for(const host of botHosts)host.dispose();}
 await mkdir(dirname(outputPath), { recursive: true });
-await writeFile(outputPath, JSON.stringify(result, null, 2) + '\n');
+await writeFile(outputPath, stringifyReceipt(result) + '\n');
 console.log(JSON.stringify(result));

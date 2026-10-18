@@ -48,6 +48,7 @@ if [[ "$TARGET" == all || "$TARGET" == wasm ]]; then
   mkdir -p "$OUT/wasm-units"
   "$FPC" -Twasip1 -Pwasm32 "${COMMON[@]}" -FU"$OUT/wasm-units" \
     -FE"$OUT" -o"$OUT/random-conformance.wasm" "$SRC/RandomConformance.lpr"
+  node "$ROOT/sim/build/normalize-wasm-name.mjs" "$OUT/random-conformance.wasm" random-conformance.wasm
 fi
 case "$TARGET" in
   native) "$OUT/random-conformance-native" ;;

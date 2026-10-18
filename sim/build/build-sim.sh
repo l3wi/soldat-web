@@ -39,6 +39,7 @@ if [[ "$TARGET" == all || "$TARGET" == wasm ]]; then
   mkdir -p "$OUT/wasm-units"
   "$FPC" -Twasip1 -Pwasm32 "${COMMON[@]}" -FU"$OUT/wasm-units" \
     -FE"$OUT" -o"$OUT/sim.wasm" "$SRC/sim/SimMain.lpr"
+  node "$ROOT/sim/build/normalize-wasm-name.mjs" "$OUT/sim.wasm" sim.wasm
 fi
 if [[ "$TARGET" == all || "$TARGET" == native ]]; then
   NATIVE_TARGET="$("$FPC" -iTP)-$("$FPC" -iTO)"

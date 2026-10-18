@@ -2548,7 +2548,8 @@
         "sha256": "895af9e411d591ea41bce92922798d518ecd2e4aa559a9d304447132c20fe9bd",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-capture-own-base.fixture.json",
@@ -2975,7 +2976,8 @@
         "sha256": "b72550fd38a704670c8210aef0206ce89c99c6f677af9293e82f52d493cdf28c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-grab-throw-capture.fixture.json",
@@ -3408,7 +3410,8 @@
         "sha256": "c3dc61d9621cd649a3369c20e32a64108f8d10fd57b8ae594f159fc28c62359c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-timeout-return.fixture.json",
@@ -3836,7 +3839,8 @@
         "sha256": "f01fe83ced320cf8daaa3b1292c00b44cf5d83b07733b15925cb871b43325baf",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ctf-touch-return.fixture.json",
@@ -4264,7 +4268,8 @@
         "sha256": "f1ec50c8738523d73ff55d62608c0fbf6964dc5920e823bbc8fdacd168021016",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "damage-decay-500-900.fixture.json",
@@ -5228,7 +5233,8 @@
         "sha256": "3d829c1f971a663e1aaf55495192b5b2afee0ec7a189aa2b1eeaecde52192ebb",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "eagles-seed-1-shooters.fixture.json",
@@ -5769,7 +5775,8 @@
         "sha256": "97f52dbf67910ad777fcda74ec620f27311fd64ee17232e6bc23edd79bb49225",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "eagles-seed-2-shooters.fixture.json",
@@ -6721,7 +6728,8 @@
         "sha256": "9fbac4b87856895558a551744b46d61951af7d1581a706cf8bf30f2a9bad0c6b",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "grenade-release-frame-14.fixture.json",
@@ -7147,7 +7155,8 @@
         "sha256": "050050352c2928972779d775e2f26ac772e2e4148e0b73c3c4f2c4cbb90030c7",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "grenade-release-frame-15.fixture.json",
@@ -11312,7 +11321,8 @@
         "sha256": "43a9df6ff1f102d4c510269243dc44efed0a72b847304bc4be04a058429b701b",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "grenade-release-frame-23.fixture.json",
@@ -15867,7 +15877,8 @@
         "sha256": "634f3fcb4fa515b2d5c54c30580c278c29751fe9261a7755087ad3d5e9ca1beb",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "grenade-release-frame-24.fixture.json",
@@ -20682,7 +20693,8 @@
         "sha256": "f6554b7e7a331db181e259b2c13d15ff416856479255657610d5f71a58605d38",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "grenade-release-frame-36.fixture.json",
@@ -23729,7 +23741,8 @@
         "sha256": "8827f957af66f3600c6adb5f1f08139d79c44a6768ee057e8db6392862bd3e77",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-10.fixture.json",
@@ -27026,7 +27039,8 @@
         "sha256": "a6f7f1b3c56737cd4a854971bc7988401d1a0e4e824b73788e073779dfb19471",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-11.fixture.json",
@@ -30350,7 +30364,8 @@
         "sha256": "b790f07c764afc9a094e17c2455d03dceef556656d0b4f33e0907ee4e124642d",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-12.fixture.json",
@@ -33648,7 +33663,8 @@
         "sha256": "7fedeb324a23631913ba6560ae610cb0bfc2964547ea581ce0648c65e1fc03a8",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-3.fixture.json",
@@ -37438,7 +37454,8 @@
         "sha256": "0a413e929b75d86003cc434e8abd7718f637d2ce2361e13c4de80a82d834f81a",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-4.fixture.json",
@@ -41202,7 +41219,8 @@
         "sha256": "902ba0624f2461f45d2f31d2de38ec177806a123ff08433a7c2fbb70cca7f8dd",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-5.fixture.json",
@@ -44733,7 +44751,8 @@
         "sha256": "3fcc731c805f91df1fb9c1c415c834a89b46afb241386a3b1ea563e10d8bfaf6",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "hit-circle-6.fixture.json",
@@ -48317,7 +48336,8 @@
         "sha256": "3a015e90003e09a2aa0a6aaf7059d6c2bd2d190d38bb50473ca832e63665744c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "long-combat-10000.fixture.json",
@@ -49399,7 +49419,8 @@
         "sha256": "e9cd3db0658d580bec3ce61680b41f83ac463f03eb326236216202e9bc81d874",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ordering-collider-before-player-thing.fixture.json",
@@ -50300,7 +50321,8 @@
         "sha256": "8ea5ae5ab45e5ce090e6be6fd193054dd76e6458b32f635aac237aeeb0d35f8d",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ordering-player-before-thing.fixture.json",
@@ -51170,7 +51192,8 @@
         "sha256": "885a12c06e75b4f0717e1797124a335f4eabbd83c66ca2493325b6ddad5dfd3c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ordering-thing-before-player.fixture.json",
@@ -52040,7 +52063,8 @@
         "sha256": "0f300075cb0c0ab26c6074a80fa577cddadea2e835e8605a066d420220ee235c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "reload-interrupted-changeweapon.fixture.json",
@@ -52509,7 +52533,8 @@
         "sha256": "5e7e31a739fd3747362bb4cd2d410caa3c85165c26a9dcff1a1559f69bdb0271",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "reload-interrupted-thrownade.fixture.json",
@@ -53589,7 +53614,8 @@
         "sha256": "0f75bd7a8458d43d5bf7ba089607548e4e1e650ea76b6b89e59932dd2dfe01da",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "reload-interrupted-throwweapon.fixture.json",
@@ -54075,7 +54101,8 @@
         "sha256": "4139bd5b67ed37db86e336bfdd268989c4639051586f752d59153d5a8c4e77b0",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "respawn-retains-chosen-weapons.fixture.json",
@@ -54897,7 +54924,8 @@
         "sha256": "6e3c2351fdb58b69a724f4bc56cdaa84bcdd2cb728c4e56ac0a4dce5613e2f61",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "ricochet-shallow.fixture.json",
@@ -55834,7 +55862,8 @@
         "sha256": "6e9909a71b8e28816dfd03222d0f300bf00d6e503af6abd298db8805476808fd",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "self-boost.fixture.json",
@@ -56303,7 +56332,8 @@
         "sha256": "554072adedd3815dcbfac761c39fc4049b8bea5eefc69c077733ad8fce131987",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "semiauto-0-hold-release.fixture.json",
@@ -56863,7 +56893,8 @@
         "sha256": "19a6dfca1dc2cb81a5d8086a7ce9240c31799cb0c30e0ccc52410f9187425a33",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "semiauto-1-hold-release.fixture.json",
@@ -57501,7 +57532,8 @@
         "sha256": "37aa920690605a431b75da481c11e4c209a64933a9717a64637132fa2c79af03",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "semiauto-5-hold-release.fixture.json",
@@ -58373,7 +58405,8 @@
         "sha256": "441a5b5e473d7b4b306dcfeb153c27c0d875b64af74676e84f1599f31249553a",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "semiauto-6-hold-release.fixture.json",
@@ -58881,7 +58914,8 @@
         "sha256": "80ceb94f100d1311ab39400f3145b24b0e97a39b02f0f61d930c88d3b4d2af09",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "semiauto-8-hold-release.fixture.json",
@@ -59336,7 +59370,8 @@
         "sha256": "2a1013dbb9791329c3a1dccbf4e76a58ed3ffe2554fc9764441ccb7e07f69e3d",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "shotgun-seed-1-shooters.fixture.json",
@@ -60007,7 +60042,8 @@
         "sha256": "761fc84531ac97953e4ef26ac9e7f572082c63f9d2c231d59b3c0c3a79bffeb2",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "shotgun-seed-2-shooters.fixture.json",
@@ -61272,7 +61308,8 @@
         "sha256": "c0fd39871eef986cad433b3a0ee10d960667bbfc602617f5490228a6e021e31f",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "target-crouch.fixture.json",
@@ -62782,7 +62819,8 @@
         "sha256": "5bac112a42d98c0f8b3492a6c0397f4c456f31cb2b2c8deca2cfee59c432a201",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "target-moving.fixture.json",
@@ -64565,7 +64603,8 @@
         "sha256": "49d8d036de97403f4c7b51c3066175607eba183b180e8d696086625899d41bf6",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "target-prone.fixture.json",
@@ -66074,7 +66113,8 @@
         "sha256": "7587936ea0fc7457ce6a6a93b8faf3a69b00347a839fc22b0c630cf84c413ca0",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "target-standing.fixture.json",
@@ -67582,7 +67622,8 @@
         "sha256": "433788736659d05da9cbeff3e444b7fce322da4e59debe59546f48d875d99256",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thin-wall-high-speed.fixture.json",
@@ -68517,7 +68558,8 @@
         "sha256": "28ba31327f2f427469e2ebd7947f1f2b2302463678ce08f754b7d157517ae380",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-16.fixture.json",
@@ -68950,7 +68992,8 @@
         "sha256": "c43682c75245e6ffbe76b80985ec1832c22ab18acb47bb1a6f4d2ad91b64fbd0",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-17.fixture.json",
@@ -69383,7 +69426,8 @@
         "sha256": "61fbe22f785537c421aacd72bd6f15c03a48ab2ad980eef2867132ff605eab9b",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-18.fixture.json",
@@ -69818,7 +69862,8 @@
         "sha256": "817218300a77b2072a6186c1b4a4e8fb05dadecc4a39ab1b4aaffe37d53eae4a",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-19.fixture.json",
@@ -70252,7 +70297,8 @@
         "sha256": "a23909527bf804c42aee07eb82961da79d0842e3143f9695ad41bda7c7b14d1c",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-20.fixture.json",
@@ -70685,7 +70731,8 @@
         "sha256": "e9471755f92d4893cc8d85b1dd1722cdc1405222d59fe19ec4e1278b13cb9168",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-21.fixture.json",
@@ -71119,7 +71166,8 @@
         "sha256": "95d65d5bea4b936ac2cefaa11dd1b01a26d29977e6cf835552a36c6ea6857f7a",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-22.fixture.json",
@@ -71553,7 +71601,8 @@
         "sha256": "3f2b565afb10a6ccbf2c0a22dd15144c49256bc9a6e4b6e084e60bdcdcc3a1f8",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-23.fixture.json",
@@ -71982,7 +72031,8 @@
         "sha256": "318a459e8744db86cd449c7f56959fde02f6a4dab2b47acdcfc8e6a28c87bf13",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured-with-limitations",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "thing-kit-27.fixture.json",
@@ -72411,7 +72461,8 @@
         "sha256": "a379c2dc3c63a3e2b9e72ad4e159b6c45404c0d4ee5c4174d27f0455337611dd",
         "byteIdentical": true
       },
-      "status": "captured-with-limitations"
+      "status": "captured-with-limitations",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     },
     {
       "fixture": "weapon-drop-pickup.fixture.json",
@@ -73138,7 +73189,8 @@
         "sha256": "4b760f69c60667e0b3e0b6b00af9d07917ab43294f000ce3c57d42025ae3ad30",
         "byteIdentical": true
       },
-      "status": "captured"
+      "status": "captured",
+      "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged."
     }
   ]
 }

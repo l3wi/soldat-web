@@ -6,6 +6,7 @@ import { compare } from "../../render-spike/scripts/compare";
 import type {} from "../src/game";
 import { createHash } from "node:crypto";
 import { enterShell, openPractice, choosePracticeMap, leaveGame } from "./shell-driver.mjs";
+import { stringifyReceipt } from "../../../scripts/receipt-paths.mjs";
 
 const root = resolve(import.meta.dir, "../../.."), out = resolve(root, "tests/fixtures/render");
 const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--force-device-scale-factor=1"] });
@@ -104,11 +105,11 @@ try {
       await leaveGame(page);
       await openPractice(page);
     }
-    await writeFile(resolve(root, "build-out/client-g2/maps-chrome.json"), JSON.stringify(mapLoads, null, 2) + "\n");
+    await writeFile(resolve(root, "build-out/client-g2/maps-chrome.json"), stringifyReceipt(mapLoads) + "\n");
   }
   assert.deepEqual(errors, []);
   assert.equal(createHash("sha256").update(await readFile(resolve(root, "build-out/sim/sim.wasm"))).digest("hex"), wasmSha256, "WASM changed during capture");
   const result = { wasmSha256, browser: await browser.version(), runtime: await page.evaluate(() => navigator.userAgent), width: 1280, height: 720, parity: { ...parity, pass: parity.percent <= 0.1 }, nativeParity, maps, mapsLoaded: mapLoads.length, servedNotices: 4, settingsPersisted: true, audioGesture: true, soundRuns, remountCycles: 3, browserErrors: errors, movementHashes: "separate rendered-loop receipts in build-out/client-g2" };
-  await writeFile(resolve(out, "client-results.json"), JSON.stringify(result, null, 2) + "\n");
-  console.log(JSON.stringify(result, null, 2));
+  await writeFile(resolve(out, "client-results.json"), stringifyReceipt(result) + "\n");
+  console.log(stringifyReceipt(result));
 } finally { await browser.close(); }

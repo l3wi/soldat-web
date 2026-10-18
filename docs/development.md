@@ -92,7 +92,11 @@ Online admission currently checks a frozen SHA-256 in `packages/client/src/net/b
 shasum -a 256 build-out/sim/sim.wasm
 ```
 
-FPC embeds the absolute output filename in the WASM custom `name` section. Building with a different `SIM_OUT` can therefore change the full-file SHA-256 even when every standard WASM section and the native executable are byte-identical. Compare the actual sections when diagnosing this; do not repin or replace an approved runtime artifact merely because an isolated build uses another output directory.
+FPC embeds the linked output filename in its WASM custom `name` section. The simulation, RNG and spike build entry points run `normalize-wasm-name.mjs` to replace only that module-name subsection with the public basename (`sim.wasm`, `random-conformance.wasm` or `spike.wasm`). Executable sections, function symbols and other metadata are preserved; missing or unexpected name metadata fails the build. Node is therefore required by WASM compilation as well as application tooling; rebuild the compiler image for its Node 24 runtime when upgrading an existing image.
+
+The privacy-safe shared artifact is SHA-256 `13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c`. Its standard sections and non-module-name metadata match the previous artifact exactly; the native executable is unchanged. Older qualification receipts retain their original artifact hashes and do not claim a rerun. Full-file identity can still differ for other compiler/input changes; compare actual sections rather than accepting an unexplained mismatch.
+
+Evidence producers use `scripts/receipt-paths.mjs` at the reporting boundary: repository paths become relative and external local-home paths become `<host-home>/…`. Filesystem/subprocess inputs stay absolute. Six retained capture receipts had 776 local repository prefixes removed; their measurements, hashes and outcomes were preserved, with explicit privacy-redaction disclosures rather than new capture claims.
 
 ## Import required content
 

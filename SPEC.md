@@ -1,7 +1,7 @@
 # soldat-web — Specification
 
 Status: scope updated 2026-10-18 for seven-mode gameplay, balancing, console/taunts, spectator controls, native actions, moderation/communications and the browser menu. This is the product contract, not a completed-port claim. See [current porting status](docs/porting-status.md) for missing capabilities and qualification gaps; historical gate results qualify their recorded artifacts only.
-Evidence: `docs/research/*.md` (six research reports; each claim there carries a source-line or URL citation). The originating chat is `[raw planning conversation omitted]`.
+Evidence: `docs/research/*.md` (six research reports; each claim there carries a source-line or URL citation). Product requirements and decisions are recorded here; raw private conversations are not retained.
 
 ## 0. Decision log
 
@@ -11,7 +11,7 @@ Evidence: `docs/research/*.md` (six research reports; each claim there carries a
 | D2 | Fidelity baseline = **OpenSoldat 1.8 source as-is**, pinned to `opensoldat@bf43a43bdd7a069e02c906768807f66e621b2888`. Classic 1.7.1.1 is informational only. | User |
 | D3 | **Strict server authority**: clients submit inputs and bounded weapon/team/appearance intent; the server owns movement, projectiles, hits, ammo, health, pickups, scoring and round transitions. Clients predict locally. | User |
 | D4 | Gameplay scope = **DM, PM, TM, CTF, Rambo, INF and HTF**, stock weapons/waypoint bots, rounds/rotations, alternate rules, bonuses, team changes/balancing and appearance. Includes console/binds/taunts, spectator controls, native gestures, authenticated live moderation, map/kick voting, native team radio and opt-in push-to-talk voice. Default total population remains **12**. | User, expanded 2026-10-17 |
-| D5 | Renderer = **Phaser 4.2.1 + custom Soldat map render node**, conditional on spike gate G0.4; fallback PixiJS v8 with the same shader. | Default (chat preference + RenderingPhaser) |
+| D5 | Renderer = **Phaser 4.2.1 + custom Soldat map render node**, conditional on spike gate G0.4; fallback PixiJS v8 with the same shader. | Product preference + RenderingPhaser |
 | D6 | Gameplay transport = **WSS first** (binary, versioned); evaluate WebTransport before gameplay WebRTC. Voice separately uses opt-in WebRTC audio with authenticated WSS signaling and operator-configured ICE/TURN. No gameplay authority moves to peers. | Default (NetcodeTransport), voice expanded by user |
 | D7 | Server runtime **Node 24 LTS**; one WASM instance per match, one match per `worker_thread`. Bun for tooling/build only. | Default |
 | D8 | Content = **opensoldat/base pinned at `5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`** (CC BY 4.0), curated and hash-manifested. No files from the classic 1.7.1.1 installer are shipped. | Default (LicensingProvenance) |
@@ -35,9 +35,9 @@ A browser-native, online multiplayer game that **plays identically to OpenSoldat
 
 ## 2. Assumptions register
 
-What the original chat assumed, and what research established. "Consequence" is binding on this spec.
+Initial design assumptions and what research established. "Consequence" is binding on this spec.
 
-| Chat assumption | Verdict | Consequence |
+| Initial assumption | Verdict | Consequence |
 |---|---|---|
 | Nobody has done a browser Soldat; we must port | **Refuted.** `humanova/soldat-web` (MIT, Sep 2026) runs the original Pascal client as WASM. It is a client + UDP relay, no sim API, no authoritative server. | D1. Reuse its FPC wasm32 toolchain recipe and VFS ideas with attribution; do not fork its client. |
 | A TS port of the sim is the natural path | **Weakened.** ~17k LOC mechanics surface; 503 `{$IFDEF SERVER}` branches in mechanics units; f32/ties-even rounding, RNG order, `Math.sin` engine variance all threaten fidelity. | D1. WASM preserves arithmetic, and the same binary gives cross-engine determinism. |

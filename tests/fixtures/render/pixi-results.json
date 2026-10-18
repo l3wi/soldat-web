@@ -1,4 +1,5 @@
 {
+  "privacyRedaction": "Historical evidence privacy-redacted: workstation project path prefixes replaced with project-relative locations; recorded host-side Docker bind sources must be resolved against the project root before replay. No rerun; measured values, hashes, and outcomes are unchanged.",
   "browser": "155.0.8059.79",
   "gpu": {
     "vendor": "Google Inc. (Apple)",

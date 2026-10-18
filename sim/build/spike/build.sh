@@ -12,5 +12,6 @@ cd "$ROOT/sim/build/spike"
 COMMON=(-B -MDelphi -Scgi -O2 -Fu. -Fu"$ROOT/sim/opensoldat/shared")
 "$FPC" -Twasip1 -Pwasm32 "${COMMON[@]}" -FU"$OUT/wasm-units" \
   -FE"$OUT" -o"$OUT/spike.wasm" spike.lpr
+node "$ROOT/sim/build/normalize-wasm-name.mjs" "$OUT/spike.wasm" spike.wasm
 "$FPC" "${COMMON[@]}" -FU"$OUT/$NATIVE_TARGET-units" \
   -FE"$OUT" -o"$OUT/spike-native" spike_native.lpr

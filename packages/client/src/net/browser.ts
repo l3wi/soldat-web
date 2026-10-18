@@ -5,7 +5,7 @@ import { OnlineSession, type OnlineMetrics } from "./session.ts";
 import { loadSimulationCode } from "../sim-runtime";
 import { loadSimulationManifest, mountSimulationPack } from "../sim-content";
 
-const FROZEN_WASM = "89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198";
+const FROZEN_WASM = "13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c";
 export interface OnlineHook {
   readonly metrics: OnlineMetrics;
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */

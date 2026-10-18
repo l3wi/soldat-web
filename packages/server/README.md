@@ -213,9 +213,9 @@ Historical WASM SHA-256: `57eb13e9a988a43ac31f63aa5538bd00cda19ff79e86121ef0e837
 
 Evidence: `build-out/controls/features.json`, `browser.json`, and `shell/screens.json`; the client reference describes the visual evidence. These results are not full native-oracle equivalence, a Firefox/Safari matrix, adverse-network acceptance or a long VPS capacity soak.
 
-## Native actions and communications verification — 2026-10-18
+## Historical native actions and communications verification — 2026-10-18
 
-WASM SHA-256: `89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198`; macOS native SHA-256: `dadc9d87c527384cdc9cd87b7a9d841d9f863f094369c39806e538672032164f`. ABI/state/render/FX remain `0x00010006`; wire is **7**. Content remains `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`.
+Historical WASM SHA-256: `89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198`; macOS native SHA-256: `dadc9d87c527384cdc9cd87b7a9d841d9f863f094369c39806e538672032164f`. ABI/state/render/FX remain `0x00010006`; wire is **7**. Content remains `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`.
 
 | Verification | Passed |
 | --- | ---: |
@@ -234,4 +234,14 @@ Native receipt: `build-out/communications/features.json`. Existing `build-out/co
 
 Three private Chrome155 clients passed the real friend-game surface with synthetic microphone devices: authenticated host/operator controls, original Alt+4 animation, exact imported 1.784-second radio recording playback to the teammate but not opponent, real getUserMedia → WebRTC RTP/decoded audio sink, team/public channel changes, local/server mute and microphone release, pause/unpause, secret-safe login/logout, F12 map voting to off-rotation Airpirates, post-round audio, native kill, targeted ban, rejected readmission, unban and fresh-admission audio. Zero page exceptions were recorded. Failed banned WSS admission currently shows the browser's generic connection-failed alert; the authenticated host has the explicit ban reason.
 
-The full existing shell harness also passed: 21 screenshots and eight single-canvas menu/game transitions, including quickplay, lobby kick/readmission denial and host/guest admission. Receipts: `build-out/communications/verification.json`, `browser.json`, `features.json`, `shell/screens.json`; visual evidence includes `admin-menu.png`, `vote-active.png`, `radio-menu.png` and `voice-settings.png`. The owned API was restarted on **7443**; the user-owned **5195** client was not restarted and serves the new verified WASM.
+The full existing shell harness also passed: 21 screenshots and eight single-canvas menu/game transitions, including quickplay, lobby kick/readmission denial and host/guest admission. Receipts: `build-out/communications/verification.json`, `browser.json`, `features.json`, `shell/screens.json`; visual evidence includes `admin-menu.png`, `vote-active.png`, `radio-menu.png` and `voice-settings.png`.
+
+## Privacy-safe artifact verification — 2026-10-18
+
+The current shared WASM is SHA-256 `13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c`. Only its custom module-name subsection changed to the public `sim.wasm`; every standard section and all other metadata are byte-identical to the preceding artifact. The native executable remains `dadc9d87c527384cdc9cd87b7a9d841d9f863f094369c39806e538672032164f`; ABI, wire and content versions are unchanged. Two different local output directories produced the same canonical WASM.
+
+The canonical artifact passed 40 real-WASM gameplay scenarios and all 96 serial HTTPS/WSS integration tests. Server/client typechecks, 46 server unit tests and 156 isolated client tests passed. Native and WASM RNG conformance matched all 2,031,704 calls across 64 seeds; the 15 signed-packed-load probes also passed. Metadata-normalizer smoke covered 13 cases, including long LEB lengths, idempotence, byte-preserved unrelated data and nonmutation on malformed inputs.
+
+Local evidence is under `build-out/privacy/`. The historical receipts above retain their original identities; this metadata-only cutover does not claim a fresh full native-oracle/browser matrix, Internet voice traversal or production-capacity soak.
+
+The rebuilt Node-enabled compiler image also compiled native and WASM successfully; its Linux WASM matched the macOS canonical digest exactly. The production client build and invariant checks passed. A real browser inspected the cleaned Credits page and completed fresh quickplay → enter game against the authoritative API: 196 matching hash checkpoints, zero mismatches at confirmed tick 5,846. This was a short localhost smoke, not a renewed full browser/network qualification.

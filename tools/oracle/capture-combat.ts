@@ -8,6 +8,7 @@ import { pipeline } from 'node:stream/promises';
 import { resolve } from 'node:path';
 import { parseCombatFixture, parseCombatTraceRow, type CombatFixture, type CollisionObservation } from './combat-evidence.ts';
 import type { SimManifest } from '../../packages/sim-host/src/sim.ts';
+import { stringifyReceipt } from '../../scripts/receipt-paths.mjs';
 
 interface CaptureEvidence { fixture: string; status: string; [key: string]: unknown }
 
@@ -186,7 +187,7 @@ for (const name of names) {
     failed ||= !reproducible || !summary.allRequiredObserved;
     await unlink(raw);
   }
-  await writeFile(`${directory}/capture-results.json`, `${JSON.stringify({ version: 1, tier: 'oracle-evidence', image, platform, rng: 'original', network: 'none', captures: [...captures.values()].sort((a, b) => a.fixture.localeCompare(b.fixture)) }, null, 2)}\n`);
+  await writeFile(`${directory}/capture-results.json`, `${stringifyReceipt({ version: 1, tier: 'oracle-evidence', image, platform, rng: 'original', network: 'none', captures: [...captures.values()].sort((a, b) => a.fixture.localeCompare(b.fixture)) })}\n`);
   console.log(JSON.stringify({ fixture: name, status: captures.get(name)!.status }));
 }
 if (failed) process.exitCode = 1;
