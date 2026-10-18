@@ -271,7 +271,7 @@ docker logs --since 1m --tail 30 --follow soldat-server
 
 RTT distributions aggregate fresh successful raw server ping/pong probes once per validated pong across the reporting window, without repeated peer snapshots or player identifiers; they do not measure packet loss or one-way latency. Outbound byte counts are application payload bytes **offered** to transport, not confirmed delivery or TLS/IP wire bytes. Inbound counts include application packets rejected by the codec. Worker metrics use monotonic wall time and continue during paused/slow-motion matches; paused simulation contributes no simulation samples or tick progression. Process runtime records continue independently.
 
-**Expected deployment verification (not performed for this documentation change):** recreate the game container with the updated Compose configuration; inspect `docker inspect soldat-server --format '{{json .HostConfig.LogConfig}}'` for `json-file`, `max-size: "30000000"` and `max-file: "30"`; confirm the client's existing `10m`/`3` settings; observe successive JSON summaries at roughly ten-second intervals and inspect their privacy-safe fields. A restart alone does not replace an existing container's logging options. Record actual deployment evidence separately; the historical evidence below does not establish these new settings or metrics.
+**Deployment verification:** recreate the game container with the updated Compose configuration; inspect `docker inspect soldat-server --format '{{json .HostConfig.LogConfig}}'` for `json-file`, `max-size: "30000000"` and `max-file: "30"`; confirm the client's existing `10m`/`3` settings; observe successive JSON summaries at roughly ten-second intervals and inspect their privacy-safe fields. A restart alone does not replace an existing container's logging options. Record actual deployment evidence separately; the initial deployment record does not establish these later settings or metrics.
 
 ### Shared-host certificate renewal
 
@@ -303,3 +303,15 @@ Executed checks:
 - The certificate-sync helper dispatched SIGHUP while both clients remained admitted. The process PID and slots stayed unchanged; confirmed ticks/hashes continued, and a fresh CA-verified TLS connection served the staged leaf certificate. One client's departure refilled with a bot while the other continued with zero mismatches.
 
 No live browser check was performed, at the user's request; verification used network/API scenarios. This smoke does not qualify sustained capacity, the impaired-network matrix, a future certificate renewal, or the broader release criteria. No external ICE/TURN service was configured or qualified. Local ignored receipts are `build-out/deploy/http-verification.json` and `build-out/deploy/wss-verification.json`; they contain no admission tickets or operator credentials.
+
+### Performance logging rollout
+
+Enabled **2026-10-18**, server source commit `a7e5dec0d1a10bb2da47672a0145502a11e40030`:
+
+- Server typecheck, 59 unit tests (including 13 logger behavior cases) and 27 platform cases passed. A real local production process logged active and paused windows, continued fresh RTT probes while paused, resumed gameplay, and shut down with a final flush. Both real WASM clients retained zero confirmed-state hash mismatches.
+- An isolated Docker rotation probe emitted 1,000 records with a three-file budget. Only the newest six records remained across three files (3,690 bytes), demonstrating oldest-history removal and the documented per-record threshold overshoot. The disposable container was removed; this did not flood the live game's logs.
+- The live game container was recreated only after observing zero established game-port connections. The static client and shared proxy were not restarted; private operator configuration and the frozen WASM stayed unchanged. The previous immutable release remains available for rollback.
+- Live inspection confirmed `json-file` with `30000000`/`30` for the server and unchanged `10m`/`3` for the client: **931,457,280 nominal retained bytes combined**, with headroom below one decimal GB.
+- Two public CA-verified WSS clients completed real prediction/confirmed simulation with **55/49 matching hash checkpoints and zero mismatches**. Five match and five runtime summaries were observed, including populated RTT/simulation/traffic metrics, no logger drops/write errors, and no probe nicknames or operator credentials in output.
+
+Ignored local receipts: `build-out/deploy/performance-smoke-local.json`, `performance-smoke-live.json`, `log-rotation-verification.json` and `logging-live-verification.json`. These checks establish functioning bounded logging, not sustained-capacity, client-rendering or impaired-network qualification.
