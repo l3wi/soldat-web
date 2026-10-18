@@ -2,9 +2,11 @@
 
 **Soldat Online** is a browser adaptation of pinned OpenSoldat 1.8: original Pascal gameplay compiled to WebAssembly, a React/Phaser client, and a Node 24 authoritative multiplayer server. It is not compatible with native Soldat/OpenSoldat network servers.
 
+**[Play Soldat Online](https://soldat.bwc.ad)** · [Public source](https://github.com/l3wi/soldat-web)
+
 ![Soldat Online homepage showing the main menu over an in-game backdrop](docs/images/homepage.png)
 
-This is an unofficial project, not affiliated with or endorsed by Transhuman Design. Public deployment does not imply verified branding clearance or completed gameplay/release qualification.
+This is an unofficial project, not affiliated with or endorsed by Transhuman Design. See the [status ledger](docs/porting-status.md) for remaining porting and release-qualification work.
 
 ## Start here
 

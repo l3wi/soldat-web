@@ -294,5 +294,5 @@ Bun workspaces for build/test tooling; server runs on Node 24.
 ## 10. Open release decisions
 
 - Name reference desktop/laptop hardware for R-CLI-1 and the release rendering benchmarks.
-- Regions and monthly hosting budget, required before production deployment.
+- Additional regions, measured capacity and monthly hosting budget. The initial public deployment reuses an existing shared host at `https://soldat.bwc.ad`; no new VPS was provisioned. Its existing provider bill and bandwidth allowance have not been verified.
 - Bug-compatibility exceptions: default is "reproduce", including `TeamCollides` blue/yellow anomaly (`Sprites.pas:434-438`); any fix is a ledger entry.

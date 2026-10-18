@@ -83,7 +83,7 @@ These are remaining implementation, separate from the qualification work above:
 
 ## 4. Prepare operations and complete release review
 
-1. Select production regions, provider/VM sizes and monthly budget using measured capacity. Follow the [deployment guide](deploy/README.md) for direct TLS/WSS, Origin policy, lifecycle, resource limits and certificate reload; prove deployment-specific readiness instead of treating a recipe as an executed deployment.
+1. The initial public deployment reuses a shared host at [soldat.bwc.ad](https://soldat.bwc.ad), with direct game TLS/WSS and a four-worker ceiling. See the [deployment record](deploy/README.md#public-deployment-record). Qualify sustained capacity before increasing limits or selecting additional regions/provider sizes; the existing hosting bill and bandwidth allowance remain unverified.
 2. Provide R-SRV-3 metrics, alerts and crash diagnostics for tick/event-loop/GC tails, state age, corrections and wire traffic, without credentials or unnecessary player-address disclosure. Validate overload and recovery under the intended multi-match load.
 3. Establish release automation that checks pins and runs the required artifact-bound qualification with serialized heavy jobs. No root test/build aggregator or enforced CI release gate exists today; the documented manual workflow is not an installed pipeline. Do not claim Linux/CI success without an actual run.
 4. Publish under the chosen Soldat Online name with accurate creator attribution, the custom project wordmark and the unofficial/non-endorsement disclaimer. Do not imply official status or verified rights clearance.

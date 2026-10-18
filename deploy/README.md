@@ -213,7 +213,7 @@ Build on a trusted build machine with the same frozen WASM and content import, u
 
 ## 9. Backups, upgrades, and rollback
 
-**Back up `/etc/soldat/server.json` only** to encrypted off-host storage, and test restoring its permissions (`root:soldat`, 0640). Matches, lobbies, tickets, and scores are ephemeral in-memory state; no game database or writable data directory exists. Versioned deployment files and immutable release artifacts are recovered from the trusted release source, not VPS backups. Reissue TLS through DNS-01 after a rebuild. Store/recreate the scoped Cloudflare token through your normal secret manager; do not add certbot account keys, copied private keys, logs, or `node_modules` to the application backup set.
+Back up `/etc/soldat/server.json` and the configured `banFile`, if enabled, to encrypted off-host storage. Test restoring the config's root:soldat 0640 permissions and the ban file's service-only writable access. Matches, lobbies, tickets and scores remain ephemeral in-memory state; there is no game database. Recover versioned deployment files and immutable releases from the trusted release source. Reissue TLS through DNS-01 after a rebuild. Store/recreate the scoped Cloudflare token through your normal secret manager; do not add certbot account keys, copied private keys, logs or `node_modules` to the application backup set.
 
 For an upgrade:
 
@@ -252,3 +252,24 @@ Install [`sync-traefik-tls.py`](sync-traefik-tls.py) under `/opt/soldat/ops/`. I
 [`soldat-tls-sync.service`](soldat-tls-sync.service) and [`soldat-tls-sync.timer`](soldat-tls-sync.timer) repeat synchronization twice daily and after boot. The supplied unit uses this host's `/root/infra/traefik/acme.json`; adjust that path and the domain deliberately for another host. Enable only this timer after `systemd-analyze verify`; keep previous certificate generations for rollback. Inspect a new public TLS connection and the game logs after reload, rather than treating signal dispatch as certificate validation.
 
 Verify the public HTML/OG/robots/sitemap, direct `/api/ping` and region URLs, denied foreign Origins, an actual WSS join/play/leave and client hash agreement. Confirm direct external socket addresses survive Docker's IPv4 publishing. Observe certificate reload with an admitted client still connected. Do not reset shared firewall/proxy services or claim the broader release matrix passed from these deployment checks.
+
+## Public deployment record
+
+Initial deployment, **2026-10-18**:
+
+- Public source: [l3wi/soldat-web](https://github.com/l3wi/soldat-web). Running application source commit: `ab925afd89482ac0e215edce2cf58768e7a41713`.
+- Site: **https://soldat.bwc.ad**. Direct game API: **https://soldat-api.bwc.ad:7443**; gameplay uses the corresponding `wss://` endpoint. Only this deployed region is advertised.
+- Existing shared Linux x86_64 host; no new VPS provisioned. Node **24.22.0**, image `node@sha256:a5f4366e834695d5f363b920c104953a535d3a9864d1bdf74566a0ebe01daee5`. Locked production dependencies installed with Bun **1.3.14**; Bun is not the application runtime.
+- Frozen WASM: `13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c`; content set: `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`; wire **7**, simulation ABI **6**.
+- Four-worker ceiling, **12 total humans/bots** per match. The two non-root containers' read-only roots, dropped capabilities, no-new-privileges, CPU/memory/PID limits and zero restarts were observed. The existing Traefik process remained running without a restart.
+- Private operator configuration stays outside the release. Persistent bans use `/var/lib/soldat`; the dedicated leaf-certificate sync timer is enabled. The app cannot read Traefik's ACME store or unrelated keys.
+
+Executed checks:
+
+- Client typecheck, 12 hosting checks and the public production build passed.
+- Public CA-verified HTTPS homepage, canonical/indexable/OG metadata, robots, sitemap and the **1200×630** OG PNG passed. Direct API TLS/HSTS and allowed Origin passed; foreign Origin returned 403; the static frontend did not proxy the API.
+- Two public CA-verified WSS clients used the real `OnlineSession` and confirmed/predicted WASM replicas. Both joined the same match in different slots, exchanged real inputs and retained 12 active players. Confirmed hashes matched throughout: **zero mismatches**, with 42 and 40 matches at the post-reload checkpoint.
+- Docker's direct game connections retained the verified external caller address, rather than collapsing to the bridge/proxy address.
+- The certificate-sync helper dispatched SIGHUP while both clients remained admitted. The process PID and slots stayed unchanged; confirmed ticks/hashes continued, and a fresh CA-verified TLS connection served the staged leaf certificate. One client's departure refilled with a bot while the other continued with zero mismatches.
+
+No live browser check was performed, at the user's request; verification used network/API scenarios. This smoke does not qualify sustained capacity, the impaired-network matrix, a future certificate renewal, or the broader release criteria. No external ICE/TURN service was configured or qualified. Local ignored receipts are `build-out/deploy/http-verification.json` and `build-out/deploy/wss-verification.json`; they contain no admission tickets or operator credentials.
