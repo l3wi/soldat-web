@@ -30,7 +30,7 @@ function fail(error: unknown): void {
 try {
   match = await AuthoritativeMatch.start(workerData as MatchConfiguration, response => port.postMessage(response));
   const clock = new FixedStepAccumulator(process.hrtime.bigint());
-  let nextMetrics = 60;
+  let nextMetrics = performance.now() + 1000;
   let simEncodeMs: number[] = [], tickLatenessMs: number[] = [];
   let inputWorkMs = 0;
   let workProfile: TickWorkProfile[] = [];
@@ -48,11 +48,12 @@ try {
         inputWorkMs = 0;
         if (profiling) workProfile.push(match!.takeWorkProfile()!);
       }, match!.tickScale);
-      if (match!.tick >= nextMetrics) {
+      const metricsAt = performance.now();
+      if (metricsAt >= nextMetrics) {
         port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, tickLatenessMs, ...match!.takeLagMetrics(), ...(profiling ? { workProfile, gc } : {}) } satisfies WorkerResponse);
         simEncodeMs = []; tickLatenessMs = [];
         workProfile = []; gc = [];
-        nextMetrics = match!.tick + 60;
+        nextMetrics = metricsAt + 1000;
       }
       timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint(), match!.tickScale)));
     } catch (error) { fail(error); }

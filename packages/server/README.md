@@ -1,6 +1,6 @@
 # Authoritative server
 
-Node 24 HTTPS/WSS control plane for private development builds of Soldat Online. Each match runs the existing OpenSoldat WASM in its own worker thread. This package never rebuilds the simulation. The Soldat name requires THD/MM permission before public launch; see [SPEC D10](../../SPEC.md).
+Node 24 HTTPS/WSS control plane for Soldat Online, an unofficial project not endorsed by THD/MM. Each match runs the existing OpenSoldat WASM in its own worker thread. This package never rebuilds the simulation. Existing upstream licenses and attribution requirements continue to apply.
 
 ## Run locally
 
@@ -70,6 +70,20 @@ Lobby updates coalesce to ten broadcasts per second and unchanged setup/readines
 Failed lobby HTTP lookups and rejected lobby upgrades/admissions share the failure buckets. Once a source or global failure budget is exhausted, further lookup/upgrade attempts are rejected before resolving the code until tokens refill; successful lookups do not consume failure tokens.
 
 SIGHUP re-reads the configured `tlsKeyPath`/`tlsCertPath` and calls `setSecureContext` without dropping existing connections. Read/validation failure logs an error and retains the previous TLS context; it never exits. SIGTERM/SIGINT retain graceful shutdown. The local launcher explicitly allows HTTP localhost/127.0.0.1 on ports **5195, 5198 and 5199**. API responses include HSTS (`max-age=31536000`) and `X-Content-Type-Options: nosniff`.
+
+## Performance logging
+
+The production launcher writes aggregate JSON performance summaries to stdout every **10 seconds**, plus remaining summaries on graceful shutdown. There is no public metrics endpoint, dashboard, client tracking, or browser instrumentation. These records describe server-observed transport and simulation performance; they do not measure client rendering or one-way network latency.
+
+Records use `schemaVersion: 1`, ISO `timestamp`, `windowMs` and `type: "match_performance"` or `"server_performance"`. Match metadata is limited to the generated match ID, map, mode, target population and human count. `summaries` contains `simEncodeMs`, `workerSimEncodeMs`, `wireEncodeMs`, `tickLatenessMs`, `replayMs`, `inputBufferOccupancy`, `inputBufferLeadTicks` and `rttMs`, each with count/min/p50/p95/p99/max plus truncated/invalid sample counts. `samplePolicy: "first_2048_per_metric_per_window"` bounds each metric to its first 2,048 observations per reporting window. RTT aggregates fresh successful raw server ping/pong timing probes, collected once per validated pong and forwarded since the preceding worker report, distinct from gameplay's smoothed compensation RTT. No repeated peer snapshots or player identifiers are emitted; these timings do not measure packet loss.
+
+`interval` contains `inboundBytes`, `outboundOfferedBytes`, `resyncRequests`, `disconnects`, `replayTicks`, `rejectedShots`, `uncompensatedShots` and `replayBudgetFallbacks`. Outbound bytes mean application payload offered to transport, not successful delivery or TLS/IP wire bytes; inbound includes codec-rejected application packets. `cumulative` contains overload/discarded-step counters. `ticks` reports first/last tick and observed progression, not dropped ticks or a health verdict: pauses, bullet time and resets affect progression. Worker metrics are sampled by monotonic wall time, including paused/slow-motion matches; paused simulation has no simulation samples or tick progression.
+
+Server `runtime` reports RSS/main-heap/external memory, process CPU user/system time and percent of one core, event-loop delay percentiles/utilization and uptime. `logging` reports dropped matches/records, invalid metadata and write errors. Timing/buffer/RTT observations are aggregated rather than emitted per player. No player IP addresses, names, chat, admission tickets, host tokens or operator credentials belong in metrics.
+
+The event-loop histogram observes the **main thread** with a 20 ms sampling interval; healthy raw delay values include that monitoring interval. Do not compare them directly with the worker tick-lateness budget. RSS covers the process, including workers; heap/external figures describe the main isolate.
+
+The application does not create log files. Retention is the operator's responsibility: the [shared Docker deployment](../../deploy/README.md#shared-host-performance-logs) bounds both application containers' Docker logs below one decimal GB nominally. Local stdout or dedicated-host journald follows its own destination's retention policy instead.
 
 ## API reference
 

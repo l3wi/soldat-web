@@ -7,6 +7,7 @@ import { hardeningLimits } from "./hardening.ts";
 import { installTlsReload } from "./tls-reload.ts";
 import { isGameMode } from "@soldat-web/protocol";
 import { voiceConfigurationFromEnv, type VoiceOperatorConfiguration } from "./voice.ts";
+import { startPerformanceLogging } from "./performance.ts";
 
 try {
   if (Number(process.versions.node.split(".")[0]) !== 24) throw new Error("The authoritative server requires Node 24 LTS");
@@ -33,6 +34,7 @@ try {
     return value.modes.map(mode => ({ name, botCapable: value.botCapable, mode, modes: value.modes }));
   });
   const hardening = hardeningLimits(config);
+  const logging = startPerformanceLogging();
   const server = await createPlatformServer({
     match, maps, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443,
     ...hardening,
@@ -45,7 +47,8 @@ try {
     ...(config.operatorToken === undefined ? {} : { operatorToken: config.operatorToken as string }),
     ...(config.banFile === undefined ? {} : { banFile: config.banFile as string }),
     voice: config.voice === undefined ? voiceConfigurationFromEnv(process.env) : config.voice as VoiceOperatorConfiguration,
-  });
+    onMetrics: logging.recordMatch,
+  }).catch(error => { logging.close(); throw error; });
   console.log(JSON.stringify({ type: "listening", address: server.httpsServer.address(), contentSetHash: manifest.sha256 }));
   const stopReload = installTlsReload(server.httpsServer, config.tlsKeyPath as string, config.tlsCertPath as string);
   let shuttingDown = false;
@@ -53,7 +56,7 @@ try {
     if (shuttingDown) return;
     shuttingDown = true;
     stopReload();
-    void server.close().catch(error => { console.error(error); process.exitCode = 1; });
+    void server.close().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => logging.close());
   };
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);

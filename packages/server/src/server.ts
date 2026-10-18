@@ -37,7 +37,7 @@ export interface GameServerOptions {
   controlBurst?: number;
   controlPerSecond?: number;
   onError?: (error: Error) => void;
-  onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & { wireEncodeMs: number[]; workerSimEncodeMs: number[] }) => void;
+  onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & { wireEncodeMs: number[]; workerSimEncodeMs: number[]; rttMs: number[]; inboundBytes: number; outboundBytes: number; resyncRequests: number; disconnects: number }) => void;
   onReliableEvent?: (slot: number, event: ReliableEvent) => void;
   onDisconnect?: (slot: number, code: number, reason: string) => void;
   onRound?: (round: { map: string; roundEpoch: number; serverTick: number }) => void;
@@ -122,7 +122,9 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   const occupiedSlots = new Set<number>(options.match.targetPlayers === undefined ? reservedBotSlots(options.match.botCount!) : []);
   let closing = false;
   let wireEncodeMs: number[] = [];
+  let rttMs: number[] = [];
   const wireByTick = new Map<number, number>();
+  let inboundBytes = 0, outboundBytes = 0, resyncRequests = 0, disconnects = 0;
   const authority = await MatchAuthority.create({
     players: () => [...sessions.values()].filter(s => s.state === "active").map(s => s.identity),
     send: (slot, message) => {
@@ -165,6 +167,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     const session = sessions.get(slot);
     if (!session || session.state === "closed") return;
     session.state = "closed";
+    disconnects++;
     clearTimeout(session.timer);
     clearInterval(session.probeTimer);
     clearImmediate(session.controlFlush);
@@ -206,8 +209,10 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     if (response.type === "metrics") {
       const firstTick = response.serverTick - response.simEncodeMs.length + 1;
       const simEncodeMs = response.simEncodeMs.map((ms, index) => ms + (wireByTick.get(firstTick + index) ?? 0));
-      options.onMetrics?.({ ...response, workerSimEncodeMs: response.simEncodeMs, simEncodeMs, wireEncodeMs });
+      options.onMetrics?.({ ...response, workerSimEncodeMs: response.simEncodeMs, simEncodeMs, wireEncodeMs, rttMs, inboundBytes, outboundBytes, resyncRequests, disconnects });
+      inboundBytes = 0; outboundBytes = 0; resyncRequests = 0; disconnects = 0;
       wireEncodeMs = [];
+      rttMs = [];
       for (const tick of wireByTick.keys()) if (tick <= response.serverTick) wireByTick.delete(tick);
       return;
     }
@@ -277,6 +282,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     while (occupiedSlots.has(slot)) slot++;
     occupiedSlots.add(slot);
     const transport = createNodeTransport(socket, limits.outboundQueueBytes);
+    const send = transport.send.bind(transport);
+    transport.send = (channel, packet) => { outboundBytes += packet.byteLength; send(channel, packet); };
     const now = process.hrtime.bigint();
     const session: Session = { identity: { id: randomBytes(16).toString("hex"), address: admissionIdentity.address, host: admissionIdentity.host, admin: false, muted: false, slot, nickname: "", joinedAt: Date.now(), team: 5 },
       signaling: new TokenBucket(512, 128), feature: new TokenBucket(12, 4), authentication: new TokenBucket(3, 0.1),
@@ -286,6 +293,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     transport.onClose = (code, reason) => disconnect(slot, code, reason || "Connection closed");
     transport.onError = error => { report(error); disconnect(slot, 1002, "Transport error"); };
     transport.onMessage = (channel, packet) => {
+      inboundBytes += packet.byteLength;
       try {
         if (channel !== "reliableControl") throw new ProtocolError("CHANNEL", "Clients may only send reliable control messages");
         const message = decodeMessage(packet);
@@ -334,19 +342,22 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
             break;
           }
           case "eventAck": session.pendingAck = Math.max(session.pendingAck ?? 0, message.eventId); flushControl(); break;
-          case "resync": session.pendingResync = true; flushControl(); break;
+          case "resync": resyncRequests++; session.pendingResync = true; flushControl(); break;
           case "ping":
             if (Date.now() - session.lastPing >= 250) {
               session.lastPing = Date.now();
               transport.send("reliableControl", encodeMessage({ type: "pong", timestamp: message.timestamp }));
             }
             break;
-          case "pong":
+          case "pong": {
             if (session.probe === undefined || message.timestamp !== session.probe / 1000n) throw new ProtocolError("VALUE", "Unknown timing probe");
-            controller.send({ type: "rtt", slot, milliseconds: Number(process.hrtime.bigint() - session.probe) / 1e6 });
+            const milliseconds = Number(process.hrtime.bigint() - session.probe) / 1e6;
+            rttMs.push(milliseconds);
+            controller.send({ type: "rtt", slot, milliseconds });
             delete session.probe;
             delete session.probeDeadline;
             break;
+          }
           case "disconnect": disconnect(slot, 1000, "Client disconnected"); break;
           case "chat":
             if (session.identity.muted) { transport.send("reliableControl", encodeMessage({ type: "notice", text: "You are server-muted." })); break; }

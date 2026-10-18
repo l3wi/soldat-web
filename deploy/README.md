@@ -244,6 +244,35 @@ docker compose --env-file /etc/soldat/deployment.env -f /opt/soldat/compose.shar
 docker compose --env-file /etc/soldat/deployment.env -f /opt/soldat/compose.shared.yml up -d
 ```
 
+### Shared-host performance logs
+
+The production launcher emits aggregate JSON match/runtime summaries to stdout every **10 seconds** and flushes remaining summaries during graceful shutdown. See the [server metrics reference](../packages/server/README.md#performance-logging) for scope and privacy boundaries. No public metrics endpoint, dashboard, client tracking or browser instrumentation is added.
+
+Only this project's Docker `json-file` logs use this budget:
+
+| Container | `max-size` | `max-file` | Nominal retained bytes |
+| --- | --- | --- | --- |
+| `soldat-server` | `"30000000"` (bytes) | `"30"` | 900,000,000 |
+| `soldat-client` (unchanged) | `10m` (10,485,760 bytes) | `"3"` | 31,457,280 |
+| **Combined** | | | **931,457,280** |
+
+This leaves **68,542,720 bytes** below 1,000,000,000 bytes for rotation/record headroom. It is a nominal retention budget, not a filesystem quota or a time-retention guarantee; record boundaries and filesystem metadata can add overhead. Docker rotates at `max-size` and removes the oldest file when rotation would exceed `max-file`, overwriting the oldest retained history rather than growing indefinitely. These settings cover all stdout/stderr records from the two containers, not only performance summaries. See [Docker's json-file driver reference](https://docs.docker.com/engine/logging/drivers/json-file/).
+
+Do not add application log files, volumes, unlimited `tee`/exports or an external logging service. Do not change global Docker or journald settings on the shared host. The dedicated-host **512M host-wide journal** policy above is a separate deployment option and remains untouched; neither unrelated containers nor host journals/backups are included in this Docker budget.
+
+Read bounded recent records without creating another retained copy:
+
+```sh
+docker logs --since 15m --tail 300 soldat-server
+docker logs --since 15m --tail 300 soldat-server 2>/dev/null | jq -R 'fromjson? | select(.type == "match_performance" or .type == "server_performance")'
+# Follow a bounded initial tail; stop with Ctrl-C (do not redirect/tee to a file):
+docker logs --since 1m --tail 30 --follow soldat-server
+```
+
+RTT distributions aggregate fresh successful raw server ping/pong probes once per validated pong across the reporting window, without repeated peer snapshots or player identifiers; they do not measure packet loss or one-way latency. Outbound byte counts are application payload bytes **offered** to transport, not confirmed delivery or TLS/IP wire bytes. Inbound counts include application packets rejected by the codec. Worker metrics use monotonic wall time and continue during paused/slow-motion matches; paused simulation contributes no simulation samples or tick progression. Process runtime records continue independently.
+
+**Expected deployment verification (not performed for this documentation change):** recreate the game container with the updated Compose configuration; inspect `docker inspect soldat-server --format '{{json .HostConfig.LogConfig}}'` for `json-file`, `max-size: "30000000"` and `max-file: "30"`; confirm the client's existing `10m`/`3` settings; observe successive JSON summaries at roughly ten-second intervals and inspect their privacy-safe fields. A restart alone does not replace an existing container's logging options. Record actual deployment evidence separately; the historical evidence below does not establish these new settings or metrics.
+
 ### Shared-host certificate renewal
 
 Issue a **dedicated** `soldat-api.bwc.ad` certificate through the existing Traefik `letsencrypt` resolver using a separate certificate-only HTTPS router, `noop@internal` and an IP-deny middleware. That port-443 router does not forward gameplay. Do not give the game a host-wide wildcard private key or mount Traefik's ACME/account storage into either container.

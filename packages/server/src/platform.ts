@@ -9,7 +9,7 @@ import type { WebSocket } from "ws";
 import { decodeMessage, encodeMessage, encodeLobbyStateShared, encodeLobbyStateMessage, MAX_CLIENT_PACKET_BYTES, isGameMode, normalizeMatchRules, ProtocolError } from "@soldat-web/protocol";
 import type { GameMode, MatchRules, LobbyState, LobbyPlayer, Message, Region } from "@soldat-web/protocol";
 import { createGameServer } from "./server.ts";
-import type { GameServer } from "./server.ts";
+import type { GameServer, GameServerOptions } from "./server.ts";
 import type { MatchConfiguration } from "./worker-messages.ts";
 import { BucketTable, TokenBucket, ConnectionAdmission, hardeningLimits, sourceIp, type HardeningOptions } from "./hardening.ts";
 import { BanStore } from "./bans.ts";
@@ -35,6 +35,7 @@ export interface PlatformOptions extends HardeningOptions {
   reservationMs?: number;
   allowedOrigins?: string[];
   onError?: (error: Error) => void;
+  onMetrics?: (info: { id: string; map: string; mode: string; targetPlayers: number; humans: number }, metrics: Parameters<NonNullable<GameServerOptions["onMetrics"]>>[0]) => void;
 }
 interface MatchEntry {
   id: string; game: GameServer; mode: GameMode; map: string; target: number; public: boolean;
@@ -177,6 +178,9 @@ export async function createPlatformServer(options: PlatformOptions): Promise<{ 
       admission, outboundQueueBytes: limits.outboundQueueBytes, controlBurst: limits.controlBurst, controlPerSecond: limits.controlPerSecond,
       httpsServer: server, path: `/matches/${id}`, ...(options.onError ? { onError: options.onError } : {}),
       bans, ...(options.operatorToken ? { operatorToken: options.operatorToken } : {}), ...(options.voice ? { voice: options.voice } : {}),
+      ...(options.onMetrics ? { onMetrics: (metrics: Parameters<NonNullable<GameServerOptions["onMetrics"]>>[0]) => {
+        if (entry) options.onMetrics!({ id, map: entry.game.map, mode, targetPlayers: population, humans: entry.game.humanCount }, metrics);
+      } } : {}),
       onRound: round => {
         if (!entry) return;
         entry.map = round.map;
