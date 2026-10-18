@@ -9,13 +9,15 @@ out_name=$(basename "$2")
 mkdir -p "$out_dir/tmp" "$out_dir/home"
 image=${ORACLE_IMAGE:-soldat-web/fpc:bcd7288}
 platform=${ORACLE_PLATFORM:-linux/arm64}
+content=${ORACLE_CONTENT_ROOT:-$root/dist/content/sim}
+content=$(cd "$content" && pwd)
 if [[ ! -x "$root/build-out/oracle/cmake/bin/opensoldatserver" ]]; then
   "$root/tools/oracle/build.sh"
 fi
 docker run --rm --network none --read-only --platform "$platform" \
   -v "$root/build-out/oracle:/work:ro" -v "$fixture:/fixture.json:ro" \
   -v "$(dirname "$fixture"):/fixture-maps:ro" \
-  -v "$root/dist/content/sim:/sim-content:ro" \
+  -v "$content:/sim-content:ro" \
   -v "$out_dir:/output" -w /output/home \
   -e TMPDIR=/output/tmp -e HOME=/output/home \
   -e LD_LIBRARY_PATH=/work/cmake/bin "$image" \

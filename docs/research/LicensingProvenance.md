@@ -3,6 +3,8 @@
 Research date: 2026-10-15. This is evidence-based engineering/licensing triage, not a legal opinion or a trademark-clearance certificate. Reference repositories were not modified. Research downloads and a reproducible comparison script are under `/tmp/soldat-research/LicensingProvenance/`.
 
 > Historical licensing/provenance triage. [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md) define current requirements, implementation/qualification and release sequencing. The name/art policies and unchecked checklist below are recommendations recorded on the research date, not evidence of today's branding, clearance or release compliance. Original-source findings and attribution/license cautions remain applicable evidence; implementation does not resolve missing permissions or chain-of-title evidence.
+>
+> The user removed the self-imposed private-build/written-branding-permission launch gate on 2026-10-18. The historical recommendations below are not current project launch requirements; see SPEC D10/§9 for the current policy. This does not change the recorded source-license or attribution findings.
 
 ## 1. Verified facts
 

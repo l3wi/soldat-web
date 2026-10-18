@@ -21,3 +21,8 @@ sim/build/.toolchain/
 *.pem
 *.p12
 *.pfx
+
+# Large, reproducible native oracle outputs; keep definitions and capture receipts.
+# Restore with: bun tools/oracle/restore-bot-goldens.ts
+/tests/fixtures/bots/golden/arena-eight-bot-dm-10000.jsonl.gz
+/tests/fixtures/bots/golden/arena-original-world-eight-bot-dm-10000.jsonl.gz

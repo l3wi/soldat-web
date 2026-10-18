@@ -1,0 +1,12 @@
+[Unit]
+Description=Keep the Soldat API certificate aligned with Traefik renewals
+
+[Timer]
+OnBootSec=2min
+OnCalendar=*-*-* 00,12:00:00
+RandomizedDelaySec=15min
+Persistent=true
+Unit=soldat-tls-sync.service
+
+[Install]
+WantedBy=timers.target

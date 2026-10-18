@@ -1,0 +1,12 @@
+[Unit]
+Description=Synchronize the Soldat API leaf certificate from Traefik
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+UMask=0077
+ExecStart=/usr/bin/python3 /opt/soldat/ops/sync-traefik-tls.py --acme-file /root/infra/traefik/acme.json --domain soldat-api.bwc.ad --tls-root /etc/soldat/tls --group soldat --container soldat-server
+TimeoutStartSec=60

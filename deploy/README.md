@@ -224,3 +224,31 @@ For an upgrade:
 5. If startup, TLS, WSS, or play verification fails, stop the service, atomically repoint `current` to the retained old release, restore its config snapshot and prior Node link if changed, and start/verify again. Rollback does **not** restore in-memory matches. Do not erase the prior release until the replacement is accepted.
 
 No deployment step changes the frozen simulation hash `13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c`. Historical gate reports retain the hashes of the artifacts they actually measured.
+
+## Shared Docker/Traefik host
+
+[`compose.shared.yml`](compose.shared.yml) is the alternative for an existing Docker host such as the deployed `soldat.bwc.ad` site. **Do not run the dedicated-host firewall reset, SSH changes or host-wide journal setup above on a shared machine.** Add only the application account/directories, its containers, its certificate-sync timer and its own proxy routing.
+
+- Serve the static client through the existing `proxy` Docker network and HTTPS router. The client container runs the existing production static server on internal port 8080; it has no API forwarding route and no published host port.
+- Keep game HTTPS/WSS direct: `https://soldat-api.bwc.ad:7443`, with a DNS-only A record and only the intended public IPv4 address published. The frontend can remain Cloudflare-proxied at `https://soldat.bwc.ad`. Do not advertise API IPv6 without verifying source-address preservation and reachability.
+- Build the client with `SITE_URL=https://soldat.bwc.ad SITE_INDEXABLE=true VITE_SERVER_URL=wss://soldat-api.bwc.ad:7443`. This emits the public canonical/OG/sitemap/robots metadata and bakes in the direct game endpoint.
+- Prepare the immutable release with the locked production dependencies, runtime workspace sources, `packages/client/scripts`, the built `dist/client`, complete `dist/content-next` and the frozen WASM. Do not include `.git`, workstation paths, private config, keys or dev credentials.
+- Use a dedicated non-login `soldat` account. Keep releases root-owned/read-only; `/etc/soldat/server.json` is root:soldat 0640. Container config paths use `/app/build-out/sim/sim.wasm` and `/app/dist/content-next`; set the direct `publicUrl`, exact frontend `allowedOrigins` and only the deployed region. Keep operator credentials outside the release. `/var/lib/soldat`, writable only by the service account, holds the optional `banFile`.
+- The shared-host starting ceiling is four match workers, 12 total humans/bots per match, a 2-CPU/2-GiB game container and a 0.5-CPU/256-MiB static container. This is an isolation/capacity ceiling, not measured multi-match throughput. Both containers run non-root, with a read-only root/release, dropped capabilities, bounded temporary storage, PIDs and logs.
+
+Store real deployment values in `/etc/soldat/deployment.env`: `SOLDAT_NODE_IMAGE` (verified Node 24 image digest), `SOLDAT_RELEASE` (immutable absolute release path), `SOLDAT_UID`, `SOLDAT_GID` and `SOLDAT_BIND_IP` (public IPv4). Install the compose file at `/opt/soldat/compose.shared.yml`, then validate and start only this project:
+
+```sh
+docker compose --env-file /etc/soldat/deployment.env -f /opt/soldat/compose.shared.yml config --quiet
+docker compose --env-file /etc/soldat/deployment.env -f /opt/soldat/compose.shared.yml up -d
+```
+
+### Shared-host certificate renewal
+
+Issue a **dedicated** `soldat-api.bwc.ad` certificate through the existing Traefik `letsencrypt` resolver using a separate certificate-only HTTPS router, `noop@internal` and an IP-deny middleware. That port-443 router does not forward gameplay. Do not give the game a host-wide wildcard private key or mount Traefik's ACME/account storage into either container.
+
+Install [`sync-traefik-tls.py`](sync-traefik-tls.py) under `/opt/soldat/ops/`. It selects only the configured domain, checks hostname/expiry/key matching, stages root:soldat 0640 certificate files and atomically switches `/etc/soldat/tls/current`. It sends SIGHUP only to the named running game container; it never restarts Traefik or another application. Run it once after issuance and before initial game startup.
+
+[`soldat-tls-sync.service`](soldat-tls-sync.service) and [`soldat-tls-sync.timer`](soldat-tls-sync.timer) repeat synchronization twice daily and after boot. The supplied unit uses this host's `/root/infra/traefik/acme.json`; adjust that path and the domain deliberately for another host. Enable only this timer after `systemd-analyze verify`; keep previous certificate generations for rollback. Inspect a new public TLS connection and the game logs after reload, rather than treating signal dispatch as certificate validation.
+
+Verify the public HTML/OG/robots/sitemap, direct `/api/ping` and region URLs, denied foreign Origins, an actual WSS join/play/leave and client hash agreement. Confirm direct external socket addresses survive Docker's IPv4 publishing. Observe certificate reload with an admitted client still connected. Do not reset shared firewall/proxy services or claim the broader release matrix passed from these deployment checks.

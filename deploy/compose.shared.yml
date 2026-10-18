@@ -1,0 +1,64 @@
+name: soldat
+services:
+  client:
+    image: ${SOLDAT_NODE_IMAGE:?Set a verified Node 24 image digest}
+    container_name: soldat-client
+    user: ${SOLDAT_UID:?Set the service UID}:${SOLDAT_GID:?Set the service GID}
+    working_dir: /app
+    command: [node, packages/client/scripts/preview.ts, --host, 0.0.0.0, --port, "8080"]
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ${SOLDAT_RELEASE:?Set the immutable release directory}:/app:ro
+    networks: [proxy]
+    expose: ["8080"]
+    init: true
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m,mode=1777"]
+    mem_limit: 256m
+    cpus: "0.5"
+    pids_limit: 64
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  server:
+    image: ${SOLDAT_NODE_IMAGE:?Set a verified Node 24 image digest}
+    container_name: soldat-server
+    user: ${SOLDAT_UID:?Set the service UID}:${SOLDAT_GID:?Set the service GID}
+    working_dir: /app
+    command: [node, packages/server/src/main.ts]
+    environment:
+      NODE_ENV: production
+      SOLDAT_SERVER_CONFIG: /etc/soldat/server.json
+    volumes:
+      - ${SOLDAT_RELEASE:?Set the immutable release directory}:/app:ro
+      - /etc/soldat/server.json:/etc/soldat/server.json:ro
+      - /etc/soldat/tls:/etc/soldat/tls:ro
+      - /var/lib/soldat:/var/lib/soldat
+    ports:
+      - ${SOLDAT_BIND_IP:?Set the intended public IPv4 address}:7443:7443/tcp
+    init: true
+    restart: unless-stopped
+    stop_grace_period: 45s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=16m,mode=1777"]
+    mem_limit: 2g
+    cpus: "2.0"
+    pids_limit: 128
+    ulimits:
+      nofile: {soft: 8192, hard: 8192}
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+networks:
+  proxy:
+    external: true

@@ -77,4 +77,4 @@ Follow [SPEC §9](SPEC.md#9-content-licensing-branding), upstream headers and th
 
 Do not add redistributed classic-installer assets, the excluded Kraken SDK or other unlicensed code/content. Local archive inspection is not redistribution permission. Public user-content hosting needs its own rights/takedown design.
 
-**Soldat Online remains a development/private-build name pending written THD/MM authorization** covering the name, wordmark, domain and store listings. Keep the unofficial/non-endorsement disclaimer; do not use original Soldat logo/title art as project branding. A technical test pass, deploy guide or merged contribution is not branding permission or authorization for a public launch.
+**Soldat Online is the chosen public project name.** Keep accurate creator attribution and the unofficial/non-endorsement disclaimer; do not imply official status or verified branding clearance. Applicable code/content/font licenses and the separate technical qualification requirements still apply.

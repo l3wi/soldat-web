@@ -351,7 +351,7 @@ export function ClientShell({ settings, setSettings }: { settings: Settings; set
   else if (screen === 'credits') content = <>
     <h2>Credits</h2>
     <ul className="credit-list">
-      <li>A port of the original OpenSoldat game logic, compiled to WebAssembly and verified bit-for-bit against the original server. Art and sound re-encoded for the web (lossless WebP, Opus).</li>
+      <li>A port of the original OpenSoldat game logic, compiled to WebAssembly. Art and sound re-encoded for the web (lossless WebP, Opus).</li>
       <li>Original art: Michal Marcinkowski, Transhuman Design and the base-content contributors.</li>
       <li>Airpirates: Evil Ville. DesertWind: grand_diablo. ctf_Ash: chakapoko maker. ctf_Death remake: NuZZ.</li>
       <li>Play typeface: Play contributors, SIL Open Font License 1.1.</li>
@@ -360,9 +360,10 @@ export function ClientShell({ settings, setSettings }: { settings: Settings; set
       <li>Art and captures: CC BY 4.0, cropped or tinted.</li>
     </ul>
     <nav className="menu license-links" aria-label="License documents">
+      <a className="small" href="https://github.com/l3wi/soldat-web/tree/main/sim/opensoldat" target="_blank" rel="noopener noreferrer">Browser simulation source</a>
       {CONTENT_NOTICES.map(notice => <a className="small" key={notice.path} href={contentUrl(notice.path)} target="_blank" rel="noopener noreferrer">{notice.title}</a>)}
     </nav>
-    <p className="small">Unofficial. Not affiliated with or endorsed by Michał Marcinkowski, Transhuman Design, or the OpenSoldat contributors. Soldat Online is a development/private-build name; public release requires written permission.</p>
+    <p className="small">Unofficial. Not affiliated with or endorsed by Michał Marcinkowski, Transhuman Design, or the OpenSoldat contributors.</p>
     <details><summary>Notices, licenses & source provenance</summary><CreditsPanel manifest={index} /></details>
     <div className="actions"><button className="action primary" onClick={back}>Back</button></div>
   </>;

@@ -75,7 +75,7 @@ Bullet entries contain `id`, `style`, `timeout`, and particle `pos`, `oldpos`, `
 
 Thing entries contain `id`, `style`, `timeout`, and all `particles` in their original skeleton order. Each has `pos`, `oldpos`, `velocity`, `forces`. Thing motion uses Verlet: `pos - oldpos` is the effective displacement, whereas the original `Velocity` array is still recorded verbatim rather than fabricated from that displacement.
 
-This is a **diagnostic projection**, not a complete rollback serialization: it deliberately does not claim that all hidden gameplay counters are included. Phase 1 save-state needs its own complete versioned layout.
+This is a **diagnostic projection**, not a complete rollback serialization: it deliberately does not claim that all hidden gameplay counters are included. Rollback uses the separate complete, versioned [simulation save-state layout](sim-abi.md).
 
 ## Run and compare
 
@@ -97,3 +97,20 @@ The build copies exact pinned Git archives to `build-out/oracle/source` and `bas
 Default platform is `linux/arm64`. For x86 fallback, build the pinned toolchain image for that platform, use `ORACLE_PLATFORM=linux/amd64`, and choose a separate image tag via `ORACLE_IMAGE` if keeping both architectures installed. Remove the architecture-specific `build-out/oracle/cmake` and source build outputs before changing platform; do not reuse cached native objects across architectures.
 
 The startup bypasses `ActivateServer`/`StartServer`, including `Randomize`, networking, lobby, RCON, Fae and scripting. It initializes Cvars, loads original animation/PO objects, map and weapons, and calls the original `CreateSprite`. Scripts/RCON/Steam are also disabled at compile time. Fixture input is assigned **before all tick integration**. `NoClientUpdateTime[slot] := 0` every tick keeps original human-input gates in `Sprites.Update` and jet refill open without changing mechanics code. Outbound server sends exit at the transport boundary under `ORACLE`; no socket is constructed, and runs use Docker `--network none`.
+
+### Restore the large bot goldens
+
+The two 10,000-tick Arena bot trace gzip files are generated locally, not tracked in Git. Fixture definitions, the corpus, the small frozen `tests/fixtures/bots/sim-manifest.json`, original capture hashes/measurements and pickup sidecars remain committed.
+
+After the [development setup and current content import](../development.md), build the independent pinned oracle explicitly, then restore:
+
+```sh
+tools/oracle/build.sh
+bun tools/oracle/restore-bot-goldens.ts
+```
+
+Use the recorded Linux arm64 oracle/compiler setup and Bun 1.3.14 when reproducing the historical gzip bytes. `ORACLE_IMAGE` and `ORACLE_PLATFORM` select the already-built runtime image/platform as in `run.sh`; restoration does not build the compiler or oracle. `RESTORE_CONTENT_ROOT` can select a different complete raw import instead of `dist/content-next`.
+
+Restoration checks every byte/hash in the frozen 174-file input manifest, builds an isolated input projection under ignored `build-out/`, runs the original native oracle for both fixtures, and requires both raw and compressed output identities to match `capture-results.json` before replacing either local golden. A later runtime import may add files without changing the historical input projection. Missing or changed required inputs, fixture drift or output differences fail; do not repin the receipt to accept them.
+
+The command never rewrites the historical capture receipt or qualifies a new simulation artifact. It records only restoration results under `build-out/oracle/restored-bots/`, then removes its temporary input/raw-trace workspace. Native maps-list diagnostics are retained; compare the recorded output identities rather than suppressing original behavior. Run restoration before a bot T1 comparison that needs these goldens.

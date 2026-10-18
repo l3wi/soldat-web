@@ -4,7 +4,7 @@
 
 ![Soldat Online homepage showing the main menu over an in-game backdrop](docs/images/homepage.png)
 
-**Development/private builds only.** Written THD/MM permission for the Soldat name and related branding is still a public-launch prerequisite. This is an unofficial project, not affiliated with or endorsed by Transhuman Design.
+This is an unofficial project, not affiliated with or endorsed by Transhuman Design. Public deployment does not imply verified branding clearance or completed gameplay/release qualification.
 
 ## Start here
 
