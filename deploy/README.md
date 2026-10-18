@@ -185,7 +185,8 @@ The unit grants only `CAP_NET_BIND_SERVICE` for port 443. Application/config/run
   ```sh
   cd /opt/soldat/current
   /usr/local/bin/node --input-type=module <<'JS'
-  import WebSocket from 'ws';
+  import { createRequire } from 'node:module';
+  const WebSocket = createRequire(`${process.cwd()}/packages/server/package.json`)('ws');
   const base = 'https://us.play.example.com';
   const origin = 'https://play.example.com';
   const response = await fetch(`${base}/api/lobbies`, {
