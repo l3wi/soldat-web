@@ -12,6 +12,9 @@ export interface WorldSprite {
   shirtColor: number; pantsColor: number; skinColor: number; hairColor: number;
   ceaseFireCounter: number; clipTexture: number; clipInTime: number; clipOutTime: number;
   style: number; demoPlayer: boolean; named: boolean;
+  aimDistCoef?: number; position?: number; visibleMask?: number; cursorVisibilityMask?: number;
+  availableWeaponsMask?: number; limboAvailable?: boolean; respawnCounter?: number;
+  bonusStyle?: number; bonusTime?: number; multikills?: number;
   /** World-space points; zero-based pair index corresponds to native point 1. */
   readonly previous: Float32Array; readonly current: Float32Array;
 }
@@ -93,10 +96,26 @@ export class SimWorldView implements WorldView {
       sprite.clipTexture = d.getUint32(base + s.clipTexture, true); sprite.clipInTime = d.getUint32(base + s.clipInTime, true); sprite.clipOutTime = d.getUint32(base + s.clipOutTime, true);
       sprite.style = d.getUint32(base + s.style, true); sprite.demoPlayer = d.getUint32(base + s.demoPlayer, true) !== 0;
       sprite.named = d.getUint32(base + s.playerNameLength, true) > 0;
+      sprite.aimDistCoef = d.getFloat32(base + s.aimDistCoef, true);
+      sprite.position = d.getInt32(base + s.position, true);
+      sprite.visibleMask = d.getUint32(base + s.visibleMask, true);
+      sprite.cursorVisibilityMask = d.getUint32(base + s.cursorVisibilityMask, true);
+      sprite.availableWeaponsMask = d.getUint32(base + s.availableWeaponsMask, true);
+      sprite.limboAvailable = d.getUint32(base + s.limboAvailable, true) !== 0;
+      sprite.respawnCounter = d.getInt32(base + s.respawnCounter, true);
+      sprite.bonusStyle = d.getInt32(base + s.bonusStyle, true);
+      sprite.bonusTime = d.getInt32(base + s.bonusTime, true);
+      sprite.multikills = d.getInt32(base + s.multikills, true);
       for (let p = 0; p < RENDER_LAYOUT.skeletonPoints * 2; p++) {
         sprite.previous[p] = d.getFloat32(base + s.previousSkeleton + p * 4, true);
         sprite.current[p] = d.getFloat32(base + s.currentSkeleton + p * 4, true);
       }
     }
   }
+}
+
+/** Native observer visibility is render-only; never edit alpha or simulation state. */
+export function spriteVisible(sprite: WorldSprite, observerSlot: number, realistic: boolean): boolean {
+  return !realistic || observerSlot <= 0 || sprite.slot === observerSlot ||
+    ((sprite.visibleMask ?? 0) & (1 << (observerSlot - 1))) !== 0;
 }

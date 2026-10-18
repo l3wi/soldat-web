@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { decodeMessage, encodeMessage, encodeTickRecords, encodeTicksMessage, readChannel, validateInput, ProtocolError, PROTOCOL_VERSION, LIMITS, MAX_CLIENT_PACKET_BYTES, MAX_STATE_BYTES, type Message, type ReliableEvent, type TickRecord } from "../src/index.ts";
+import { decodeMessage, encodeMessage, encodeTickRecords, encodeTicksMessage, readChannel, validateInput, ProtocolError, PROTOCOL_VERSION, LIMITS, MAX_CLIENT_PACKET_BYTES, MAX_STATE_BYTES, DEFAULT_APPEARANCE, normalizeMatchRules, type Message, type ReliableEvent, type TickRecord } from "../src/index.ts";
 
 let seed = 0xa421f27;
 function random(): number { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed >>> 0; }
@@ -14,19 +14,21 @@ function event(id: number, bytes: number): ReliableEvent {
   return { id, tick: 0xffffffff, header, payload: new Uint8Array(bytes).fill(0xab) };
 }
 const minimum: Message[] = [
-  { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(32), simAbiVersion: 0x00010003, nickname: "a", weapon: 4, secondaryWeapon: 0 },
-  { type: "welcome", slot: 1, serverTick: 0, tickRate: 60, matchSeed: 0n, map: "a", rules: new Uint8Array() },
+  { type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: new Uint8Array(32), simAbiVersion: 0x00010006, nickname: "a", weapon: 4, secondaryWeapon: 0, appearance: { ...DEFAULT_APPEARANCE } },
+  { type: "welcome", slot: 1, serverTick: 0, tickRate: 60, matchSeed: 0n, map: "a", rules: new Uint8Array(), roundEpoch: 0 },
   { type: "input", frames: [{ seq: 1, tick: 0, viewTick: 0, input: input() }] },
   { type: "ticks", lastConsumedInputSeq: 0, records: [{ type: "step", tick: 0, commands: [], inputs: [] }] },
   { type: "state", tick: 0, hash: 0n, lastConsumedInputSeq: 0, bytes: new Uint8Array() },
   { type: "events", events: [event(1, 0)] }, { type: "eventAck", eventId: 1 },
-  { type: "chat", text: "a" }, { type: "ping", timestamp: 0n }, { type: "pong", timestamp: 0n },
+  { type: "chat", channel: "public", text: "a" }, { type: "ping", timestamp: 0n }, { type: "pong", timestamp: 0n },
   { type: "resync" }, { type: "disconnect", code: 0, reason: "" },
   { type: "weapon-choice", primary: 1, secondary: 0, selection: "primary" },
+  { type: "team-change", team: 0 }, { type: "appearance", appearance: { ...DEFAULT_APPEARANCE } },
+  { type: "chat-message", channel: "team", slot: 1, nickname: "a", text: "a" }, { type: "notice", text: "Team is full" },
 ];
 const maximum: Message[] = [
-  { type: "hello", protocolVersion: 65535, contentSetHash: new Uint8Array(32).fill(255), simAbiVersion: 0xffffffff, nickname: "é".repeat(24), weapon: 255, secondaryWeapon: 255 },
-  { type: "welcome", slot: 32, serverTick: 0xffffffff, tickRate: 60, matchSeed: 0xffffffffffffffffn, map: "m".repeat(LIMITS.map), rules: new Uint8Array(LIMITS.rules).fill(255) },
+  { type: "hello", protocolVersion: 65535, contentSetHash: new Uint8Array(32).fill(255), simAbiVersion: 0xffffffff, nickname: "é".repeat(24), weapon: 10, secondaryWeapon: 13, appearance: { shirtColor: 0xffffff, pantsColor: 0xffffff, skinColor: 0xffffff, hairColor: 0xffffff, jetColor: 0xffffff, hairStyle: 4, headStyle: 2, chainStyle: 2 } },
+  { type: "welcome", slot: 32, serverTick: 0xffffffff, tickRate: 60, matchSeed: 0xffffffffffffffffn, map: "m".repeat(LIMITS.map), rules: new Uint8Array(LIMITS.rules).fill(255), roundEpoch: 0xffffffff },
   { type: "input", frames: Array.from({ length: 3 }, (_, i) => ({ seq: 0xffffffff - i, tick: 0xffffffff - i, viewTick: 0xffffffff - i, input: input(true) })) },
   { type: "ticks", lastConsumedInputSeq: 0xffffffff, records: [
     { type: "step", tick: 0xffffffff, commands: [new TextEncoder().encode(`"${"x".repeat(LIMITS.commandBytes - 2)}"`)], inputs: Array.from({ length: 32 }, (_, i) => ({ slot: i + 1, input: input(true) })) },
@@ -36,30 +38,53 @@ const maximum: Message[] = [
   { type: "state", tick: 0xffffffff, hash: 0xffffffffffffffffn, lastConsumedInputSeq: 0xffffffff, bytes: new Uint8Array(MAX_STATE_BYTES).fill(255) },
   { type: "events", events: Array.from({ length: LIMITS.events }, (_, i) => event(i + 1, 0)) },
   { type: "events", events: [event(0xffffffff, LIMITS.eventPayload)] },
-  { type: "eventAck", eventId: 0xffffffff }, { type: "chat", text: "🙂".repeat(LIMITS.chat / 4) },
+  { type: "eventAck", eventId: 0xffffffff }, { type: "chat", channel: "team", text: "🙂".repeat(LIMITS.chat / 4) },
   { type: "ping", timestamp: 0xffffffffffffffffn }, { type: "pong", timestamp: 0xffffffffffffffffn },
   { type: "resync" }, { type: "disconnect", code: 65535, reason: "r".repeat(LIMITS.reason) },
   { type: "weapon-choice", primary: 10, secondary: 13, selection: "secondary" },
+  { type: "team-change", team: 5 }, { type: "appearance", appearance: { ...DEFAULT_APPEARANCE, hairStyle: 4, headStyle: 2, chainStyle: 2 } },
+  { type: "chat-message", channel: "public", slot: 32, nickname: "n".repeat(LIMITS.nickname), text: "🙂".repeat(LIMITS.chat / 4) },
+  { type: "notice", text: "n".repeat(LIMITS.reason) },
 ];
 function mustDecodeOrTyped(bytes: Uint8Array): void {
   try { const decoded = decodeMessage(bytes); expect(decodeMessage(encodeMessage(decoded))).toEqual(decoded); }
   catch (error) { expect(error).toBeInstanceOf(ProtocolError); }
 }
 
-test("every maximum legal client message fits the direction-specific limit of at most 4 KiB", () => {
-  const clientTypes: Partial<Record<Message["type"], true>> = { hello: true, input: true, eventAck: true, chat: true, ping: true, pong: true, resync: true, disconnect: true, "weapon-choice": true };
+test("chat validates channels, printable text and server-only sender fields", () => {
+  for (const text of [" ", "line\nbreak", "null\0byte", "\ud800", "hidden\u200btext"])
+    expect(() => encodeMessage({ type: "chat", channel: "public", text })).toThrow(ProtocolError);
+  const request = encodeMessage({ type: "chat", channel: "public", text: "hello" });
+  request[8] = 2;
+  expect(() => decodeMessage(request)).toThrow(ProtocolError);
+  expect(decodeMessage(encodeMessage({ type: "chat", channel: "team", text: "/kick 1", slot: 32, nickname: "Forged" } as Message)))
+    .toEqual({ type: "chat", channel: "team", text: "/kick 1" });
+  expect(() => encodeMessage({ type: "chat-message", channel: "team", slot: 0, nickname: "a", text: "a" })).toThrow(ProtocolError);
+  expect(PROTOCOL_VERSION).toBe(7);
+});
+
+test("balanceTeams defaults false and rejects nonboolean lobby/practice configuration", () => {
+  expect(normalizeMatchRules().balanceTeams).toBe(false);
+  expect(normalizeMatchRules({ balanceTeams: true }).balanceTeams).toBe(true);
+  for (const balanceTeams of ["true", 1, null]) expect(() => normalizeMatchRules({ balanceTeams })).toThrow(ProtocolError);
+});
+
+test("every legal client message fits the bounded direction-specific limit", () => {
+  const clientTypes: Partial<Record<Message["type"], true>> = { hello: true, input: true, eventAck: true, chat: true, ping: true, pong: true, resync: true, disconnect: true, "weapon-choice": true, "team-change": true, appearance: true };
   const messages: Message[] = [
     ...maximum.filter(message => clientTypes[message.type]),
     { type: "lobby-join", nickname: "n".repeat(LIMITS.nickname), hostToken: "h".repeat(LIMITS.hostToken) },
     { type: "lobby-update", mode: "ctf", map: "m".repeat(LIMITS.map), targetPlayers: 32 },
+    { type: "lobby-update", rules: normalizeMatchRules({ mode: "htf" }), mapRotation: Array.from({ length: 32 }, (_, i) => String(i).padEnd(128, "m")) },
     { type: "lobby-ready", ready: true }, { type: "lobby-start" }, { type: "lobby-leave" },
     { type: "lobby-kick", id: "i".repeat(LIMITS.lobbyId) },
+    { type: "voice-signal", peerId: "p".repeat(64), generation: Number.MAX_SAFE_INTEGER, signal: { kind: "offer", sdp: "s".repeat(32768) } },
   ];
   const packets = messages.map(message => encodeMessage(message));
   const largest = Math.max(...packets.map(packet => packet.byteLength));
-  expect(largest).toBe(8 + 2 + LIMITS.chat);
-  expect(MAX_CLIENT_PACKET_BYTES).toBe(Math.ceil(largest / 1024) * 1024);
-  expect(MAX_CLIENT_PACKET_BYTES).toBeLessThanOrEqual(4096);
+  expect(largest).toBeGreaterThan(4096);
+  expect(MAX_CLIENT_PACKET_BYTES).toBeLessThanOrEqual(65536);
+  expect(largest).toBeLessThanOrEqual(MAX_CLIENT_PACKET_BYTES);
   for (let i = 0; i < packets.length; i++) {
     expect(packets[i]!.byteLength).toBeLessThanOrEqual(MAX_CLIENT_PACKET_BYTES);
     expect(decodeMessage(packets[i]!)).toEqual(messages[i]!);
@@ -98,7 +123,7 @@ describe("versioned little-endian codec", () => {
       const bytes = encodeMessage(minimum[0]!); bytes[index] = value;
       expect(() => decodeMessage(bytes)).toThrow(ProtocolError);
     }
-    const bytes = encodeMessage({ type: "chat", text: "ab" }); bytes[10] = 0xc0; bytes[11] = 0xaf;
+    const bytes = encodeMessage({ type: "chat", channel: "public", text: "ab" }); bytes[11] = 0xc0; bytes[12] = 0xaf;
     expect(() => decodeMessage(bytes)).toThrow(ProtocolError);
     for (const [offset, value] of [[0, 0x1000], [8, 3], [8, 12], [8, 16], [10, 1]]) {
       const invalid = input(); new DataView(invalid.buffer).setUint16(offset!, value!, true);
@@ -143,7 +168,7 @@ describe("versioned little-endian codec", () => {
       { type: "state", tick: 0, hash: 0n, lastConsumedInputSeq: 0, bytes: new Uint8Array(MAX_STATE_BYTES + 1) },
       { type: "events", events: [] }, { type: "events", events: [event(1, LIMITS.eventPayload + 1)] },
       { type: "events", events: Array.from({ length: LIMITS.events + 1 }, (_, i) => event(i + 1, 0)) },
-      { type: "chat", text: "x".repeat(LIMITS.chat + 1) }, { type: "chat", text: "" },
+      { type: "chat", channel: "public", text: "x".repeat(LIMITS.chat + 1) }, { type: "chat", channel: "team", text: "" },
       { type: "disconnect", code: 1, reason: "x".repeat(LIMITS.reason + 1) },
       { type: "ping", timestamp: -1n }, { type: "eventAck", eventId: 0 },
     ];

@@ -1,8 +1,8 @@
-import { decodeMessage, encodeMessage, type LobbyState, type Message } from '@soldat-web/protocol';
+import { decodeMessage, encodeMessage, type GameMode, type LobbyState, type Message } from '@soldat-web/protocol';
 import { connectWss, type MessageTransport } from '@soldat-web/protocol/transport';
 
 export type { LobbyState, LobbyPlayer, Region } from '@soldat-web/protocol';
-export interface JoinedMatch { matchId: string; wsUrl: string; map: string; mode: 'dm' | 'ctf'; humans: string[]; bots: number }
+export interface JoinedMatch { matchId: string; wsUrl: string; map: string; mode: GameMode; humans: string[]; bots: number }
 
 export function apiOrigin(): string {
   const configured = import.meta.env.VITE_SERVER_URL as string | undefined;

@@ -15,7 +15,7 @@ bun packages/content/src/cli.ts --hash dist/content-next
 
 `--source` defaults to `reference/opensoldat`; `--pins` defaults to `pins.json`. These provide the source graphics tables and provenance pins. Run comparisons in **fresh output directories**; the importer overwrites its own current outputs but deliberately does not delete old objects or unrelated files from an existing directory. No network access is used during import. `dist/` is ignored by Git.
 
-Media tools must be installed before import: `cwebp` and `dwebp` on `PATH` (on this workstation, `/opt/homebrew/bin`), and `/opt/nanobrew/prefix/bin/ffmpeg` with the `libopus` encoder. The importer invokes `cwebp -lossless -exact -z 9` and independently decodes **every frame** with `dwebp`; any dimension or RGBA-byte mismatch aborts the import. Audio is encoded with the specified FFmpeg binary to 64-kbps VBR mono Ogg Opus at 48 kHz. Temporary PNG/WAV/decoded media stays outside the output tree and is removed after each conversion, including failures. Imports are CPU-heavy; schedule one full import at a time. Do not overwrite an existing content tree while another process is qualifying it.
+Media tools must be installed before import: `cwebp`, `dwebp` and `ffmpeg` on `PATH`, with FFmpeg's `libopus` encoder available. The importer invokes `cwebp -lossless -exact -z 9` and independently decodes **every frame** with `dwebp`; any dimension or RGBA-byte mismatch aborts the import. Audio is encoded to 64-kbps VBR mono Ogg Opus at 48 kHz. Temporary PNG/WAV/decoded media stays outside the output tree and is removed after each conversion, including failures. Imports are CPU-heavy; schedule one full import at a time. Do not overwrite an existing content tree while another process is qualifying it.
 
 The CLI exits nonzero on malformed content and prints a typed error code. Missing map dependencies are reported in the manifest rather than treated as parse failures. Its success JSON contains `summary` and `simContentSha256`. `--hash DIRECTORY` hashes sorted `relative-path<TAB>file-sha256<LF>` records and reports the tree's file count and byte size; no file timestamps enter this hash.
 
@@ -34,7 +34,7 @@ Paths in JSON are relative to the output root. Object filenames are SHA-256 of t
 | `sim/packs/all.spk` | Complete SPK1 envelope with every simulation manifest ID, for online/gate consumers that require the full VFS identity. |
 | `sim/maps/*.pms` | Original bytes, including trailers. |
 | `sim/anims/*.poa`, `sim/objects/*.po` | Original physical animation/skeleton inputs. |
-| `sim/configs/weapons.ini`, `sim/mod.ini` | Original configuration bytes. |
+| `sim/configs/weapons.ini`, `sim/configs/weapons_realistic.ini`, `sim/mod.ini` | Original configuration bytes, including the native realistic weapon balance. |
 | `sim/bots/<lowercase name>.bot` | All 16 original bot profiles from pinned `server/configs/bots/*.bot`, copied byte-for-byte; spaces and punctuation in names are retained. |
 | `gostek.json` | Full parsed source part table, resolved graphics table, and retained MIT notice. Also available as `core.gostek`, a hash-addressed JSON object. |
 | `animations.json` | Canonical POA IDs to `{frames: [[{index,x,y,z},…],…]}`. Coordinates are unprojected source data. |
@@ -77,7 +77,7 @@ Each map file contains:
 
 Sector cells, full waypoint records and trailer bytes are exposed by `parsePms`, but not duplicated into render JSON. Simulation consumes original PMS bytes; the importer is not a replacement simulation parser. Raw PMS objects preserve every disk byte and therefore source checksums.
 
-The full manifest's map entry repeats dependencies and adds `path`, `simContentSha256`, and `simPack: {path,sha256,bytes}`. `index.maps[name]` contains only `path`, `mapSha256`, `simContentSha256`, `botCapable`, `missing`, and `simPack`; all render assets remain in `maps/<OriginalName>.json`, loaded once per selected map per session. `missing` records distinguish required terrain/active scenery from unused scenery declarations; edge fallback is recorded separately and does not count as a missing active map dependency, matching the audit.
+The full manifest's map entry repeats dependencies and adds `path`, `simContentSha256`, and `simPack: {path,sha256,bytes}`. `index.maps[name]` contains only `path`, `mapSha256`, `simContentSha256`, `botCapable`, `modes`, `missing`, and `simPack`; all render assets remain in `maps/<OriginalName>.json`, loaded once per selected map per session. `modes` lists playable original game-mode IDs from active spawn evidence: DM needs type0; PM0+14; Rambo0+15; TM1+2+3+4; CTF/INF1+2+5+6; HTF1+2+14. This prevents objectives being silently absent on maps chosen by filename alone. `missing` records distinguish required terrain/active scenery from unused scenery declarations; edge fallback is recorded separately and does not count as a missing active map dependency, matching the audit.
 
 ### Gostek parts
 
@@ -89,7 +89,7 @@ POA projection is `x=-3*sourceX/1.1`, `y=-3*sourceZ`; PO uses `x=-sourceX*loadSc
 
 ### Simulation identity and provenance
 
-`simContentSha256` hashes sorted `canonical-virtual-id<TAB>source-sha256<LF>` records for every raw PMS, POA, PO, mod.ini, weapons.ini and bot profile. The pinned corpus contains 174 raw simulation files, including all 16 bot profiles. Client and server must compare that combined hash; it is not the original engine's nonstandard PMS CRC.
+`simContentSha256` hashes sorted `canonical-virtual-id<TAB>source-sha256<LF>` records for every raw PMS, POA, PO, mod.ini, weapons.ini, weapons_realistic.ini and bot profile. The current importer emits 175 raw simulation files from the pinned corpus, including all 16 bot profiles and both native weapon configurations. Client and server must compare that combined hash; it is not the original engine's nonstandard PMS CRC. Earlier 174-file qualification receipts remain historical.
 
 Bot profile IDs are `bots/<lowercase source basename>.bot` (for example, `bots/admiral.bot`, `bots/boogie man.bot` and `bots/sgt. mac.bot`), not `configs/bots/…`. Their source root is `reference/base/server/configs/bots/` by default, relative to the configured base checkout. The importer does not parse, re-encode, normalize newlines or rewrite profile contents. Their raw `.bot` objects retain the original source paths and base repository/commit provenance with no transformations. Adding these files changes the combined simulation identity; regenerate content before using bot-capable simulation builds.
 

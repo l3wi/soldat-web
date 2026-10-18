@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import type { Plugin } from "vite";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
@@ -7,6 +7,7 @@ import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gateAssets } from "./scripts/gate-assets";
 import { copyProductionContent, mimeType, precompressTree, requestPath } from "./scripts/production";
+import { seoPlugin, seoPolicy } from "./scripts/seo";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const wasmPath = resolve(root, "build-out/sim/sim.wasm");
@@ -75,8 +76,11 @@ function gameAssets(build: boolean): Plugin {
   };
 }
 
-export default defineConfig(({ command }) => ({
-  plugins: [gameAssets(command === "build"), gateAssets(root)],
+export default defineConfig(({ command, mode }) => ({
+  plugins: [
+    seoPlugin(seoPolicy(command === "build" && mode === "production", loadEnv(mode, dirname(fileURLToPath(import.meta.url)), "SITE_"))),
+    gameAssets(command === "build"), gateAssets(root),
+  ],
   server: {
     proxy: {
       "/api": { target: process.env.SOLDAT_SERVER_URL ?? "https://127.0.0.1:7443", changeOrigin: true, secure: false },

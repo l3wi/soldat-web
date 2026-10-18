@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Soldat Online flag</title>
+  <rect width="64" height="64" rx="10" fill="#17251e"/>
+  <path d="M12 53 20 46 35 46 43 51 53 51 53 56 12 56Z" fill="#777348"/>
+  <path d="M24 14V49" fill="none" stroke="#f1efda" stroke-width="4" stroke-linecap="square"/>
+  <path d="M27 15H51L43 24 51 33H27Z" fill="#c8b875"/>
+</svg>

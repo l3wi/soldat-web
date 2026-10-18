@@ -18,6 +18,7 @@ type
   end;
 function CreateSpark(sPos,sVelocity: TVector2; sStyle,sOwner: Byte; Life: Integer): Integer;
 procedure SimFXReset(Seed: LongWord);
+procedure SimFXClear;
 procedure SimFXReplay(Value: Boolean);
 procedure SimFXSetView(X,Y,Width,Height: Single);
 function SimFXStep: LongInt;
@@ -67,11 +68,15 @@ begin
   Requests[RequestCount].Style:=sStyle; Requests[RequestCount].Owner:=sOwner;
   Requests[RequestCount].Life:=Life; Inc(RequestCount);
 end;
+procedure SimFXClear;
+begin
+  FillChar(Spark,SizeOf(Spark),0);SparkParts.Destroy;
+  SparkParts.TimeStep:=1;SparkParts.GravityMultiplier:=1/1.4;SparkParts.EDamping:=0.998;
+  RequestCount:=0;SparksCount:=0;LastTick:=-1;Replaying:=False;
+end;
 procedure SimFXReset(Seed: LongWord);
 begin
-  FillChar(Spark,SizeOf(Spark),0); SparkParts.Destroy;
-  SparkParts.TimeStep:=1; SparkParts.GravityMultiplier:=1/1.4; SparkParts.EDamping:=0.998;
-  ResetFXRandom(Seed); RequestCount:=0; SparksCount:=0; LastTick:=-1; Replaying:=False;
+  SimFXClear;ResetFXRandom(Seed);
 end;
 procedure SimFXReplay(Value: Boolean);
 begin Replaying:=Value; end;

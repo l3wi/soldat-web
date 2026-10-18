@@ -3,13 +3,14 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
-import { enterShell, openPractice, choosePracticeMap } from "./shell-driver.mjs";
+import { enterShell, openPractice, chooseGameMode, choosePracticeMap } from "./shell-driver.mjs";
+import { SIM_ABI_VERSION } from "../../sim-host/src/sim.ts";
 
 // One installed Chrome, one disposable private profile, one page, serial matches.
 const root = resolve(import.meta.dirname, "../../..");
 const url = process.env.CLIENT_URL ?? "http://127.0.0.1:5199";
 const expected = process.env.WASM_SHA256;
-if (!/^[a-f0-9]{64}$/.test(expected ?? "")) throw new Error("Set WASM_SHA256 to the frozen ABI4 artifact");
+if (!/^[a-f0-9]{64}$/.test(expected ?? "")) throw new Error("Set WASM_SHA256 to the frozen gameplay artifact");
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 if (hash(await readFile(resolve(root, "build-out/sim/sim.wasm"))) !== expected) throw new Error("Local WASM differs from qualification pin");
 const served = await fetch(`${url}/sim.wasm`);
@@ -17,7 +18,7 @@ if (!served.ok || hash(new Uint8Array(await served.arrayBuffer())) !== expected)
 console.log(execFileSync("memory_pressure", { encoding: "utf8" }));
 const screenshots = resolve(root, "tests/fixtures/render"), out = resolve(root, "build-out/client-g5");
 await mkdir(screenshots, { recursive: true }); await mkdir(out, { recursive: true });
-const receipt = { wasmSha256: expected, abiVersion: 0x00010004, runtime: "", privateHeadless: true, rows: [], errors: [], completed: false };
+const receipt = { wasmSha256: expected, abiVersion: SIM_ABI_VERSION, runtime: "", privateHeadless: true, rows: [], errors: [], completed: false };
 const save = () => writeFile(resolve(out, "bots-browser.json"), JSON.stringify(receipt, null, 2) + "\n");
 const browser = await chromium.launch({ channel: "chrome", headless: true, args: ["--mute-audio", "--disable-background-timer-throttling", "--disable-renderer-backgrounding"] });
 try {
@@ -35,7 +36,7 @@ try {
     await page.goto(`${url}/?bots-check`, { waitUntil: "networkidle" });
     await enterShell(page, "Bot capture");
     await openPractice(page);
-    if (mode === "ctf") await page.getByRole("button", { name: /^Game type / }).click();
+    await chooseGameMode(page, mode === "ctf" ? "Capture the flag" : "Deathmatch");
     await choosePracticeMap(page, map);
     await page.fill("#bot-count", String(count));
     await page.getByRole("button", { name: "Start practice [Enter]", exact: true }).click();

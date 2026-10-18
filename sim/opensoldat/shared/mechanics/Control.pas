@@ -55,6 +55,9 @@ uses
 
 
 procedure ControlSprite(var SpriteC: TSprite);
+{$IFDEF SIM}
+function CheckSpriteLineOfSightVisibility(var LookSprite:TSprite;var SpriteToCheck:TSprite):Boolean;
+{$ENDIF}
 
 
 implementation

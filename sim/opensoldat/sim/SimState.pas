@@ -8,6 +8,13 @@ var SimWasJumping, SimWasRunningLeft: TSimInputHistory;
 var SimChosenPrimary,SimChosenSecondary:array[1..MAX_PLAYERS] of Byte;
 var SimLimboAvailable,SimBotOwned:TSimInputHistory;
 var SimOriginalWorld:Boolean=True;
+var SimTimeLimitTicks,SimScoreLimit:LongInt;
+var SimRoundEpoch:LongWord;
+var SimRoundReady:Boolean;
+var SimCustomShirt:array[1..MAX_PLAYERS] of LongWord;
+var SimVisibility:array[1..MAX_PLAYERS,1..MAX_PLAYERS] of Byte;
+function SimWeaponAvailable(Slot,Index:Integer):Boolean;
+procedure SimApplyLoadout(Slot:Integer);
 { Every ABI entry point that can mutate gameplay or serialized content must
   invalidate before doing any work, including paths that can fail partway. }
 procedure SimInvalidateState;
@@ -18,7 +25,33 @@ function SimHashState: QWord;
 implementation
 uses SysUtils, Math, Game, Parts, Anims, Sprites, Bullets, Things,
   Weapons, Vector, MapFile, PolyMap, Server, SimRender, SimEvents, PhysFS, NetworkServerSprite, Constants, SimAnimationContent, SimRandom;
-const STATE_MAGIC = $31545353; STATE_VERSION = $00010004; MAX_STATE_BYTES = 32 * 1024 * 1024;
+const STATE_MAGIC = $31545353; STATE_VERSION = $00010006; MAX_STATE_BYTES = 32 * 1024 * 1024;
+function SimWeaponAvailable(Slot,Index:Integer):Boolean;
+begin
+  Result:=(Index>=1) and (Index<=MAIN_WEAPONS);
+  if Result then Result:=(WeaponActive[Index]=1) and
+    ((Index>PRIMARY_WEAPONS) or not sv_advancemode.Value or (WeaponSel[Slot,Index]=1));
+end;
+procedure SimApplyLoadout(Slot:Integer);
+var Index:Integer;
+begin
+  Index:=WeaponNumToIndex(SimChosenPrimary[Slot]);
+  if SimWeaponAvailable(Slot,Index) then begin
+    Sprite[Slot].SelWeapon:=SimChosenPrimary[Slot];
+    Sprite[Slot].ApplyWeaponByNum(SimChosenPrimary[Slot],1);
+  end else Sprite[Slot].ApplyWeaponByNum(NOWEAPON_NUM,1);
+  Index:=WeaponNumToIndex(SimChosenSecondary[Slot]);
+  if SimWeaponAvailable(Slot,Index) then begin
+    Sprite[Slot].Player.SecWep:=Index-COLT;
+    Sprite[Slot].ApplyWeaponByNum(SimChosenSecondary[Slot],2);
+  end else Sprite[Slot].ApplyWeaponByNum(NOWEAPON_NUM,2);
+  Index:=WeaponNumToIndex(SimChosenPrimary[Slot]);
+  if sv_advancemode.Value and (Index>=1) and (Index<=PRIMARY_WEAPONS) and
+    not SimWeaponAvailable(Slot,Index) then begin
+    Sprite[Slot].Weapon:=Sprite[Slot].SecondaryWeapon;
+    Sprite[Slot].SecondaryWeapon:=Guns[NOWEAPON];
+  end;
+end;
 procedure SimResetOriginalRNG(Seed: LongWord);
 begin
   SimInvalidateState;
@@ -668,6 +701,31 @@ begin
   if Number(bots_difficulty.Value,2)<>QWord(bots_difficulty.Value) then Fail;
   if Number(Ord(SimOriginalWorld),1)<>Ord(SimOriginalWorld) then Fail;
   if Number(Ord(sv_stationaryguns.Value),1)<>Ord(sv_stationaryguns.Value) then Fail;
+  { Immutable rules must match the initialized receiver, not silently inherit
+    local defaults on rollback or across an authoritative full-state install. }
+  if Number(Ord(sv_realisticmode.Value),1)<>Ord(sv_realisticmode.Value) then Fail;
+  if Number(Ord(sv_survivalmode.Value),1)<>Ord(sv_survivalmode.Value) then Fail;
+  if Number(Ord(sv_advancemode.Value),1)<>Ord(sv_advancemode.Value) then Fail;
+  if Number(sv_advancemode_amount.Value,4)<>QWord(sv_advancemode_amount.Value) then Fail;
+  if Number(Ord(sv_bullettime.Value),1)<>Ord(sv_bullettime.Value) then Fail;
+  if Number(Ord(sv_friendlyfire.Value),1)<>Ord(sv_friendlyfire.Value) then Fail;
+  if Number(Ord(sv_balanceteams.Value),1)<>Ord(sv_balanceteams.Value) then Fail;
+  if Number(Ord(sv_sniperline.Value),1)<>Ord(sv_sniperline.Value) then Fail;
+  if Number(sv_bonus_frequency.Value,1)<>QWord(sv_bonus_frequency.Value) then Fail;
+  if Number(Ord(sv_bonus_flamer.Value),1)<>Ord(sv_bonus_flamer.Value) then Fail;
+  if Number(Ord(sv_bonus_predator.Value),1)<>Ord(sv_bonus_predator.Value) then Fail;
+  if Number(Ord(sv_bonus_berserker.Value),1)<>Ord(sv_bonus_berserker.Value) then Fail;
+  if Number(Ord(sv_bonus_vest.Value),1)<>Ord(sv_bonus_vest.Value) then Fail;
+  if Number(Ord(sv_bonus_cluster.Value),1)<>Ord(sv_bonus_cluster.Value) then Fail;
+  if Number(SimTimeLimitTicks,4)<>QWord(SimTimeLimitTicks) then Fail;
+  if Number(SimScoreLimit,4)<>QWord(SimScoreLimit) then Fail;
+  for J:=1 to MAIN_WEAPONS do
+    if Number(WeaponActive[J],1)<>WeaponActive[J] then Fail;
+  C(SimRoundEpoch);B(SimRoundReady);
+  for J:=1 to MAX_PLAYERS do begin
+    C(SimCustomShirt[J]);
+    for K:=1 to MAX_PLAYERS do U(SimVisibility[J,K],45);
+  end;
   Content:=Number(OtherCounter,8);if Reading and Apply then OtherCounter:=Content;
   Content:=Number(AISeed,8);if Reading and Apply then AISeed:=Content;
   for J:=0 to 32 do begin C(ShotCounters[J]);C(EventCounters[J]);end;

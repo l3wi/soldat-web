@@ -7,8 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "preview": "bun scripts/preview.ts",
-    "test:hosting": "bun test scripts/production.test.ts",
-    "test": "bun test --isolate src scripts/production.test.ts",
+    "test:hosting": "bun test scripts/production.test.ts scripts/seo.test.ts",
+    "test": "bun test --isolate src scripts/production.test.ts scripts/seo.test.ts",
     "check": "tsc --noEmit",
     "capture": "bun scripts/capture.ts",
     "verify": "bun scripts/verify.ts"

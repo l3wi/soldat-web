@@ -2,6 +2,13 @@ import type Phaser from 'phaser';
 import { SOUND_SAMPLES, soundPreloadSamples, type SoundPreloadOptions } from './sound-samples';
 import { contentUrl, loadContentIndex } from './content';
 import { SIM_PRESENTATION_EVENTS } from '@soldat-web/sim-host';
+import type { RadioChoice } from '@soldat-web/protocol';
+
+/** NetworkUtils.pas:97-105: each recording is the complete phrase, not stitched words. */
+function radioSample(category: RadioChoice, direction: RadioChoice): number {
+  if (![1, 2, 3].includes(category) || ![1, 2, 3].includes(direction)) throw new RangeError('Invalid native radio choice');
+  return 151 + (category - 1) * 3 + direction - 1;
+}
 
 // Successful buffers and in-flight requests survive scene teardown for the session.
 const decodedSounds = new Map<number, Promise<AudioBuffer>>();
@@ -79,6 +86,7 @@ export class Audio {
   soundEvents = 0;
   playedSounds = 0;
   private unlocked = false;
+  private radioNextAt = 0;
   private readonly voices: (Voice | undefined)[] = new Array(256);
   private readonly pendingVoices = new Set<Voice>();
   private readonly position = { x: 0, y: 0, z: 0 };
@@ -156,6 +164,34 @@ export class Audio {
   /** Master output gain; native per-source volume and attenuation stay intact. */
   public setVolume(volume: number): void {
     this.scene.sound.setVolume(volume);
+  }
+
+  /** Native radio is played at the listener position, gain 1, with a 3-second cooldown. */
+  public radio(category: RadioChoice, direction: RadioChoice): void {
+    const sample = radioSample(category, direction);
+    if (!this.unlocked || this.destroyed || Date.now() < this.radioNextAt) return;
+    let channel = 128;
+    while (channel < this.voices.length && this.voices[channel]?.active &&
+      (!this.voices[channel]?.sound || this.voices[channel]?.sound?.isPlaying)) channel++;
+    if (channel === this.voices.length) return;
+    this.radioNextAt = Date.now() + 3000;
+    this.voices[channel]?.sound?.destroy();
+    const voice: Voice = { sample, x: 0, y: 0, volume: 1, nonpositional: true, maxDistance: 750, loop: false, active: true, paused: false };
+    this.voices[channel] = voice;
+    if (this.readySamples.has(sample)) this.startVoice(channel, voice);
+    else {
+      this.pendingVoices.add(voice);
+      void this.loadSample(sample).then(() => {
+        this.pendingVoices.delete(voice);
+        this.startVoice(channel, voice);
+      }).catch(error => {
+        this.pendingVoices.delete(voice);
+        if (this.destroyed || this.voices[channel] !== voice) return;
+        voice.active = false;
+        this.lastError = error instanceof Error ? error : new Error(String(error));
+        this.onError(this.lastError);
+      });
+    }
   }
 
   /** Follow the player's particle position, not the aim-offset camera (Sound.pas:436-440). */

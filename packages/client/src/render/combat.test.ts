@@ -6,8 +6,8 @@ import { CombatRenderer, assertCombatInvariants, type CombatGraphic } from './co
 import type { Regions } from './geometry';
 
 // Rendering-only ABI fixtures. These are NOT simulation or movement qualification.
-const manifest=JSON.parse(readFileSync(new URL('../../../../dist/content/manifest.json',import.meta.url),'utf8'));
-const skeletons=JSON.parse(readFileSync(new URL('../../../../dist/content/skeletons.json',import.meta.url),'utf8'));
+const manifest=JSON.parse(readFileSync(new URL('../../../../dist/content-next/manifest.json',import.meta.url),'utf8'));
+const skeletons=JSON.parse(readFileSync(new URL('../../../../dist/content-next/skeletons.json',import.meta.url),'utf8'));
 const graphics: CombatGraphic[]=[...manifest.core.graphics.weapons,...manifest.core.graphics.objects,...manifest.core.graphics.sparks,...manifest.core.graphics.gostek];
 function fixture() {
   const memory=new WebAssembly.Memory({initial:2}),pointer=8,d=new DataView(memory.buffer,pointer,RENDER_LAYOUT.totalBytes);

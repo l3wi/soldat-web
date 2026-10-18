@@ -76,6 +76,9 @@
     },
     "packages/sim-host": {
       "name": "@soldat-web/sim-host",
+      "dependencies": {
+        "@soldat-web/protocol": "workspace:*",
+      },
     },
   },
   "packages": {

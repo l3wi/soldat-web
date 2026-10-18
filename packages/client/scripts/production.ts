@@ -6,7 +6,7 @@ import { brotliCompress, constants, gzip } from "node:zlib";
 
 const brotli = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
-export const compressible = /\.(?:js|mjs|css|html|wasm|json|spk|pack)$/i;
+export const compressible = /\.(?:js|mjs|css|html|wasm|json|xml|txt|spk|pack)$/i;
 
 const mimeTypes: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -15,6 +15,7 @@ const mimeTypes: Record<string, string> = {
   ".webp": "image/webp", ".svg": "image/svg+xml", ".wav": "audio/wav",
   ".opus": "audio/ogg", ".ogg": "audio/ogg", ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2", ".spk": "application/octet-stream",
+  ".xml": "application/xml; charset=utf-8",
 };
 export function mimeType(path: string): string {
   return mimeTypes[extname(path).toLowerCase()] ?? "application/octet-stream";

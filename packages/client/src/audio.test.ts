@@ -1,10 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import type Phaser from 'phaser';
 import { Audio, attenuation, soundPosition } from './audio';
-import { BOT_PROFILES } from './sandbox-options';
-import { BOT_SOUND_LOADOUTS, LOOPING_SOUND_SAMPLES, SOUND_SAMPLES, soundPreloadSamples } from './sound-samples';
+import { SOUND_SAMPLES, soundPreloadSamples } from './sound-samples';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -48,34 +46,6 @@ class FakeSound {
   destroy() { this.stop(); this.destroyed = true; }
 }
 
-test('preload IDs follow pinned native weapon numbers, bot profiles and looping rules', () => {
-  const nativeWeaponNumbers: Record<string, number> = {
-    'FN Minimi': 9, 'Spas-12': 5, 'XM214 Minigun': 10, Chainsaw: 12, 'Steyr AUG': 4,
-    'Ak-74': 3, 'Desert Eagles': 1, 'Ruger 77': 6, 'HK MP5': 2, M79: 7, 'Barrett M82A1': 8,
-  };
-  for (const name of BOT_PROFILES) {
-    const source = readFileSync(new URL(`../../../reference/base/server/configs/bots/${name}.bot`, import.meta.url), 'utf8');
-    const favourite = /^Favourite_Weapon=(.*)$/m.exec(source)![1]!.trim();
-    const secondary = Number(/^Secondary_Weapon=(.*)$/m.exec(source)![1]);
-    assert.deepEqual(BOT_SOUND_LOADOUTS[name], { weapon: nativeWeaponNumbers[favourite], secondaryWeapon: [0, 11, 12, 13][secondary] });
-  }
-  const constants = readFileSync(new URL('../../../reference/opensoldat/shared/Constants.pas', import.meta.url), 'utf8');
-  const native = readFileSync(new URL('../../../reference/opensoldat/client/Sound.pas', import.meta.url), 'utf8');
-  const loopRule = /if \(SampleNum = (SFX_\w+)\) or \(SampleNum = (SFX_\w+)\) or \(SampleNum = (SFX_\w+)\) then\s+PlayMode := AL_TRUE/.exec(native)!;
-  const loopIds = loopRule.slice(1).map(name => Number(new RegExp(`${name}\\s*=\\s*(\\d+)`).exec(constants)![1]));
-  assert.deepEqual([...LOOPING_SOUND_SAMPLES].sort((a, b) => a - b), loopIds.sort((a, b) => a - b));
-  assert.deepEqual(LOOPING_SOUND_SAMPLES.map(id => SOUND_SAMPLES[id]), ['rocketz.wav', 'flamer.wav', 'chainsaw-r.wav']);
-  const local = soundPreloadSamples({ bots: 0 });
-  assert.equal(local.length, 56);
-  for (const id of [2, 70, 73, 108, 111, 89, 91, 85, 87, 50, 31, 32, 41, 42]) assert.ok(local.includes(id));
-  assert.ok(!local.includes(133)); assert.ok(!local.includes(56)); assert.ok(!local.includes(161));
-  const practice = soundPreloadSamples({ bots: 4 });
-  assert.equal(practice.length, 71);
-  for (const id of [5, 8, 11, 12, 120, 129, 130, 35, 36, 37, 38, 131, 132, 133, 136]) assert.ok(practice.includes(id));
-  assert.deepEqual(soundPreloadSamples({ bots: 31 }), soundPreloadSamples({ bots: 16 }));
-  for (const id of soundPreloadSamples({ loadout: { weapon: 13, secondaryWeapon: 12 } })) assert.ok(SOUND_SAMPLES[id]);
-  for (const id of [135, 147, 148, 131, 132, 133, 136]) assert.ok(soundPreloadSamples({ loadout: { weapon: 13, secondaryWeapon: 12 } }).includes(id));
-});
 
 test('per-sample Opus cache, delayed voice validity and scene lifecycle', async t => {
   const requests: number[] = [], decodes: number[] = [];

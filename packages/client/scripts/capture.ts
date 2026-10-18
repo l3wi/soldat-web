@@ -48,7 +48,7 @@ try {
   assert.equal(await page.locator(".notice-text").count(), 4);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  await page.getByText("Graphics & controls", { exact: true }).click();
+  await page.getByRole("tab", { name: /^Graphics & controls\b/ }).click();
   await page.getByLabel("Texture filtering").selectOption("nearest");
   await page.getByLabel("Use mipmaps").uncheck();
   await page.getByRole("button", { name: "Move left", exact: false }).click();

@@ -1,5 +1,5 @@
 import { requireStatus, type RenderView, type SimHost } from "@soldat-web/sim-host";
-import { type InputFrame, type Message, type ReliableEvent, type TickRecord } from "@soldat-web/protocol";
+import { validateChat, validateFeature, isServerFeature, isClientFeature, type ControlState, type FeatureClientMessage, type FeatureServerMessage, type ChatChannel, type ChatDelivery, type InputFrame, type Message, type ReliableEvent, type TickRecord } from "@soldat-web/protocol";
 import { SimWorldView, type WorldSprite, type WorldView } from "../world.ts";
 
 type StepRecord = Extract<TickRecord, { type: "step" }>;
@@ -48,6 +48,12 @@ export interface OnlineOptions {
   prediction: SimHost; confirmed: SimHost; slot: number; send(message: Message): void;
   now?: () => number; onEvent?: (event: ReliableEvent) => void;
   onTicks?: (metrics: Readonly<OnlineMetrics>) => void;
+  onChat?: (message: ChatDelivery) => void;
+  onNotice?: (text: string) => void;
+  onFeature?: (message: FeatureServerMessage) => void;
+  onSlotLeave?: (slot: number) => void;
+  /** Full states cannot prove occupant continuity across skipped tick records. */
+  onStateReset?: () => void;
   /** Opt-in reconciliation evidence; no diagnostic copies are made when absent. */
   onCorrection?: (diagnostic: Readonly<CorrectionDiagnostic>) => void;
   /** Borrowed event records, presentation kinds only; never emitted on REPLAY. */
@@ -98,6 +104,9 @@ export class OnlineSession {
   private fraction = 1;
   private disposed = false;
   private readonly options: OnlineOptions;
+  private controlState: ControlState = { host: false, admin: false, paused: false, muted: false, vote: null };
+  get control(): Readonly<ControlState> { return this.controlState; }
+  get paused(): boolean { return this.controlState.paused; }
   constructor(options: OnlineOptions) {
     this.options = options;
     this.now = options.now ?? (() => performance.now());
@@ -117,8 +126,52 @@ export class OnlineSession {
       lastConsumedInputSeq: 0, replayLength: 0, duplicateEvents: 0, eventGaps: 0,
       predictionLeadTicks: 2, targetPredictionLeadTicks: 2, rttDeviationMs: 0, predictionClockRate: 1 };
   }
+  /** Ordered map bootstrap boundary: retain input sequence/event identity, discard the old-map timeline. */
+  resetRound(): void {
+    this.waiting = true; this.resyncRequested = false; this.metrics.status = "loading next round";
+    this.ring.fill(undefined); this.recent.length = 0;
+    this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
+    this.remote = []; this.correctionX = 0; this.correctionY = 0;
+    this.metrics.pendingInputs = 0; this.metrics.anchorBytes = 0;
+    this.resyncSequence = this.seq;
+  }
+
+  sendChat(channel: ChatChannel, text: string): void {
+    validateChat(channel, text);
+    if (this.disposed || this.metrics.status !== "online") throw new Error("Online connection unavailable");
+    this.options.send({ type: "chat", channel, text });
+  }
+  sendFeature(message: FeatureClientMessage): void {
+    validateFeature(message);
+    if (!isClientFeature(message)) throw new Error("Server feature cannot be sent by a client");
+    if (this.disposed) throw new Error("Online connection unavailable");
+    this.options.send(message);
+  }
+  private get stepMilliseconds(): number { return STEP_MS / this.authoritativeRenderView().globals.tickScale; }
   receive(message: Message): void {
     if (this.disposed) return;
+    if (isClientFeature(message)) throw new Error("Client-originated feature received from server");
+    if (isServerFeature(message)) {
+      if (message.type === "control-state") {
+        const changed = message.state.paused !== this.controlState.paused;
+        this.controlState = message.state;
+        if (changed) {
+          this.ring.fill(undefined); this.recent.length = 0; this.predictedInputs.clear();
+          this.metrics.pendingInputs = 0; this.resyncSequence = this.seq;
+          this.clockAt = this.now(); this.lastStateAt = this.clockAt;
+          this.clockPhase = this.metrics.confirmedTick + this.metrics.predictionLeadTicks;
+          if (message.state.paused && this.anchors.size) {
+            requireStatus(this.options.prediction.loadState(this.saved()), "prediction pause restore");
+            this.predictionWorld.sync(); this.metrics.predictedTick = this.metrics.confirmedTick;
+            this.correctionX = 0; this.correctionY = 0; this.fraction = 1;
+          }
+        }
+      }
+      this.options.onFeature?.(message);
+      return;
+    }
+    if (message.type === "chat-message") { this.options.onChat?.(message); return; }
+    if (message.type === "notice") { this.options.onNotice?.(message.text); return; }
     if (message.type === "ping") { this.options.send({ type: "pong", timestamp: message.timestamp }); return; }
     if (message.type === "pong") {
       if (this.ping === message.timestamp) {
@@ -131,7 +184,7 @@ export class OnlineSession {
         this.sortedDeviations.fill(Infinity, count); this.sortedDeviations.sort();
         m.rttDeviationMs = this.sortedDeviations[Math.ceil(count * 0.95) - 1]!;
         m.targetPredictionLeadTicks = Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
-          m.rttMs / 2 / STEP_MS + Math.min(MAX_JITTER_MARGIN_TICKS, m.rttDeviationMs / 2 / STEP_MS) + 2);
+          m.rttMs / 2 / this.stepMilliseconds + Math.min(MAX_JITTER_MARGIN_TICKS, m.rttDeviationMs / 2 / this.stepMilliseconds) + 2);
         this.ping = undefined;
       }
       return;
@@ -175,16 +228,21 @@ export class OnlineSession {
     m.hashMatches++; return true;
   }
   private state(message: Extract<Message, { type: "state" }>): void {
+    if (this.paused) {
+      this.waiting = true; this.ring.fill(undefined); this.recent.length = 0;
+      this.metrics.pendingInputs = 0; this.resyncSequence = this.seq;
+    }
     requireStatus(this.options.confirmed.loadState(message.bytes), "confirmed state load");
     this.metrics.confirmedTick = message.tick;
     this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
     this.anchors.set(message.tick, message.bytes.slice());
     if (!this.verify(message.tick, message.hash)) return;
+    this.options.onStateReset?.();
     this.remote = [];
     this.resyncRequested = false;
     this.finish(message.lastConsumedInputSeq, true);
   }
-  private stepConfirmed(record: StepRecord): void {
+  private stepConfirmed(record: StepRecord, notifyMembership = true): void {
     const host = this.options.confirmed;
     if (record.tick !== this.metrics.confirmedTick) throw new Error(`Out-of-order confirmed step ${record.tick}`);
     for (const bytes of record.commands) {
@@ -194,7 +252,11 @@ export class OnlineSession {
       if (!pointer) throw new Error("Command allocation failed");
       try {
         new Uint8Array(host.exports.memory.buffer, pointer, bytes.length).set(bytes);
-        host.exports.sim_command(record.tick, pointer, bytes.length);
+        const status = host.exports.sim_command(record.tick, pointer, bytes.length);
+        if (notifyMembership && status >= 0 && this.options.onSlotLeave) {
+          const command = JSON.parse(new TextDecoder().decode(bytes)) as { kind?: string; slot?: number };
+          if (command.kind === "leave" && typeof command.slot === "number") this.options.onSlotLeave(command.slot);
+        }
       } finally { host.exports.sim_free(pointer); }
     }
     for (const { slot, input } of record.inputs) {
@@ -234,7 +296,7 @@ export class OnlineSession {
         for (let tick = anchorTick; tick < target; tick++) {
           const historical = this.timeline.get(tick);
           if (!historical) { this.resync(); return; }
-          this.stepConfirmed(historical);
+          this.stepConfirmed(historical, false);
         }
         const latest = this.timeline.get(target - 1);
         if (latest) this.remote = latest.inputs.map(({ slot, input }) => ({ slot, input: heldInput(input) }));
@@ -297,12 +359,12 @@ export class OnlineSession {
     }
     const at = this.now();
     if (!this.waiting) {
-      const elapsed = at - this.lastStateAt, expectedMs = (boundary - m.serverTick) * STEP_MS;
+      const elapsed = at - this.lastStateAt, expectedMs = (boundary - m.serverTick) * this.stepMilliseconds;
       this.jitter = this.jitter * 0.9 + Math.abs(elapsed - expectedMs) * 0.1;
       m.interpolationMs += (Math.max(33, Math.min(100, 33 + this.jitter * 2)) - m.interpolationMs) * 0.1;
     }
     if (this.waiting) {
-      this.clockPhase = boundary + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, m.rttMs / 2 / STEP_MS + m.predictionLeadTicks);
+      this.clockPhase = boundary + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, m.rttMs / 2 / this.stepMilliseconds + m.predictionLeadTicks);
       this.clockAt = at; m.viewTick = boundary;
     } else this.clockPhase = Math.max(this.clockPhase, this.predictionWorld.tick);
     m.serverTick = boundary;
@@ -339,14 +401,15 @@ export class OnlineSession {
     if (at - this.lastPingAt >= 1000) {
       this.lastPingAt = at; this.ping = BigInt(Math.floor(at * 1000)); this.options.send({ type: "ping", timestamp: this.ping });
     }
-    if (this.waiting) return;
+    if (this.waiting || this.paused) return;
     // A reliable stream can keep arriving while all local inputs are rejected.
     // Detect sequence deadlock independently of tick-indexed retirement.
     if (this.seq - Math.max(m.lastConsumedInputSeq, this.resyncSequence) >= INPUT_HISTORY) { this.resync(); return; }
     m.stateAgeMs = at - this.lastStateAt;
-    if (m.stateAgeMs > INPUT_HISTORY * STEP_MS) { this.resync(); return; }
+    const stepMilliseconds = this.stepMilliseconds;
+    if (m.stateAgeMs > INPUT_HISTORY * stepMilliseconds) { this.resync(); return; }
     this.present();
-    const serverNow = m.serverTick + (m.stateAgeMs + m.rttMs / 2) / STEP_MS;
+    const serverNow = m.serverTick + (m.stateAgeMs + m.rttMs / 2) / stepMilliseconds;
     const elapsed = Math.max(0, at - this.clockAt);
     this.clockAt = at;
     // Increase lead slowly; shed surplus lead faster. Clock corrections change
@@ -354,10 +417,10 @@ export class OnlineSession {
     const leadDelta = m.targetPredictionLeadTicks - m.predictionLeadTicks;
     m.predictionLeadTicks += Math.max(-elapsed * 0.004, Math.min(elapsed * 0.001, leadDelta));
     const targetPhase = serverNow + m.predictionLeadTicks;
-    const naturalPhase = this.clockPhase + elapsed / STEP_MS;
+    const naturalPhase = this.clockPhase + elapsed / stepMilliseconds;
     m.predictionClockRate = Math.max(0.9, Math.min(1.1, 1 + (targetPhase - naturalPhase) / 60));
     this.clockPhase = Math.max(this.predictionWorld.tick, Math.min(m.serverTick + INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
-      this.clockPhase + elapsed / STEP_MS * m.predictionClockRate));
+      this.clockPhase + elapsed / stepMilliseconds * m.predictionClockRate));
     const desired = Math.floor(this.clockPhase);
     this.fraction = this.clockPhase - desired;
     for (let count = 0; this.predictionWorld.tick < desired && count < 4; count++) {
@@ -396,7 +459,7 @@ export class OnlineSession {
     const latest = this.poses[this.poses.length - 1];
     if (!latest) return this.world;
     const target = Math.max(this.poses[0]!.tick, Math.min(latest.tick,
-      m.serverTick + (at - this.lastStateAt + m.rttMs / 2 - m.interpolationMs) / STEP_MS));
+      m.serverTick + (at - this.lastStateAt + m.rttMs / 2 - m.interpolationMs) / this.stepMilliseconds));
     m.viewTick = Math.floor(target); m.stateAgeMs = at - this.lastStateAt;
     let a = this.poses[0]!, b = latest;
     for (const pose of this.poses) { if (pose.tick <= target) a = pose; if (pose.tick >= target) { b = pose; break; } }

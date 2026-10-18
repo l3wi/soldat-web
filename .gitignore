@@ -1,3 +1,4 @@
+# Local upstream checkouts, dependencies and generated build evidence.
 reference/
 node_modules/
 dist/
@@ -7,3 +8,13 @@ build-out/
 *.ppu
 .DS_Store
 sim/build/.toolchain/
+
+# Local environment and TLS credentials; example configuration stays versioned.
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.key
+*.pem
+*.p12
+*.pfx

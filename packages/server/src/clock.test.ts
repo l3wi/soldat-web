@@ -47,3 +47,13 @@ test("deadline scheduling subtracts simulation work without granting extra ticks
   assert.equal(steps, 2);
   assert.throws(() => clock.delayMilliseconds(1n), /backwards/);
 });
+
+test("native bullet time schedules twenty fixed ticks per wall-clock second", () => {
+  const clock = new FixedStepAccumulator(0n);
+  let steps = 0;
+  for (let ms = 1; ms <= 1000; ms++) clock.advance(BigInt(ms) * 1_000_000n, () => { steps++; }, 1 / 3);
+  assert.equal(steps, 20); assert.equal(clock.overloads, 0); assert.equal(clock.discardedSteps, 0n);
+  assert.equal(clock.delayMilliseconds(1_000_000_000n, 1 / 3), 50);
+  for (let ms = 1001; ms <= 2000; ms++) clock.advance(BigInt(ms) * 1_000_000n, () => { steps++; }, 1);
+  assert.equal(steps, 80); assert.equal(clock.overloads, 0);
+});

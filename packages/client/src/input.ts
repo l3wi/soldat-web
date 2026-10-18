@@ -1,6 +1,8 @@
 import type { Camera } from './render/types';
 import { worldAt } from './camera';
 import type { ControlAction, Settings } from './settings';
+import { bindingCode, bindingMatches, type BindingEvent } from './bindings';
+import type { SpectatorController } from './spectator';
 
 // Must match sim-host CONTROL_NAMES and docs/formats/sim-abi.md, not DOM order.
 const ACTIONS: readonly ControlAction[] = [
@@ -30,6 +32,8 @@ export class InputSampler {
   private previousConflict = 0;
   private destroyed = false;
   private suspended = false;
+  private observing = false;
+  private readonly bindingEvent: BindingEvent = { code: '', ctrlKey: false, altKey: false, shiftKey: false, metaKey: false };
 
   constructor(private readonly canvas: HTMLCanvasElement, settings: Settings) {
     this.bindings = ACTIONS.map(action => settings.bindings[action]);
@@ -55,6 +59,33 @@ export class InputSampler {
     if (suspended && document.pointerLockElement === this.canvas) document.exitPointerLock();
   }
 
+  public updateSettings(settings: Settings): void {
+    for (let i = 0; i < ACTIONS.length; i++) this.bindings[i] = settings.bindings[ACTIONS[i]!]!;
+    this.reset();
+  }
+
+  /** Call after controller.update and before sample, once per 60 Hz tick. Camera
+   * buttons are consumed here, never emitted as native Fire/Jet/Up controls.
+   */
+  public updateSpectator(controller: SpectatorController, captured = false): void {
+    if (this.observing !== controller.observing) {
+      this.observing = controller.observing;
+      // A held death-click must not become a live shot/jet when respawning.
+      this.reset();
+    }
+    if (captured || this.blocked(document.activeElement)) {
+      this.reset();
+      controller.controls(false, false, false, true);
+      return;
+    }
+    if (controller.controls(
+      this.held.has(this.bindings[4]!), this.held.has(this.bindings[5]!), this.held.has(this.bindings[2]!),
+    )) {
+      this.pointerX = this.canvas.width / 2;
+      this.pointerY = this.canvas.height / 2;
+    }
+  }
+
   private blocked(target: EventTarget | null): boolean {
     return this.suspended || document.hidden || document.querySelector('dialog[open]') !== null ||
       (target instanceof Element && target.closest(
@@ -64,28 +95,56 @@ export class InputSampler {
 
   private readonly keyDown = (event: KeyboardEvent): void => {
     if (this.blocked(event.target)) { this.reset(); return; }
-    if (!this.bindings.includes(event.code)) return;
-    event.preventDefault();
-    if (!this.held.has(event.code)) this.held.set(event.code, ++this.sequence);
+    this.releaseModifiers(event);
+    // Reset/overlay/respawn requires a fresh press, not browser key repeat.
+    if (event.repeat) return;
+    let matched = false;
+    for (const binding of this.bindings) {
+      if (!bindingMatches(binding, event)) continue;
+      matched = true;
+      if (!this.held.has(binding)) this.held.set(binding, ++this.sequence);
+    }
+    if (matched) event.preventDefault();
   };
 
   private readonly keyUp = (event: KeyboardEvent): void => {
-    this.held.delete(event.code);
+    for (const binding of this.held.keys()) if (bindingCode(binding) === event.code) this.held.delete(binding);
+    this.releaseModifiers(event);
   };
 
   private readonly mouseDown = (event: MouseEvent): void => {
     if (this.blocked(event.target)) { this.reset(); return; }
     if (event.target !== this.canvas && document.pointerLockElement !== this.canvas) return;
     this.canvas.focus({ preventScroll: true });
-    const code = `Mouse${event.button}`;
-    if (!this.bindings.includes(code)) return;
-    event.preventDefault();
-    if (!this.held.has(code)) this.held.set(code, ++this.sequence);
+    this.releaseModifiers(event);
+    const match = this.bindingEvent;
+    match.code = `Mouse${event.button}`;
+    let matched = false;
+    for (const binding of this.bindings) {
+      if (!bindingMatches(binding, match)) continue;
+      matched = true;
+      if (!this.held.has(binding)) this.held.set(binding, ++this.sequence);
+    }
+    if (matched) event.preventDefault();
   };
 
   private readonly mouseUp = (event: MouseEvent): void => {
-    this.held.delete(`Mouse${event.button}`);
+    const code = `Mouse${event.button}`;
+    for (const binding of this.held.keys()) if (bindingCode(binding) === code) this.held.delete(binding);
+    this.releaseModifiers(event);
   };
+
+  private releaseModifiers(event: Pick<BindingEvent, 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>): void {
+    const match = this.bindingEvent;
+    match.ctrlKey = event.ctrlKey;
+    match.altKey = event.altKey;
+    match.shiftKey = event.shiftKey;
+    match.metaKey = event.metaKey;
+    for (const binding of this.held.keys()) {
+      match.code = bindingCode(binding);
+      if (!bindingMatches(binding, match)) this.held.delete(binding);
+    }
+  }
 
   private readonly mouseMove = (event: MouseEvent): void => {
     if (this.blocked(event.target)) return;
@@ -129,6 +188,10 @@ export class InputSampler {
     }
     // Native FreeControls still updates mouse aim while limbo/chat captures keys.
     if (captured || this.blocked(document.activeElement)) this.reset();
+    if (this.observing) {
+      this.record.fill(0);
+      return this.record;
+    }
     let bits = 0;
     for (let i = 0; i < ACTIONS.length; i++) {
       if (this.held.has(this.bindings[i]!)) bits |= 1 << i;
@@ -163,8 +226,7 @@ export class InputSampler {
     this.view.setUint16(0, bits, true);
     this.view.setInt16(2, roundI16(this.aim.x), true);
     this.view.setInt16(4, roundI16(this.aim.y), true);
-    // Sprites.FreeControls and unscoped Control.pas set MouseDist=150. It is NOT
-    // the Euclidean pointer/player distance; Phase 1 has no scoped aim state.
+    // Native Control.pas scope uses world MouseAim; MouseDist remains 150.
     this.view.setInt16(6, 150, true);
     this.view.setUint16(8, order, true);
     this.view.setUint16(10, 0, true);

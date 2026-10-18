@@ -10,14 +10,16 @@ export class FixedStepAccumulator {
   discardedSteps = 0n;
 
   constructor(start: bigint) { this.previous = start; }
+  reset(now: bigint): void { this.previous = now; this.pending = 0n; }
 
-  advance(now: bigint, step: (latenessMs: number) => void): number {
+  advance(now: bigint, step: (latenessMs: number) => void, tickScale = 1): number {
     if (now < this.previous) throw new RangeError("Monotonic clock moved backwards");
-    this.pending += (now - this.previous) * BigInt(TICK_RATE);
+    const rate = tickScale < 1 ? TICK_RATE / 3 : TICK_RATE;
+    this.pending += (now - this.previous) * BigInt(rate);
     this.previous = now;
     let count = 0;
     while (this.pending >= SECOND && count < MAX_CATCH_UP) {
-      step(Number(this.pending - SECOND) / TICK_RATE / 1_000_000);
+      step(Number(this.pending - SECOND) / rate / 1_000_000);
       this.pending -= SECOND;
       count++;
     }
@@ -29,12 +31,13 @@ export class FixedStepAccumulator {
     return count;
   }
 
-  delayMilliseconds(now: bigint): number {
+  delayMilliseconds(now: bigint, tickScale = 1): number {
     if (now < this.previous) throw new RangeError("Monotonic clock moved backwards");
     // Work performed after advance() consumes the remaining tick interval too.
     // Sleeping the old remainder would add the previous tick's CPU cost to
     // every deadline even when the worker has ample time to run at 60 Hz.
-    const remaining = SECOND - this.pending - (now - this.previous) * BigInt(TICK_RATE);
-    return Math.max(0, Number(remaining) / TICK_RATE / 1_000_000);
+    const rate = tickScale < 1 ? TICK_RATE / 3 : TICK_RATE;
+    const remaining = SECOND - this.pending - (now - this.previous) * BigInt(rate);
+    return Math.max(0, Number(remaining) / rate / 1_000_000);
   }
 }

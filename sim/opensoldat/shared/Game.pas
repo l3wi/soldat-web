@@ -826,7 +826,7 @@ begin
       end;
 
       // Kill Limit
-      if MapChangeCounter < 1 then
+      if (MapChangeCounter < 1){$IFDEF SIM} and (sv_killlimit.Value>0){$ENDIF} then
         if (not IsTeamGame) then
           if Sprite[i].Player.Kills >= sv_killlimit.Value then
           begin
@@ -906,7 +906,7 @@ begin
 
   {$IFDEF SERVER}
   // Team - Kill Limit
-  if MapChangeCounter < 1 then
+  if (MapChangeCounter < 1){$IFDEF SIM} and (sv_killlimit.Value>0){$ENDIF} then
     for i := 1 to 4 do
       if TeamScore[i] >= sv_killlimit.Value then
       begin

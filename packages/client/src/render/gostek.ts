@@ -1,6 +1,6 @@
 import type { ImageAsset, Quad } from "./types";
 import { RENDER_LAYOUT, SPRITE_FLAGS } from "@soldat-web/sim-host";
-import type { WorldView } from "../world";
+import { spriteVisible, type WorldView } from "../world";
 import { weaponVisibility } from "./gostek-visibility";
 import { combatRound } from "./combat";
 
@@ -149,11 +149,12 @@ export class GostekRenderer {
   }
 
   /** Reuses its result array and quads; consume before the next call. */
-  quads(fraction: number, world: WorldView): Quad[] {
+  quads(fraction: number, world: WorldView, observerSlot = 0, realistic = false): Quad[] {
     const output = this.output;
     output.length = 0;
     for (let slot = 0; slot < world.sprites.length; slot++) {
       const instance = world.sprites[slot]!;
+      if (!spriteVisible(instance, observerSlot, realistic)) continue;
       if (!instance.active || instance.style !== 1 || instance.demoPlayer || !instance.named || instance.team === 5 ||
         (world.ceaseFireTime !== undefined && instance.ceaseFireCounter > world.ceaseFireTime - 5)) continue;
       let cache = this.instances[slot];

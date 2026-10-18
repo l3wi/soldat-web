@@ -49,11 +49,10 @@ export function setZoom(camera: Camera, targetZ: number): void {
  * Call once per 60 Hz tick. Source: UpdateFrame.pas:351-375 (live soldier follow),
  * GameRendering.pas:357-364 (EaseZoom), Constants.pas CAMSPEED=0.14,
  * DEFAULTAIMDIST=7. aimX/Y are world coordinates sampled BEFORE this update.
- * The Phase 1 render ABI has no AimDistCoef: this follows the original ordinary
- * (unscoped) soldier branch, not the spectator or weapon-scope camera.
+ * AimDistCoef comes from native Control.pas (Barrett prone/crouch scope).
  */
 export function updateCamera(
-  camera: Camera, playerX: number, playerY: number, aimX: number, aimY: number,
+  camera: Camera, playerX: number, playerY: number, aimX: number, aimY: number, aimDistCoef = 7,
 ): void {
   // Recover exp(oldZoom) * (mx - GameWidthHalf) from the world aim.
   const aimOffsetX = aimX - camera.x;
@@ -63,8 +62,33 @@ export function updateCamera(
   camera.z += (target - camera.z) / 4;
   if (Math.abs(target - camera.z) < 0.01) camera.z = target;
   const zoomChange = Math.exp(camera.z - oldZoom);
-  // Original resolution/scope expression reduces to this with AimDistCoef=7.
-  const resolution = 2 * 640 / camera.width - 1;
-  camera.x += (playerX - camera.x) * 0.14 + aimOffsetX * zoomChange / 7 * resolution;
-  camera.y += (playerY - camera.y) * 0.14 + aimOffsetY * zoomChange / 7;
+  const distance = aimDistCoef > 0 ? aimDistCoef : 7;
+  const resolution = 2 * 640 / camera.width - 1 +
+    (camera.width - 640) / camera.width * (7 - distance) / 6.8;
+  camera.x += (playerX - camera.x) * 0.14 + aimOffsetX * zoomChange / distance * resolution;
+  camera.y += (playerY - camera.y) * 0.14 + aimOffsetY * zoomChange / distance;
+}
+
+/** Observer camera uses the same native smoothing/zoom as playing. Free camera
+ * is pointer-driven with a 20x20 logical-pixel dead zone, not WASD translation.
+ * Source: UpdateFrame.pas:351-399, SPECTATORAIMDIST=30.
+ * A missing target with free=false holds a realistic dead player's camera still.
+ */
+export function updateSpectatorCamera(
+  camera: Camera, target: { x: number; y: number; aimDistCoef?: number } | undefined,
+  pointerX: number, pointerY: number, width: number, height: number, free = true,
+): void {
+  const offsetX = (pointerX / width - 0.5) * camera.width;
+  const offsetY = (pointerY / height - 0.5) * camera.height;
+  if (target) {
+    const zoom = Math.exp(camera.z);
+    updateCamera(camera, target.x, target.y, camera.x + offsetX * zoom, camera.y + offsetY * zoom, target.aimDistCoef);
+    return;
+  }
+  // Preserve zoom easing even with no live target.
+  updateCamera(camera, camera.x, camera.y, camera.x, camera.y);
+  if (!free || (Math.abs(offsetX) < camera.width / 64 && Math.abs(offsetY) < 10)) return;
+  const speed = Math.exp(camera.z) / 30;
+  camera.x += offsetX * speed;
+  camera.y += offsetY * speed;
 }

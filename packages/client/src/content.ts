@@ -1,3 +1,4 @@
+import type { GameMode } from '@soldat-web/protocol';
 import type { CombatGraphic } from './render/combat';
 import type { MapData } from './render/types';
 import { sessionJson } from './session-cache';
@@ -22,6 +23,7 @@ export interface MapManifest {
   mapSha256: string;
   simContentSha256: string;
   botCapable: boolean;
+  modes: GameMode[];
   missing: { kind: string; requested: string; active: boolean; fallback: string | null }[];
   simPack: { path: string; sha256: string; bytes: number };
 }

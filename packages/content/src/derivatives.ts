@@ -7,7 +7,7 @@ import { ContentError } from './errors.ts';
 import { convertWav, decodeImage, encodePng } from './media.ts';
 
 const exec = promisify(execFile);
-const FFMPEG = '/opt/nanobrew/prefix/bin/ffmpeg';
+const FFMPEG = 'ffmpeg';
 const OPUS_RATE = 48000;
 
 async function run(command: string, args: string[]): Promise<void> {

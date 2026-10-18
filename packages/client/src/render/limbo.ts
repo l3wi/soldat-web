@@ -51,6 +51,7 @@ export class LimboMenu {
   secondary = 0;
   dead = false;
   private observed = false;
+  resetRound(): void { this.observed = false; this.active = false; this.dead = false; }
   observe(dead: boolean, primary: number, secondary: number): void {
     if (!this.observed) {
       if (primary >= 1 && primary <= 10) this.primary = primary;

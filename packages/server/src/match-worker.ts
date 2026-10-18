@@ -36,7 +36,8 @@ try {
   let workProfile: TickWorkProfile[] = [];
   const wake = () => {
     try {
-      clock.advance(process.hrtime.bigint(), lateness => {
+      if (match!.paused) clock.reset(process.hrtime.bigint());
+      else clock.advance(process.hrtime.bigint(), lateness => {
         const start = performance.now();
         tickLatenessMs.push(lateness);
         match!.step();
@@ -46,21 +47,24 @@ try {
         simEncodeMs.push(performance.now() - start + inputWorkMs);
         inputWorkMs = 0;
         if (profiling) workProfile.push(match!.takeWorkProfile()!);
-      });
+      }, match!.tickScale);
       if (match!.tick >= nextMetrics) {
         port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, tickLatenessMs, ...match!.takeLagMetrics(), ...(profiling ? { workProfile, gc } : {}) } satisfies WorkerResponse);
         simEncodeMs = []; tickLatenessMs = [];
         workProfile = []; gc = [];
         nextMetrics = match!.tick + 60;
       }
-      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint())));
+      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint(), match!.tickScale)));
     } catch (error) { fail(error); }
   };
   port.on("message", (message: WorkerRequest) => {
     if (stopped) return;
     if (message.type === "stop") { stop(); return; }
     const start = performance.now();
-    try { match!.receive(message, process.hrtime.bigint()); }
+    try {
+      match!.receive(message, process.hrtime.bigint());
+      if (message.type === "pause") clock.reset(process.hrtime.bigint());
+    }
     catch (error) { fail(error); }
     finally { if (message.type === "input") inputWorkMs += performance.now() - start; }
   });

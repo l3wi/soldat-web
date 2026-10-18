@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import { createHash, X509Certificate } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { chromium } from 'playwright';
-import { openPractice, choosePracticeMap, leaveGame } from './shell-driver.mjs';
+import { openPractice, chooseGameMode, choosePracticeMap, openPauseMenu, leaveGame } from './shell-driver.mjs';
 
 // One muted, owned browser. Only the exact local development certificate is admitted.
 const root = resolve(import.meta.dirname, '../../..');
 const base = process.env.CLIENT_URL ?? 'http://127.0.0.1:5198';
-const out = resolve(root, 'tests/fixtures/render');
-const receiptPath = resolve(root, 'build-out/client-shell/screens.json');
-await mkdir(out, { recursive: true }); await mkdir(resolve(root, 'build-out/client-shell'), { recursive: true });
+const evidenceRoot = resolve(root, process.env.SHELL_CAPTURE_DIR ?? 'build-out/client-shell');
+const out = process.env.SHELL_CAPTURE_DIR ? resolve(evidenceRoot, 'screens') : resolve(root, 'tests/fixtures/render');
+const receiptPath = resolve(evidenceRoot, 'screens.json');
+await mkdir(out, { recursive: true }); await mkdir(evidenceRoot, { recursive: true });
 console.log(execFileSync('memory_pressure', { encoding: 'utf8' }));
 const certificate = new X509Certificate(await readFile(resolve(root, 'build-out/server-dev/localhost-cert.pem')));
 const spki = createHash('sha256').update(certificate.publicKey.export({ type: 'spki', format: 'der' })).digest('base64');
@@ -23,7 +24,7 @@ try {
   const page = await context.newPage();
   page.on('pageerror', error => report.errors.push(error.message));
   diagnosticPage = page;
-  const shot = async name => { const path = `tests/fixtures/render/shell-${name}.png`; await page.screenshot({ path: resolve(root, path) }); report.screenshots.push(path); };
+  const shot = async name => { const path = resolve(out, `shell-${name}.png`); await page.screenshot({ path }); report.screenshots.push(relative(root, path)); };
   // Hold one genuine request only long enough to record the real boot state; no fake response bytes.
   let releaseIndex;
   const indexGate = new Promise(resolve => { releaseIndex = resolve; });
@@ -39,8 +40,8 @@ try {
   assert.equal(report.checks.attract.hud, 0);
   await page.keyboard.press('6'); await shot('credits');
   await page.keyboard.press('Escape'); await page.keyboard.press('5'); await shot('settings');
-  await page.getByText('Graphics & controls', { exact: true }).click(); await shot('graphics-controls');
-  await page.getByText('Graphics & controls', { exact: true }).click();
+  await page.getByRole('tab', { name: /^Graphics & controls\b/ }).click(); await shot('graphics-controls');
+  await page.getByRole('tab', { name: /^General\b/ }).click();
   await page.getByLabel('Gameplay background', { exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.attract-scene canvas'));
   report.checks.backgroundOff = true;
@@ -54,7 +55,7 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.keyboard.press('Escape');
   await openPractice(page); await shot('practice');
-  await page.getByRole('button', { name: /^Game type / }).click();
+  await chooseGameMode(page, 'Capture the flag');
   await page.getByRole('button', { name: /^Map / }).click();
   await page.getByRole('option', { name: /^\d+ ctf_Ash$/ }).hover();
   await page.waitForFunction(() => document.querySelector('canvas[aria-label="ctf_Ash map preview"]')?.width > 0);
@@ -65,12 +66,12 @@ try {
   await shot('game-limbo');
   await page.keyboard.press('Digit4');
   await page.keyboard.press('t');
-  await page.getByRole('textbox', { name: 'Local chat draft. Enter saves locally; Escape cancels. Not transmitted.', exact: true }).waitFor();
+  await page.getByRole('textbox', { name: 'Chat or console command. Enter sends; Escape cancels; Up and Down recall history.', exact: true }).waitFor();
   await page.keyboard.press('Escape');
   assert.equal(await page.locator('.stage.pause').count(), 0);
   report.checks.chatEscapePreserved = true;
-  await page.keyboard.press('Escape'); await shot('pause');
-  await page.keyboard.press('3'); await shot('game-settings');
+  await openPauseMenu(page); await shot('pause');
+  await page.getByRole('button', { name: 'Settings', exact: true }).click(); await shot('game-settings');
   await page.keyboard.press('Escape'); await page.keyboard.press('1');
   await leaveGame(page);
   let quickplayPosts = 0;
@@ -92,8 +93,7 @@ try {
   await page.keyboard.press('2');
   await page.waitForFunction(() => /^[0-9A-HJKMNP-TV-Z]{8}$/.test(document.querySelector('.lobby-code strong')?.textContent ?? ''), undefined, { timeout: 15000 });
   const code = await page.locator('.lobby-code strong').textContent(); await shot('lobby-host');
-  await page.getByRole('button', { name: /^Game type / }).click();
-  await page.waitForFunction(() => document.querySelector('.config')?.textContent.includes('Deathmatch'));
+  await chooseGameMode(page, 'Deathmatch');
   await page.getByRole('button', { name: /^Map / }).click(); await shot('lobby-maps');
   await page.keyboard.press('Escape');
   const guestContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1, reducedMotion: 'reduce' });
@@ -104,7 +104,7 @@ try {
   await guest.getByRole('button', { name: 'Continue [Enter]', exact: true }).click();
   await guest.waitForSelector('.stage.join');
   diagnosticPage = guest;
-  const joinShot = 'tests/fixtures/render/shell-join.png'; await guest.screenshot({ path: resolve(root, joinShot) }); report.screenshots.push(joinShot);
+  const joinShot = resolve(out, 'shell-join.png'); await guest.screenshot({ path: joinShot }); report.screenshots.push(relative(root, joinShot));
   await guest.getByRole('textbox', { name: 'Lobby link or code', exact: true }).fill(`${base}/?lobby=${code.slice(0, 6)}`);
   await guest.getByRole('button', { name: 'Join [Enter]', exact: true }).click();
   assert.equal(await guest.locator('#shell-error').textContent(), 'Paste a lobby link or 8-character code.');
@@ -124,19 +124,17 @@ try {
   await spoiler.getByRole('button', { name: 'Join [Enter]', exact: true }).click();
   await spoiler.waitForSelector('.stage.lobby');
   const spoilerRow = page.locator('.roster li').filter({ hasText: 'Shell spoiler' });
-  const kick = spoilerRow.getByRole('button', { name: 'Kick', exact: true });
+  const kick = spoilerRow.getByRole('button', { name: 'Kick Shell spoiler', exact: true });
   await kick.waitFor();
-  assert.equal(await page.getByRole('button', { name: 'Kick', exact: true }).count(), 2);
-  assert.equal(await guest.getByRole('button', { name: 'Kick', exact: true }).count(), 0);
-  assert.equal(await kick.textContent(), '×');
-  assert.equal(await kick.getAttribute('title'), 'Kick');
+  assert.equal(await page.getByRole('button', { name: /^Kick / }).count(), 2);
+  assert.equal(await guest.getByRole('button', { name: /^Kick / }).count(), 0);
   await kick.click();
   await spoilerRow.waitFor({ state: 'detached' });
   await spoiler.waitForSelector('.stage.menu #shell-error');
   report.checks.kickedNotice = await spoiler.locator('#shell-error').textContent();
   assert.equal(report.checks.kickedNotice, 'Kicked by host; rejoin blocked for 10 minutes');
   await shot('lobby-kicked-host');
-  await spoiler.screenshot({ path: resolve(root, 'tests/fixtures/render/shell-lobby-kicked.png') }); report.screenshots.push('tests/fixtures/render/shell-lobby-kicked.png');
+  const kickedShot = resolve(out, 'shell-lobby-kicked.png'); await spoiler.screenshot({ path: kickedShot }); report.screenshots.push(relative(root, kickedShot));
   await spoiler.goto(`${base}/?lobby=${code.toLowerCase()}`, { waitUntil: 'domcontentloaded' });
   await spoiler.waitForSelector('.stage.join');
   await spoiler.getByRole('button', { name: 'Join [Enter]', exact: true }).click();
@@ -144,7 +142,7 @@ try {
   report.checks.kickRejoinRefused = await spoiler.locator('#shell-error').textContent();
   assert.match(report.checks.kickRejoinRefused, /Removed by the host; you can rejoin in \d+ min/);
   assert.equal(await spoiler.locator('.stage.join').count(), 1);
-  await spoiler.screenshot({ path: resolve(root, 'build-out/client-shell/kick-rejoin-refused.png') });
+  await spoiler.screenshot({ path: resolve(evidenceRoot, 'kick-rejoin-refused.png') });
   await page.waitForTimeout(500);
   assert.equal(await page.locator('.roster li').filter({ hasText: 'Shell spoiler' }).count(), 0);
   await spoilerContext.close();
@@ -153,7 +151,7 @@ try {
   report.checks.hostKickGuest = true;
   await guest.getByRole('button', { name: 'Ready up [Enter]', exact: true }).click();
   await guest.getByRole('button', { name: 'Ready ✓ [Enter]', exact: true }).waitFor();
-  const guestShot = 'tests/fixtures/render/shell-lobby-guest.png'; await guest.screenshot({ path: resolve(root, guestShot) }); report.screenshots.push(guestShot);
+  const guestShot = resolve(out, 'shell-lobby-guest.png'); await guest.screenshot({ path: guestShot }); report.screenshots.push(relative(root, guestShot));
   await guestRow.waitFor();
   await shot('lobby-ready');
   await page.getByRole('button', { name: 'Start [Enter]', exact: true }).click();
@@ -184,7 +182,7 @@ try {
   report.errors.push(String(error));
   if (diagnosticPage && !diagnosticPage.isClosed()) {
     report.failureScreen = await diagnosticPage.locator('body').innerText();
-    await diagnosticPage.screenshot({ path: resolve(root, 'build-out/client-shell/failure.png') });
+    await diagnosticPage.screenshot({ path: resolve(evidenceRoot, 'failure.png') });
   }
   throw error;
 } finally {

@@ -8,7 +8,7 @@ import type { ImageAsset } from "./types";
 import { LimboMenu } from "./limbo";
 
 // Canvas command/ABI fixtures only: not simulation qualification or raster proof.
-const manifest = JSON.parse(readFileSync(new URL("../../../../dist/content/manifest.json", import.meta.url), "utf8")) as {
+const manifest = JSON.parse(readFileSync(new URL("../../../../dist/content-next/manifest.json", import.meta.url), "utf8")) as {
   core: { graphics: { interface: { symbol: string; asset: ImageAsset | null }[] } };
 };
 interface DrawCommand { args: unknown[]; alpha: number }
@@ -262,7 +262,7 @@ test("limbo secondary selection stays open and carries explicit apply intent bef
   const limbo = new LimboMenu();
   limbo.observe(false, 4, 0);
   const hud = Object.assign(Object.create(CombatHud.prototype), {
-    limbo, lastTick: 10, form: { hidden: true },
+    limbo, lastTick: 10, form: { hidden: true }, weaponMask: 0x3fff, selectionMask: 0x3fff,
     options: { onWeaponChoice: (...choice: unknown[]) => choices.push(choice) },
   }) as { chooseWeapon(index: number): void };
   hud.chooseWeapon(11);
@@ -289,4 +289,77 @@ test("CTF scoreboard team headers never overlap the preceding team's last bot", 
   assert.equal(y("Alpha bot"), 100);
   assert.equal(y("Bravo"), 120);
   assert.equal(y("Bravo bot"), 140);
+});
+
+test("native rule HUD follows authoritative timer, phase and per-player unlocked weapons", () => {
+  const { data, raw } = renderFixture(), s = RENDER_LAYOUT.sprite, g = RENDER_LAYOUT.globals;
+  const player = RENDER_LAYOUT.headerBytes, globals = RENDER_LAYOUT.globalsOffset;
+  data.setUint32(player + s.flags, SPRITE_FLAGS.active, true);
+  data.setUint32(player + s.slot, 1, true);
+  data.setUint32(player + s.availableWeaponsMask, 0x401, true);
+  data.setInt32(player + s.respawnCounter, 87, true);
+  data.setInt32(globals + g.timeLimitTicks, 3600, true);
+  data.setInt32(globals + g.timeLeftTicks, 121, true);
+  data.setInt32(globals + g.mapChangeCounter, 180, true);
+  data.setUint32(globals + g.roundPhase, 1, true);
+  data.setUint32(globals + g.roundEpoch, 8, true);
+  data.setUint32(globals + g.realistic, 1, true);
+  data.setUint32(globals + g.survival, 1, true);
+  data.setUint32(globals + g.advance, 1, true);
+  data.setUint32(globals + g.enabledWeaponsMask, 0x7ff, true);
+  data.setFloat32(globals + g.tickScale, 1 / 3, true);
+  for (let mode = 0; mode <= 6; mode++) {
+    data.setInt32(globals + g.gameMode, mode, true);
+    const state = hudPresentationFromRender(raw, 1, { timeLeftSeconds: 999 });
+    assert.equal(state.gameMode, mode);
+    assert.equal(state.timeLeftSeconds, 3, "native timer takes precedence over stale metadata");
+    assert.equal(state.roundPhase, 1); assert.equal(state.roundEpoch, 8);
+    assert.equal(state.mapChangeCounter, 180);
+    assert.equal(state.realistic, true); assert.equal(state.survival, true); assert.equal(state.advance, true);
+    assert.equal(state.availableWeaponsMask, 0x401); assert.equal(state.enabledWeaponsMask, 0x7ff);
+    assert.equal(state.respawnCounter, 87);
+  }
+  data.setInt32(globals + g.timeLimitTicks, 0, true);
+  assert.equal(hudPresentationFromRender(raw, 1).timeLeftSeconds, undefined, "zero limit is not an expired timer");
+});
+
+test("limbo never dispatches disabled or advance-locked primary choices", () => {
+  const choices: unknown[][] = [], limbo = new LimboMenu();
+  limbo.observe(true, 4, 0);
+  const hud = Object.assign(Object.create(CombatHud.prototype), {
+    limbo, lastTick: 1, form: { hidden: true }, weaponMask: 0x3ffe, selectionMask: 0x3ffb,
+    options: { onWeaponChoice: (...choice: unknown[]) => choices.push(choice) },
+  }) as { chooseWeapon(index: number): void };
+  hud.chooseWeapon(0); hud.chooseWeapon(2);
+  assert.deepEqual(choices, []);
+  assert.equal(limbo.active, true, "invalid selection cannot dismiss picker");
+  hud.chooseWeapon(1);
+  assert.deepEqual(choices, [[2, 0, "primary"]]);
+  assert.equal(limbo.active, false);
+  limbo.observe(false, 2, 0);
+  assert.equal(limbo.active, false, "selection remains closed through respawn");
+});
+
+test("two-team score box does not rank inactive Charlie and Delta above a negative team score", () => {
+  const { hud, texts } = harness();
+  hud.teamBox({ gameMode: 5, teamScores: [0, -1, 3, 0, 0, 0] }, 1);
+  assert.deepEqual(texts.map(text => text.value), ["3", "-1"]);
+});
+
+test("objective HUD consumes native holder/base state and clears departed objectives without replacing records", () => {
+  const { data, raw } = renderFixture(), f = RENDER_LAYOUT.thing;
+  data.setUint32(raw.thingsOffset + RENDER_LAYOUT.section.count, 2, true);
+  const first = raw.thingsOffset + RENDER_LAYOUT.sectionHeaderBytes, second = first + RENDER_LAYOUT.thingBytes;
+  data.setUint32(first + RENDER_LAYOUT.movingEntity.style, 1, true);
+  data.setUint32(first + f.holdingSprite, 7, true);
+  data.setUint32(second + RENDER_LAYOUT.movingEntity.style, 2, true);
+  data.setUint32(second + f.flags, 2, true);
+  const state = hudPresentationFromRender(raw, 1), objectives = state.objectives!;
+  assert.deepEqual(objectives[0], { style: 1, active: true, holder: 7, inBase: false });
+  assert.deepEqual(objectives[1], { style: 2, active: true, holder: 0, inBase: true });
+  const objective = objectives[0];
+  data.setUint32(raw.thingsOffset + RENDER_LAYOUT.section.count, 0, true);
+  const next = hudPresentationFromRender(raw, 1);
+  assert.equal(next.objectives, objectives); assert.equal(next.objectives![0], objective);
+  assert.equal(next.objectives!.some(value => value.active), false);
 });

@@ -1,11 +1,11 @@
 import { loadSim, requireStatus, SIM_ABI_VERSION, type SimHost } from "@soldat-web/sim-host";
-import { decodeMessage, encodeMessage, PROTOCOL_VERSION, type Message, type ReliableEvent } from "@soldat-web/protocol";
+import { decodeMessage, encodeMessage, PROTOCOL_VERSION, DEFAULT_APPEARANCE, normalizeMatchRules, validateAppearance, validateTeam, type FeatureServerMessage, type ChatDelivery, type MatchRules, type PlayerAppearance, type Message, type ReliableEvent } from "@soldat-web/protocol";
 import { connectWss, type MessageTransport } from "@soldat-web/protocol/transport";
 import { OnlineSession, type OnlineMetrics } from "./session.ts";
 import { loadSimulationCode } from "../sim-runtime";
 import { loadSimulationManifest, mountSimulationPack } from "../sim-content";
 
-const FROZEN_WASM = "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1";
+const FROZEN_WASM = "89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198";
 export interface OnlineHook {
   readonly metrics: OnlineMetrics;
   /** Optional 12-byte override, sampled/copy-owned at each real predicted tick. */
@@ -16,32 +16,49 @@ export interface OnlineHook {
   onGameplayEvent?: (event: ReliableEvent) => void;
 }
 declare global { interface Window { __soldatOnline?: OnlineHook } }
+export interface OnlineRound { epoch: number; map: string; rules: MatchRules; matchSeed: bigint }
 export interface BrowserOnline {
   session: OnlineSession; prediction: SimHost; hook: OnlineHook;
   weaponChoice(primary: number, secondary: number, selection: "primary" | "secondary"): void;
+  changeTeam(team: number): void;
+  updateAppearance(appearance: PlayerAppearance): void;
+  readonly round: OnlineRound;
   updateOverlay(): void; dispose(): void;
 }
-export async function connectOnline(options: {
-  url: string; map: string; container: HTMLElement; signal: AbortSignal; nickname?: string;
+export interface BrowserOnlineOptions {
+  url: string; map: string; container: HTMLElement; signal: AbortSignal; nickname?: string; appearance?: PlayerAppearance;
+  onRound?: (round: OnlineRound) => void | Promise<void>;
   onStatus(status: string): void; onEvent(event: ReliableEvent): void;
   onPresentation(bytes: Uint8Array): void;
   onLiveStep(tick: number, bytes: Uint8Array, slot: number): void;
-}): Promise<BrowserOnline> {
+  onChat?: (message: ChatDelivery) => void;
+  onNotice?: (text: string) => void;
+  onFeature?: (message: FeatureServerMessage) => void;
+  onClosed?: () => void;
+  onSlotLeave?: (slot: number) => void;
+  onStateReset?: () => void;
+}
+export async function connectOnline(options: BrowserOnlineOptions): Promise<BrowserOnline> {
   const code = await loadSimulationCode(options.signal);
-  if (code.sha256 !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen ABI4 WASM");
+  if (code.sha256 !== FROZEN_WASM) throw new Error("Online simulation does not match the frozen gameplay WASM");
   const manifest = await loadSimulationManifest(options.signal);
   const prediction = await loadSim(code.module), confirmed = await loadSim(code.module);
   let session: OnlineSession | undefined, disposed = false;
   let overlay: HTMLElement | undefined;
   let transport: MessageTransport | undefined;
   let timer: number | undefined;
+  let appearanceTimer: number | undefined;
+  let pendingAppearance: PlayerAppearance | undefined;
   let hook: OnlineHook | undefined;
+  let round: OnlineRound | undefined;
   const dispose = () => {
     if (disposed) return; disposed = true;
     clearTimeout(timer); transport?.close(); overlay?.remove();
+    clearTimeout(appearanceTimer); pendingAppearance = undefined;
     options.signal.removeEventListener("abort", aborted);
     if (window.__soldatOnline === hook) delete window.__soldatOnline;
     if (session) session.dispose(); else { prediction.dispose(); confirmed.dispose(); }
+    if (session) options.onClosed?.();
   };
   const aborted = () => dispose();
   try {
@@ -63,22 +80,34 @@ export async function connectOnline(options: {
       transport!.onError = failed;
       transport!.onClose = (code, reason) => failed(new Error(`WSS closed (${code}): ${reason}`));
       transport!.onMessage = (_channel, packet) => {
+        if (disposed) return;
         try {
           const message = decodeMessage(packet);
           if (message.type === "welcome") {
-            if (session) throw new Error("Repeated welcome");
-            if (message.map.toLowerCase() !== options.map.toLowerCase()) throw new Error(`Server map is ${message.map}; select that map in the URL`);
-            const rules: unknown = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.rules));
-            if (!rules || typeof rules !== "object" || Array.isArray(rules)) throw new Error("Invalid welcome rules");
+            const rules = normalizeMatchRules(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.rules)));
+            const next = { epoch: message.roundEpoch, map: message.map, rules, matchSeed: message.matchSeed };
+            if (session && (next.epoch !== round!.epoch + 1 || message.slot !== session.metrics.slot || next.matchSeed !== round!.matchSeed)) throw new Error("Invalid round bootstrap sequence");
+            if (session) session.resetRound();
             for (const host of [prediction, confirmed]) {
-              requireStatus(host.init({ ...Object.fromEntries(Object.entries(rules)), ai: true }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
+              if (!session) requireStatus(host.init({ ...rules, ai: true }, Number(message.matchSeed & 0xffffffffn), Number(message.matchSeed >> 32n), 0), "sim_init(welcome)");
               requireStatus(host.loadMap(message.map), "sim_load_map(welcome)");
             }
-            session = new OnlineSession({ prediction, confirmed, slot: message.slot, send,
-              onEvent(event) { options.onEvent(event); hook?.onGameplayEvent?.(event); },
-              onPresentation: options.onPresentation, onLiveStep: (tick, bytes) => options.onLiveStep(tick, bytes, message.slot),
-              onTicks: metrics => hook?.onTicks?.(metrics) });
-            clearTimeout(timer); resolve(session);
+            round = next;
+            // Render assets do not own the authoritative timeline. Continue
+            // states, inputs, reliable events and pongs while they download.
+            void Promise.resolve(options.onRound?.(next)).catch(error => {
+              if (!disposed && round === next) failed(error instanceof Error ? error : new Error(String(error)));
+            });
+            if (!session) {
+              session = new OnlineSession({ prediction, confirmed, slot: message.slot, send,
+                onEvent(event) { options.onEvent(event); hook?.onGameplayEvent?.(event); },
+                onPresentation: options.onPresentation, onLiveStep: (tick, bytes) => options.onLiveStep(tick, bytes, message.slot),
+                onChat: options.onChat, onNotice: options.onNotice, onSlotLeave: options.onSlotLeave,
+                onStateReset: options.onStateReset,
+                onFeature: options.onFeature,
+                onTicks: metrics => hook?.onTicks?.(metrics) });
+              clearTimeout(timer); resolve(session);
+            }
           } else if (session) { session.metrics.bytes += packet.byteLength; session.receive(message); }
           else if (message.type === "ping") send({ type: "pong", timestamp: message.timestamp });
           else if (message.type === "disconnect") throw new Error(message.reason);
@@ -88,7 +117,7 @@ export async function connectOnline(options: {
       const params = new URLSearchParams(location.search);
       const contentSetHash = Uint8Array.from(manifest.sha256.match(/.{2}/g) ?? [], pair => parseInt(pair, 16));
       send({ type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash, simAbiVersion: SIM_ABI_VERSION,
-        nickname: options.nickname ?? (params.get("nickname") || "Player"), weapon: Number(params.get("weapon") ?? 4), secondaryWeapon: Number(params.get("secondaryWeapon") ?? 0) });
+        nickname: options.nickname ?? (params.get("nickname") || "Player"), weapon: Number(params.get("weapon") ?? 4), secondaryWeapon: Number(params.get("secondaryWeapon") ?? 0), appearance: options.appearance ?? DEFAULT_APPEARANCE });
     });
     if (disposed) throw new Error("Online connection closed during admission");
     hook = { metrics: admitted.metrics, session: admitted }; window.__soldatOnline = hook;
@@ -97,6 +126,26 @@ export async function connectOnline(options: {
     overlay.style.cssText = "position:absolute;top:8px;left:8px;z-index:20;pointer-events:none;margin:0;padding:8px;background:#101820df;color:#d9f0df;font:12px/1.5 monospace;white-space:pre-wrap";
     options.container.append(overlay);
     return { session: admitted, prediction, hook, dispose,
+      get round() { return round!; },
+      changeTeam(team) {
+        validateTeam(team, round!.rules.mode);
+        if (disposed || admitted.metrics.status !== "online") throw new Error("Online connection unavailable");
+        transport!.send("reliableControl", encodeMessage({ type: "team-change", team }));
+      },
+      updateAppearance(appearance) {
+        validateAppearance(appearance);
+        if (disposed || admitted.metrics.status !== "online") throw new Error("Online connection unavailable");
+        pendingAppearance = { ...appearance };
+        clearTimeout(appearanceTimer);
+        // Color/style previews can produce many changes; only commit the final
+        // choice, within the server's shared two-mutations-per-second budget.
+        appearanceTimer = window.setTimeout(() => {
+          if (!disposed && pendingAppearance) {
+            transport!.send("reliableControl", encodeMessage({ type: "appearance", appearance: pendingAppearance }));
+            pendingAppearance = undefined;
+          }
+        }, 500);
+      },
       weaponChoice(primary, secondary, selection) {
         if (disposed || admitted.metrics.status !== "online") throw new Error("Online connection unavailable");
         transport!.send("reliableControl", encodeMessage({ type: "weapon-choice", primary, secondary, selection }));

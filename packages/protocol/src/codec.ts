@@ -1,29 +1,31 @@
 import { EVENT_HEADER_BYTES, INPUT_BYTES, LIMITS, MAX_PACKET_BYTES, MAX_STATE_BYTES, PROTOCOL_VERSION, ProtocolError, type LobbyState, type Message, type ReliableEvent, type SlotInput, type TickRecord, type WeaponSelection } from "./messages.ts";
 import type { TransportChannel } from "./transport/types.ts";
+import { GAME_MODES, DEFAULT_APPEARANCE, normalizeMatchRules, validateAppearance, validateTeam, type GameMode, type PlayerAppearance } from "./gameplay.ts";
+import { FEATURE_TYPES, MAX_FEATURE_BYTES, validateFeature } from "./feature-codec.ts";
+import { wellFormed } from "./text.ts";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
-const TYPES = ["hello", "welcome", "input", "ticks", "state", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error", "lobby-kick"] as const;
-const MAX_PAYLOAD = [0, 42 + LIMITS.nickname, 21 + LIMITS.map + LIMITS.rules, 1 + LIMITS.frames * (12 + INPUT_BYTES), LIMITS.tickBatch, MAX_STATE_BYTES + 20, LIMITS.eventBatch, 4, LIMITS.chat + 2, 8, 8, 0, LIMITS.reason + 4, 3, 4 + LIMITS.nickname + LIMITS.hostToken, 5 + LIMITS.map, 1, 0, 0, 8192, LIMITS.reason + 2, LIMITS.lobbyId + 2];
+const TYPES = ["hello", "welcome", "input", "ticks", "state", "events", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-state", "lobby-error", "lobby-kick", "team-change", "appearance", "chat-message", "notice", ...FEATURE_TYPES] as const;
+const MAX_PAYLOAD = [0, 65 + LIMITS.nickname, 25 + LIMITS.map + LIMITS.rules, 1 + LIMITS.frames * (12 + INPUT_BYTES), LIMITS.tickBatch, MAX_STATE_BYTES + 20, LIMITS.eventBatch, 4, LIMITS.chat + 3, 8, 8, 0, LIMITS.reason + 4, 3, 4 + LIMITS.nickname + LIMITS.hostToken, 128 + LIMITS.map * 33 + LIMITS.rules, 1, 0, 0, 16384, LIMITS.reason + 2, LIMITS.lobbyId + 2, 1, 23, LIMITS.chat + LIMITS.nickname + 6, LIMITS.reason + 2, ...FEATURE_TYPES.map(type => type === "admin-bans" ? 512 * 1024 + 4 : type === "voice-state" ? 256 * 1024 + 4 : MAX_FEATURE_BYTES + 4)];
 const HEADER_BYTES = 8;
 /** Client-originated packets only; state/tick/event decoder limits remain unchanged. */
 export const MAX_CLIENT_PACKET_BYTES = Math.ceil((HEADER_BYTES + Math.max(
-  ...(["hello", "input", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-kick"] as const).map(type => MAX_PAYLOAD[TYPES.indexOf(type) + 1]!),
+  MAX_FEATURE_BYTES + 4,
+  ...(["hello", "input", "eventAck", "chat", "ping", "pong", "resync", "disconnect", "weapon-choice", "lobby-join", "lobby-update", "lobby-ready", "lobby-start", "lobby-leave", "lobby-kick", "team-change", "appearance"] as const).map(type => MAX_PAYLOAD[TYPES.indexOf(type) + 1]!),
 )) / 1024) * 1024;
 function check(value: boolean, message: string, offset = 0): asserts value {
   if (!value) throw new ProtocolError("VALUE", message, offset);
 }
 function integer(n: number, max: number, min = 0): void { check(Number.isInteger(n) && n >= min && n <= max, `Integer outside ${min}..${max}`); }
 function bigint(n: bigint): void { check(typeof n === "bigint" && n >= 0n && n <= 0xffffffffffffffffn, "Expected u64 bigint"); }
-function wellFormed(text: string): boolean {
-  for (let i = 0; i < text.length; i++) {
-    const unit = text.charCodeAt(i);
-    if (unit >= 0xd800 && unit <= 0xdbff) {
-      const low = text.charCodeAt(++i);
-      if (!(low >= 0xdc00 && low <= 0xdfff)) return false;
-    } else if (unit >= 0xdc00 && unit <= 0xdfff) return false;
-  }
-  return true;
+export function validateChat(channel: unknown, text: unknown): asserts text is string {
+  check(channel === "public" || channel === "team", "Invalid chat channel");
+  check(typeof text === "string" && wellFormed(text) && text.trim().length > 0 &&
+    encoder.encode(text).length <= LIMITS.chat && !/[\p{Cc}\p{Cf}]/u.test(text), "Invalid chat text");
+}
+function readChatChannel(r: Reader): "public" | "team" {
+  const id = r.u8(); integer(id, 1); return id === 0 ? "public" : "team";
 }
 
 class Writer {
@@ -206,12 +208,34 @@ function validateEvent(event: ReliableEvent): void {
   const view = new DataView(event.header.buffer, event.header.byteOffset, event.header.byteLength);
   check(view.getUint32(16, true) === event.payload.length && view.getUint32(4, true) === event.tick, "Event header/envelope mismatch");
 }
-function modeId(mode: unknown): number { check(mode === "dm" || mode === "ctf", "Invalid mode"); return mode === "dm" ? 0 : 1; }
-function readMode(r: Reader): "dm" | "ctf" { const id = r.u8(); integer(id, 1); return id === 0 ? "dm" : "ctf"; }
+function modeId(mode: unknown): number { const id = GAME_MODES.indexOf(mode as GameMode); check(id >= 0, "Invalid mode"); return id; }
+function readMode(r: Reader): GameMode { const id = r.u8(); integer(id, 6); return GAME_MODES[id]!; }
+function writeAppearance(w: Writer, appearance: PlayerAppearance): void {
+  validateAppearance(appearance);
+  for (const key of ["shirtColor", "pantsColor", "skinColor", "hairColor", "jetColor"] as const) w.u32(appearance[key]);
+  w.u8(appearance.hairStyle); w.u8(appearance.headStyle); w.u8(appearance.chainStyle);
+}
+function readAppearance(r: Reader): PlayerAppearance {
+  const appearance = { shirtColor: r.u32(), pantsColor: r.u32(), skinColor: r.u32(), hairColor: r.u32(), jetColor: r.u32(), hairStyle: r.u8(), headStyle: r.u8(), chainStyle: r.u8() };
+  validateAppearance(appearance); return appearance;
+}
+function writeRules(w: Writer, rules: unknown): void { w.text(JSON.stringify(normalizeMatchRules(rules)), LIMITS.rules, true); }
+function readRules(r: Reader) { return normalizeMatchRules(JSON.parse(r.text(LIMITS.rules, true))); }
+function writeRotation(w: Writer, maps: string[]): void {
+  check(Array.isArray(maps) && new Set(maps).size === maps.length, "Invalid map rotation");
+  integer(maps.length, 32, 1); w.u8(maps.length);
+  for (const map of maps) w.text(map, LIMITS.map, true);
+}
+function readRotation(r: Reader): string[] {
+  const count = r.u8(); integer(count, 32, 1);
+  const maps = Array.from({ length: count }, () => r.text(LIMITS.map, true));
+  check(new Set(maps).size === maps.length, "Duplicate map rotation entries"); return maps;
+}
 function readBool(r: Reader): boolean { const value = r.u8(); integer(value, 1); return value === 1; }
 function writeLobbyState(w: Writer, s: LobbyState): void {
   check(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(s.code), "Invalid lobby code");
-  w.text(s.code, LIMITS.lobbyCode, true); w.u8(modeId(s.mode)); w.text(s.map, LIMITS.map, true);
+  w.text(s.code, LIMITS.lobbyCode, true); w.u8(modeId(s.mode)); w.text(s.map, LIMITS.map, true); check(s.rules.mode === s.mode, "Lobby mode/rules mismatch"); writeRules(w, s.rules);
+  writeRotation(w, s.mapRotation);
   integer(s.targetPlayers, 32, 1); w.u8(s.targetPlayers); integer(s.players.length, 32); w.u8(s.players.length);
   for (const p of s.players) { w.text(p.id, LIMITS.lobbyId, true); w.text(p.nickname, LIMITS.nickname, true); check(typeof p.ready === "boolean" && typeof p.host === "boolean", "Invalid roster flags"); w.u8(p.ready ? 1 : 0); w.u8(p.host ? 1 : 0); }
   check(typeof s.started === "boolean", "Invalid started"); w.u8(s.started ? 1 : 0);
@@ -250,11 +274,13 @@ function writePayload(w: Writer, m: Message): void {
   switch (m.type) {
     case "lobby-join": w.text(m.nickname, LIMITS.nickname, true); w.text(m.hostToken ?? "", LIMITS.hostToken); break;
     case "lobby-update": {
-      const flags = (m.mode !== undefined ? 1 : 0) | (m.map !== undefined ? 2 : 0) | (m.targetPlayers !== undefined ? 4 : 0);
-      integer(flags, 7, 1); w.u8(flags);
+      const flags = (m.mode !== undefined ? 1 : 0) | (m.map !== undefined ? 2 : 0) | (m.targetPlayers !== undefined ? 4 : 0) | (m.rules !== undefined ? 8 : 0) | (m.mapRotation !== undefined ? 16 : 0);
+      integer(flags, 31, 1); w.u8(flags);
       if (m.mode !== undefined) w.u8(modeId(m.mode));
       if (m.map !== undefined) w.text(m.map, LIMITS.map, true);
       if (m.targetPlayers !== undefined) { integer(m.targetPlayers, 32, 1); w.u8(m.targetPlayers); }
+      if (m.rules !== undefined) writeRules(w, m.rules);
+      if (m.mapRotation !== undefined) writeRotation(w, m.mapRotation);
       break;
     }
     case "lobby-ready": check(typeof m.ready === "boolean", "Invalid ready"); w.u8(m.ready ? 1 : 0); break;
@@ -268,10 +294,10 @@ function writePayload(w: Writer, m: Message): void {
     }
     case "hello":
       w.u16(m.protocolVersion); check(m.contentSetHash.length === 32, "Content hash must be 32 bytes"); w.bytes(m.contentSetHash);
-      w.u32(m.simAbiVersion); w.text(m.nickname, LIMITS.nickname, true); w.u8(m.weapon); w.u8(m.secondaryWeapon); break;
+      w.u32(m.simAbiVersion); w.text(m.nickname, LIMITS.nickname, true); validateWeaponChoice(m.weapon, m.secondaryWeapon); w.u8(m.weapon); w.u8(m.secondaryWeapon); writeAppearance(w, m.appearance ?? DEFAULT_APPEARANCE); break;
     case "welcome":
       integer(m.slot, 32, 1); check(m.tickRate === 60, "Tick rate must be 60");
-      w.u8(m.slot); w.u32(m.serverTick); w.u16(m.tickRate); w.u64(m.matchSeed); w.text(m.map, LIMITS.map, true); w.blob(m.rules, LIMITS.rules); break;
+      w.u8(m.slot); w.u32(m.serverTick); w.u16(m.tickRate); w.u64(m.matchSeed); w.text(m.map, LIMITS.map, true); w.blob(m.rules, LIMITS.rules); w.u32(m.roundEpoch); break;
     case "input":
       integer(m.frames.length, LIMITS.frames, 1); w.u8(m.frames.length);
       for (const frame of m.frames) { integer(frame.seq, 0xffffffff, 1); validateInput(frame.input); w.u32(frame.seq); w.u32(frame.tick); w.u32(frame.viewTick); w.bytes(frame.input); }
@@ -283,13 +309,21 @@ function writePayload(w: Writer, m: Message): void {
       for (const event of m.events) { validateEvent(event); w.u32(event.id); w.u32(event.tick); w.bytes(event.header); w.bytes(event.payload); }
       break;
     case "eventAck": integer(m.eventId, 0xffffffff, 1); w.u32(m.eventId); break;
-    case "chat": w.text(m.text, LIMITS.chat, true); break;
+    case "chat":
+      validateChat(m.channel, m.text); w.u8(m.channel === "public" ? 0 : 1); w.text(m.text, LIMITS.chat, true); break;
+    case "chat-message":
+      validateChat(m.channel, m.text); integer(m.slot, 32, 1);
+      w.u8(m.channel === "public" ? 0 : 1); w.u8(m.slot); w.text(m.nickname, LIMITS.nickname, true); w.text(m.text, LIMITS.chat, true); break;
     case "ping": case "pong": w.u64(m.timestamp); break;
     case "resync": break;
     case "weapon-choice":
       validateWeaponChoice(m.primary, m.secondary); validateWeaponSelection(m.selection);
       w.u8(m.primary); w.u8(m.secondary); w.u8(m.selection === "primary" ? 0 : 1); break;
+    case "team-change": validateTeam(m.team); w.u8(m.team); break;
+    case "appearance": writeAppearance(w, m.appearance); break;
+    case "notice": w.text(m.text, LIMITS.reason, true); break;
     case "disconnect": w.u16(m.code); w.text(m.reason, LIMITS.reason); break;
+    default: validateFeature(m); w.blob(encoder.encode(JSON.stringify(m)), m.type === "admin-bans" ? 512 * 1024 : m.type === "voice-state" ? 256 * 1024 : MAX_FEATURE_BYTES); break;
   }
 }
 function header(bytes: Uint8Array): { type: Message["type"]; channel: TransportChannel } {
@@ -333,29 +367,35 @@ export function decodeMessage(bytes: Uint8Array): Message {
     switch (type) {
       case "lobby-join": { const nickname = r.text(LIMITS.nickname, true), hostToken = r.text(LIMITS.hostToken); message = { type, nickname, ...(hostToken ? { hostToken } : {}) }; break; }
       case "lobby-update": {
-        const flags = r.u8(); integer(flags, 7, 1);
+        const flags = r.u8(); integer(flags, 31, 1);
         const mode = flags & 1 ? readMode(r) : undefined, map = flags & 2 ? r.text(LIMITS.map, true) : undefined;
         const targetPlayers = flags & 4 ? r.u8() : undefined;
         if (targetPlayers !== undefined) integer(targetPlayers, 32, 1);
-        message = { type, ...(mode !== undefined ? { mode } : {}), ...(map !== undefined ? { map } : {}), ...(targetPlayers !== undefined ? { targetPlayers } : {}) }; break;
+        const rules = flags & 8 ? readRules(r) : undefined;
+        const mapRotation = flags & 16 ? readRotation(r) : undefined;
+        message = { type, ...(mode !== undefined ? { mode } : {}), ...(map !== undefined ? { map } : {}), ...(targetPlayers !== undefined ? { targetPlayers } : {}), ...(rules !== undefined ? { rules } : {}), ...(mapRotation !== undefined ? { mapRotation } : {}) }; break;
       }
       case "lobby-ready": message = { type, ready: readBool(r) }; break;
       case "lobby-kick": message = { type, id: r.text(LIMITS.lobbyId, true) }; break;
       case "lobby-start": case "lobby-leave": message = { type }; break;
       case "lobby-error": message = { type, reason: r.text(LIMITS.reason, true) }; break;
       case "lobby-state": {
-        const selfId = r.text(LIMITS.lobbyId, true), code = r.text(LIMITS.lobbyCode, true), mode = readMode(r), map = r.text(LIMITS.map, true), targetPlayers = r.u8(), count = r.u8();
+        const selfId = r.text(LIMITS.lobbyId, true), code = r.text(LIMITS.lobbyCode, true), mode = readMode(r), map = r.text(LIMITS.map, true), rules = readRules(r), mapRotation = readRotation(r), targetPlayers = r.u8(), count = r.u8();
+        check(rules.mode === mode, "Lobby mode/rules mismatch");
         check(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(code), "Invalid lobby code"); integer(targetPlayers, 32, 1); integer(count, 32);
         const players = [];
         for (let i = 0; i < count; i++) players.push({ id: r.text(LIMITS.lobbyId, true), nickname: r.text(LIMITS.nickname, true), ready: readBool(r), host: readBool(r) });
         const started = readBool(r);
-        message = { type, selfId, state: { code, mode, map, targetPlayers, players, started, ...(started ? { matchId: r.text(LIMITS.matchId, true), matchWsUrl: r.text(LIMITS.matchWsUrl, true) } : {}) } }; break;
+        message = { type, selfId, state: { code, mode, map, rules, mapRotation, targetPlayers, players, started, ...(started ? { matchId: r.text(LIMITS.matchId, true), matchWsUrl: r.text(LIMITS.matchWsUrl, true) } : {}) } }; break;
       }
-      case "hello": message = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true), weapon: r.u8(), secondaryWeapon: r.u8() }; break;
+      case "hello": {
+        const hello = { type, protocolVersion: r.u16(), contentSetHash: r.take(32), simAbiVersion: r.u32(), nickname: r.text(LIMITS.nickname, true), weapon: r.u8(), secondaryWeapon: r.u8(), appearance: readAppearance(r) };
+        validateWeaponChoice(hello.weapon, hello.secondaryWeapon); message = hello; break;
+      }
       case "welcome": {
         const slot = r.u8(), serverTick = r.u32(), tickRate = r.u16(), matchSeed = r.u64(), map = r.text(LIMITS.map, true), rules = r.blob(LIMITS.rules);
         integer(slot, 32, 1); check(tickRate === 60, "Tick rate must be 60");
-        message = { type, slot, serverTick, tickRate, matchSeed, map, rules }; break;
+        message = { type, slot, serverTick, tickRate, matchSeed, map, rules, roundEpoch: r.u32() }; break;
       }
       case "input": {
         const count = r.u8(); integer(count, LIMITS.frames, 1);
@@ -376,7 +416,14 @@ export function decodeMessage(bytes: Uint8Array): Message {
         message = { type, events }; break;
       }
       case "eventAck": { const eventId = r.u32(); integer(eventId, 0xffffffff, 1); message = { type, eventId }; break; }
-      case "chat": message = { type, text: r.text(LIMITS.chat, true) }; break;
+      case "chat": {
+        const channel = readChatChannel(r), text = r.text(LIMITS.chat, true);
+        validateChat(channel, text); message = { type, channel, text }; break;
+      }
+      case "chat-message": {
+        const channel = readChatChannel(r), slot = r.u8(), nickname = r.text(LIMITS.nickname, true), text = r.text(LIMITS.chat, true);
+        integer(slot, 32, 1); validateChat(channel, text); message = { type, channel, slot, nickname, text }; break;
+      }
       case "ping": case "pong": message = { type, timestamp: r.u64() }; break;
       case "resync": message = { type }; break;
       case "weapon-choice": {
@@ -384,7 +431,17 @@ export function decodeMessage(bytes: Uint8Array): Message {
         validateWeaponChoice(primary, secondary); integer(selectionId, 1);
         message = { type, primary, secondary, selection: selectionId === 0 ? "primary" : "secondary" }; break;
       }
+      case "team-change": { const team = r.u8(); validateTeam(team); message = { type, team }; break; }
+      case "appearance": message = { type, appearance: readAppearance(r) }; break;
+      case "notice": message = { type, text: r.text(LIMITS.reason, true) }; break;
       case "disconnect": message = { type, code: r.u16(), reason: r.text(LIMITS.reason) }; break;
+      default: {
+        const feature: unknown = JSON.parse(decoder.decode(r.blob(type === "admin-bans" ? 512 * 1024 : type === "voice-state" ? 256 * 1024 : MAX_FEATURE_BYTES)));
+        validateFeature(feature);
+        check(feature.type === type, "Feature type mismatch");
+        message = feature;
+        break;
+      }
     }
     if (r.offset !== bytes.length) throw new ProtocolError("TRAILING", "Trailing payload fields", r.offset);
     return message;

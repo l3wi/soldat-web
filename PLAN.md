@@ -1,4 +1,14 @@
-# soldat-web — Implementation plan
+# soldat-web — Historical gated implementation roadmap
+
+## How to read this roadmap now
+
+This is the original phase/gate plan, preserved as design and acceptance history, **not a live missing-feature checklist**. Use [current porting status](docs/porting-status.md) for the implementation inventory, deliberate browser adaptations, remaining work and release qualification priorities; use [SPEC](SPEC.md) for the current contract.
+
+Later work has implemented all seven modes and round transitions, waypoint bots in the server and both client replicas, balancing, console/binds/taunts, spectator controls, gestures, authenticated moderation/votes/radio/voice, and the browser menu/friend-lobby/practice flows. In particular, the original DM/CTF-only Phase 5, server-only AI and Phase 4 snapshot-delta design below describe the historical plan: current play uses ABI6, wire7 and confirmed command/input relay. Their appearance below must not be read as absent implementation or as the current protocol.
+
+Gate criteria and receipts remain intact. A receipt proves only its named artifact, corpus, runtime and conditions; implementation or a newer targeted check does not retroactively pass an old gate. The retained G4 report explicitly does not pass its historical gate, and current adverse-network/capacity/platform release acceptance remains separate. The “First actions” section is also historical, not an instruction to recreate the repository.
+
+## Original roadmap
 
 Implements `SPEC.md` (requirement IDs R-*, acceptance §6, decisions D*). Each phase ends in a **gate**: a pass/fail check with recorded evidence in `docs/gates/<gate>.md`. A failed gate stops dependent work and triggers the listed fallback; nothing downstream proceeds on an assumed pass.
 

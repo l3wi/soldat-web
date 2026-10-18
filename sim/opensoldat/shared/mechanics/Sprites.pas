@@ -2133,6 +2133,7 @@ begin
     if not DeadMeat then
     begin
       if (sv_gamemode.Value = GAMESTYLE_DEATHMATCH) or
+        {$IFDEF SIM}(sv_gamemode.Value = GAMESTYLE_POINTMATCH) or{$ENDIF}
         (sv_gamemode.Value = GAMESTYLE_RAMBO) then
       begin
         AliveNum := 0;
@@ -2371,19 +2372,31 @@ begin
   {$ENDIF}
 
   // BREAD
-  {$IFDEF SERVER}
-  if not sv_advancemode.Value then
-    if not DeadMeat and (Num <> Who) then
+  {$IFDEF SIM}
+  { The original client owns advance gain/loss. Headless authoritative SIM
+    executes that branch as well, without changing normal-server RNG draws. }
+  if ((sv_advancemode.Value) and not DeadMeat) or
+     ((not sv_advancemode.Value) and not DeadMeat and (Num<>Who)) then
   {$ELSE}
-  if sv_advancemode.Value then
-    if not DeadMeat then
+    {$IFDEF SERVER}
+    if not sv_advancemode.Value then
+      if not DeadMeat and (Num <> Who) then
+    {$ELSE}
+    if sv_advancemode.Value then
+      if not DeadMeat then
+    {$ENDIF}
   {$ENDIF}
     begin
       i := sv_advancemode_amount.Value;
 
-      {$IFNDEF SERVER}
-      if (Num <> Who) and
-         (Sprite[Num].IsNotInSameTeam(Sprite[Who]) or Sprite[Num].IsSolo()) then
+      {$IFDEF SIM}
+      if not sv_advancemode.Value or
+        ((Num<>Who) and (Sprite[Num].IsNotInSameTeam(Sprite[Who]) or Sprite[Num].IsSolo)) then
+      {$ELSE}
+        {$IFNDEF SERVER}
+        if (Num <> Who) and
+           (Sprite[Num].IsNotInSameTeam(Sprite[Who]) or Sprite[Num].IsSolo()) then
+        {$ENDIF}
       {$ENDIF}
       begin
         if (Sprite[Who].Player.Kills mod i) = 0 then

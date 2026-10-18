@@ -22,6 +22,26 @@ export function lobbyCode(value: string): string | null {
   }
   return /^[0-9A-HJKMNP-TV-Z]{8}$/i.test(code) ? code.toUpperCase() : null;
 }
+export type ConsoleDestination =
+  | { kind: 'lobby'; origin: string; code: string; hostToken?: string }
+  | { kind: 'server'; origin: string };
+
+/** Native IP/port/password and one-use match tickets are not browser admissions. */
+export function consoleDestination(value: string, api: string): ConsoleDestination {
+  const code = lobbyCode(value);
+  if (code) return { kind: 'lobby', origin: api, code };
+  let url: URL;
+  try { url = new URL(value); }
+  catch { throw new Error('Use a lobby code, friend link, or server origin'); }
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new Error('Use a lobby code, friend link, or server origin, not a match ticket URL');
+  }
+  if (url.protocol === 'wss:') url.protocol = 'https:';
+  if (url.protocol === 'ws:') url.protocol = 'http:';
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new Error('Unsupported server URL scheme');
+  return { kind: 'server', origin: url.origin };
+}
+
 
 export function lobbyCanKick(lobby: LobbyState | null, selfId: string | undefined): boolean {
   return !!lobby && !lobby.started && lobby.players.some(player => player.id === selfId && player.host);

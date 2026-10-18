@@ -6,7 +6,7 @@ import test from "node:test";
 import { connect as connectTcp } from "node:net";
 import { Worker } from "node:worker_threads";
 import { WebSocket } from "ws";
-import { encodeMessage, decodeMessage } from "@soldat-web/protocol";
+import { encodeMessage, decodeMessage, teamCount, GAME_MODES, DEFAULT_APPEARANCE } from "@soldat-web/protocol";
 import type { Message, LobbyState } from "@soldat-web/protocol";
 import { SPRITE_FLAGS } from "@soldat-web/sim-host";
 import type { SimHost } from "@soldat-web/sim-host";
@@ -106,6 +106,13 @@ test("friend lobby host authority, ready, start, late join and leave use real WS
     guest.send({ type: "lobby-ready", ready: true }); await host.state(state => state.players.every(player => player.ready), start);
     host.send({ type: "lobby-start" }); const started = await host.state(state => state.started); const guestStarted = await guest.state(state => state.started);
     for (const [nickname, state] of [["Host", started.state], ["Guest", guestStarted.state]] as const) { const peer = new RawPeer(state.matchWsUrl!); gamePeers.push(peer); await peer.connect(config.match.contentSetHash, nickname); }
+    const hostControl = await gamePeers[0]!.waitFor((message): message is Extract<Message, { type: "control-state" }> => message.type === "control-state");
+    const guestControl = await gamePeers[1]!.waitFor((message): message is Extract<Message, { type: "control-state" }> => message.type === "control-state");
+    assert.equal(hostControl.state.host, true); assert.equal(guestControl.state.host, false); assert.equal(guestControl.state.admin, false);
+    const deniedAt = gamePeers[1]!.messages.length;
+    gamePeers[1]!.send({ type: "admin-action", action: { kind: "pause" } });
+    await gamePeers[1]!.waitFor((message): message is Extract<Message, { type: "notice" }> => message.type === "notice" && message.text.includes("privileges"), deniedAt);
+    assert.equal(gamePeers[1]!.closed, undefined);
     const late = new LobbyPeer(created.value.wsUrl); lobbyPeers.push(late); const lateState = await late.join("Late"); assert.ok(lateState.state.started);
     const lateGame = new RawPeer(lateState.state.matchWsUrl!); gamePeers.push(lateGame); await lateGame.connect(config.match.contentSetHash, "Late");
     assert.equal(new Set(gamePeers.flatMap(peer => peer.messages.filter(message => message.type === "welcome").map(message => message.slot))).size, 3);
@@ -197,14 +204,17 @@ test("malformed, oversized, incompatible and abusive HTTP requests are rejected"
   } finally { await server.close(); }
 });
 
-for (const mode of ["dm", "ctf"] as const) test(`${mode}: bot replacement/refill keeps 32 slots and balanced teams with original rotating profiles`, { timeout: 30_000 }, async () => {
-  const match = await AuthoritativeMatch.start({ ...config.match, map: mode === "ctf" ? "ctf_Ash" : "Arena", targetPlayers: 32, rules: { mode, world: "original", rng: "keyed" } }, () => {});
+for (const mode of GAME_MODES) test(`${mode}: bot replacement/refill keeps 32 slots and balanced teams with original rotating profiles`, { timeout: 30_000 }, async () => {
+  const map = mode === "ctf" ? "ctf_Ash" : mode === "inf" ? "inf_Abel" : mode === "htf" ? "htf_Arch" : "Arena";
+  const match = await AuthoritativeMatch.start({ ...config.match, map, targetPlayers: 32, rules: { mode, world: "original", rng: "keyed" } }, () => {});
   const host = Reflect.get(match, "host") as SimHost;
   function population(humans: number) {
     const render = host.renderView(); assert.notEqual(typeof render, "number"); if (typeof render === "number") throw new Error("render failed");
     const sprites = Array.from({ length: 32 }, (_, i) => render.sprite(i)).filter(sprite => sprite.flags & SPRITE_FLAGS.active);
     assert.equal(sprites.length, 32); assert.equal(sprites.filter(sprite => !(sprite.flags & SPRITE_FLAGS.bot)).length, humans);
-    if (mode === "ctf") assert.equal(sprites.filter(sprite => sprite.team === 1).length, 16);
+    const teams = teamCount(mode);
+    if (teams) for (let team = 1; team <= teams; team++) assert.equal(sprites.filter(sprite => sprite.team === team).length, 32 / teams);
+    else assert.ok(sprites.every(sprite => sprite.team === 0));
     return sprites;
   }
   try {
@@ -218,6 +228,22 @@ for (const mode of ["dm", "ctf"] as const) test(`${mode}: bot replacement/refill
     match.receive({ type: "leave", slot: 1 }, process.hrtime.bigint());
     const after = population(0).map(sprite => sprite.playerName);
     assert.equal(after.filter(name => name === "Admiral").length, before.filter(name => name === "Admiral").length + 1);
+  } finally { match.dispose(); }
+});
+
+test("bounded appearance updates do not consume the independent weapon-change budget", async () => {
+  const rejected: string[] = [];
+  const match = await AuthoritativeMatch.start({ ...config.match, rules: { mode: "dm", world: "original", rng: "keyed" } }, response => {
+    if (response.type === "reject") rejected.push(response.reason);
+  });
+  try {
+    const now = process.hrtime.bigint();
+    match.receive({ type: "join", slot: 1, weapon: 4, secondaryWeapon: 0 }, now);
+    for (let i = 0; i < 4; i++) match.receive({ type: "appearance", slot: 1, appearance: { ...DEFAULT_APPEARANCE, hairStyle: i } }, now);
+    for (let i = 0; i < 4; i++) match.receive({ type: "weapon-choice", slot: 1, primary: i + 1, secondary: 0, selection: "primary" }, now);
+    assert.deepEqual(rejected, []);
+    match.receive({ type: "appearance", slot: 1, appearance: { ...DEFAULT_APPEARANCE, hairStyle: 4 } }, now);
+    assert.deepEqual(rejected, ["Player change rate limit exceeded"]);
   } finally { match.dispose(); }
 });
 
@@ -425,4 +451,40 @@ test("F-07/F-08 independent global lookup and creation limits cap rotating-sourc
     assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 201);
     assert.equal((await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena" })).status, 429);
   } finally { await server.close(); }
+});
+
+test("friend host selects compatible catalog maps outside rotation but cannot select wrong-mode or non-bot maps", { timeout: 60_000 }, async t => {
+  const server = await platform({ targetPlayers: 1, maps: [
+    { name: "Arena", mode: "dm", botCapable: true },
+    { name: "Arena2", mode: "dm", botCapable: true },
+    { name: "ctf_Ash", mode: "ctf", botCapable: true },
+    { name: "NoBots", mode: "dm", botCapable: false },
+  ] });
+  t.after(() => server.close());
+  const created = await api(server.origin, "/api/lobbies", { mode: "dm", map: "Arena", mapRotation: ["Arena"] });
+  assert.equal(created.status, 201);
+  const host = new LobbyPeer(created.value.wsUrl);
+  await host.join("Host", created.value.hostToken);
+  host.send({ type: "lobby-start" });
+  const started = await host.state(state => state.started);
+  const game = new RawPeer(started.state.matchWsUrl!);
+  await game.connect(config.match.contentSetHash, "Host");
+  let start = game.messages.length;
+  game.send({ type: "admin-action", action: { kind: "map", map: "Arena2" } });
+  const selected = await game.waitFor((message): message is Extract<Message, { type: "welcome" }> => message.type === "welcome" && message.map === "Arena2", start);
+  assert.equal(selected.roundEpoch, 1);
+  for (const map of ["ctf_Ash", "NoBots"]) {
+    start = game.messages.length;
+    game.send({ type: "admin-action", action: { kind: "map", map } });
+    await game.waitFor((message): message is Extract<Message, { type: "notice" }> => message.type === "notice" && message.text.includes("compatible catalog"), start);
+    assert.equal(game.messages.slice(start).some(message => message.type === "welcome"), false);
+  }
+  start = game.messages.length;
+  const lobbyStart = host.messages.length;
+  game.send({ type: "admin-action", action: { kind: "nextmap" } });
+  const next = await game.waitFor((message): message is Extract<Message, { type: "welcome" }> => message.type === "welcome" && message.map === "Arena", start);
+  assert.equal(next.roundEpoch, 2);
+  const lobby = await host.state(state => state.map === "Arena" && state.started, lobbyStart);
+  assert.deepEqual(lobby.state.mapRotation, ["Arena"]);
+  assert.deepEqual(server.errors, []);
 });

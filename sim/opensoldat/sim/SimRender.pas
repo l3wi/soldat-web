@@ -3,14 +3,14 @@ unit SimRender;
 interface
 uses Vector, Net, Sprites;
 const
-  SIM_ABI_VERSION = $00010004;
-  SIM_RENDER_STRIDE = 656;
+  SIM_ABI_VERSION = $00010006;
+  SIM_RENDER_STRIDE = 696;
   SIM_BULLET_STRIDE = 96;
   SIM_THING_STRIDE = 324;
   SIM_BULLETS_OFFSET = 32 + MAX_PLAYERS * SIM_RENDER_STRIDE;
   SIM_THINGS_OFFSET = SIM_BULLETS_OFFSET + 8 + MAX_BULLETS * SIM_BULLET_STRIDE;
   SIM_GLOBALS_OFFSET = SIM_THINGS_OFFSET + 8 + MAX_THINGS * SIM_THING_STRIDE;
-  SIM_RENDER_BYTES = SIM_GLOBALS_OFFSET + 44;
+  SIM_RENDER_BYTES = SIM_GLOBALS_OFFSET + 112;
 type
   TSimPreviousPose = array[1..MAX_PLAYERS, 1..24] of TVector2;
 var
@@ -59,7 +59,7 @@ end;
 procedure SimResetRender;
 begin FillChar(View, SizeOf(View), 0); SimCapturePreviousPose; end;
 function SimRenderView: Pointer;
-var I, J, Base, Count, EntityCount, NameLength: Integer; Flags: LongWord; Offset:TVector2;
+var I, J, Base, Count, EntityCount, NameLength: Integer; Flags,Mask: LongWord; Offset:TVector2;
 begin
   FillChar(View, SizeOf(View), 0);
   Count := 0;
@@ -134,6 +134,23 @@ begin
       U32(Base+640,Flags);I32(Base+644,Sprite[I].Control.MouseDist);
       I32(Base+648,Sprite[I].Brain.CurrentWaypoint);
       I32(Base+652,Sprite[I].Brain.NextWaypoint);
+      Mask:=0;
+      for J:=1 to MAIN_WEAPONS do
+        if SimWeaponAvailable(I,J) then Mask:=Mask or (LongWord(1) shl (J-1));
+      U32(Base+656,Mask);U32(Base+660,Ord(SimLimboAvailable[I]));
+      I32(Base+664,Sprite[I].RespawnCounter);U32(Base+668,Sprite[I].BonusStyle);
+      I32(Base+672,Sprite[I].BonusTime);U32(Base+676,Sprite[I].MultiKills);
+      F32(Base+680,Sprite[I].AimDistCoef);I32(Base+684,Sprite[I].Position);
+      Mask:=0;
+      for J:=1 to MAX_PLAYERS do
+        if not sv_realisticmode.Value or (SimVisibility[J,I]>0) then
+          Mask:=Mask or (LongWord(1) shl (J-1));
+      U32(Base+688,Mask);
+      Mask:=0;
+      for J:=1 to MAX_PLAYERS do
+        if not sv_realisticmode.Value or (SimVisibility[J,I]>40) then
+          Mask:=Mask or (LongWord(1) shl (J-1));
+      U32(Base+692,Mask);
     end;
   U32(0, SIM_ABI_VERSION); U32(4, MainTickCounter); U32(8, Count);
   U32(12, MAX_PLAYERS); U32(16, SIM_RENDER_STRIDE);
@@ -191,8 +208,28 @@ begin
   U32(SIM_THINGS_OFFSET,EntityCount); U32(SIM_THINGS_OFFSET+4,SIM_THING_STRIDE);
   for J:=0 to 5 do I32(SIM_GLOBALS_OFFSET+J*4,TeamScore[J]);
   I32(SIM_GLOBALS_OFFSET+24,StartHealth); I32(SIM_GLOBALS_OFFSET+28,Map.StartJet);
-  I32(SIM_GLOBALS_OFFSET+32,sv_gamemode.Value); I32(SIM_GLOBALS_OFFSET+36,sv_killlimit.Value);
+  I32(SIM_GLOBALS_OFFSET+32,sv_gamemode.Value);I32(SIM_GLOBALS_OFFSET+36,SimScoreLimit);
   I32(SIM_GLOBALS_OFFSET+40,CeaseFireTime);
+  I32(SIM_GLOBALS_OFFSET+44,SimTimeLimitTicks);I32(SIM_GLOBALS_OFFSET+48,TimeLimitCounter);
+  I32(SIM_GLOBALS_OFFSET+52,MapChangeCounter);
+  if SimRoundReady then I32(SIM_GLOBALS_OFFSET+56,2)
+  else if MapChangeCounter>=0 then I32(SIM_GLOBALS_OFFSET+56,1);
+  U32(SIM_GLOBALS_OFFSET+60,SimRoundEpoch);
+  U32(SIM_GLOBALS_OFFSET+64,Ord(sv_realisticmode.Value));
+  U32(SIM_GLOBALS_OFFSET+68,Ord(sv_survivalmode.Value));
+  U32(SIM_GLOBALS_OFFSET+72,Ord(sv_advancemode.Value));
+  U32(SIM_GLOBALS_OFFSET+76,Ord(GOALTICKS<>DEFAULT_GOALTICKS));
+  F32(SIM_GLOBALS_OFFSET+80,GOALTICKS/DEFAULT_GOALTICKS);
+  U32(SIM_GLOBALS_OFFSET+84,Ord(sv_sniperline.Value));
+  U32(SIM_GLOBALS_OFFSET+88,Ord(sv_friendlyfire.Value));
+  Mask:=0;
+  for J:=1 to MAIN_WEAPONS do
+    if WeaponActive[J]=1 then Mask:=Mask or (LongWord(1) shl (J-1));
+  U32(SIM_GLOBALS_OFFSET+92,Mask);
+  U32(SIM_GLOBALS_OFFSET+96,Ord(SurvivalEndRound));
+  I32(SIM_GLOBALS_OFFSET+100,sv_advancemode_amount.Value);
+  I32(SIM_GLOBALS_OFFSET+104,sv_bonus_frequency.Value);
+  I32(SIM_GLOBALS_OFFSET+108,BulletTimeTimer);
   Result := @View[0];
 end;
 end.

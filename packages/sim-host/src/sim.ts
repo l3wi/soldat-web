@@ -1,10 +1,11 @@
 import { deterministicWasi, requireDeterministicImports } from "./wasi.ts";
 import { readRenderView } from "./render.ts";
 import { readFxView } from "./fx.ts";
+import type { GestureKind, MatchRules, PlayerAppearance } from "@soldat-web/protocol";
 export { FX_LAYOUT, readFxView, type FxView, type FxSpark } from "./fx.ts";
 export { SIM_GAMEPLAY_EVENTS, SIM_GAMEPLAY_PAYLOAD } from "./gameplay-events.ts";
 
-export const SIM_ABI_VERSION = 0x00010004;
+export const SIM_ABI_VERSION = 0x00010006;
 export const SimStatus = { OK: 0, INVALID: -1, NOT_INITIALIZED: -2, NOT_FOUND: -3, UNSUPPORTED: -4, CAPACITY: -5, MALFORMED: -6 } as const;
 export const INPUT_BYTES = 12;
 export const SIM_PRESENTATION_EVENTS = { BINK: 0x80001001 } as const;
@@ -13,7 +14,10 @@ export type Control = Partial<Record<typeof CONTROL_NAMES[number], boolean>> & {
   MouseAimX?: number; MouseAimY?: number; MouseDist?: number; pressOrder?: number;
 };
 export type SimCommand =
-  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string; name?: string }
+  | { kind: "join" | "leave" | "team" | "spawn"; slot: number; team?: number; force?: boolean; replacement?: boolean; spawn?: number; x?: number; y?: number; health?: number; heldFlag?: number; weapon?: number; secondaryWeapon?: number; ammo?: number; grenades?: number; vest?: number; control?: "human" | "authoritative" | "bot"; bot?: string; name?: string; appearance?: PlayerAppearance }
+  | { kind: "appearance"; slot: number; appearance: PlayerAppearance }
+  | { kind: "gesture"; slot: number; gesture: GestureKind }
+  | { kind: "kill"; slot: number }
   | { kind: "thing"; style: number; owner?: number; x: number; y: number; ammo?: number }
   | { kind: "weapon-choice" | "weapon-apply"; slot: number; weapon: number; secondaryWeapon?: number; selection?: "primary" | "secondary" }
   | { kind: "bullet"; weapon: number; owner: number; x: number; y: number; vx: number; vy: number; hitMultiply?: number; timeout?: number; target?: number; hitCircle?: number }
@@ -95,7 +99,7 @@ export class SimHost {
     const canonical = path.replaceAll("\\", "/").toLowerCase();
     return this.withBytes(encoder.encode(canonical), (p, n) => this.withBytes(bytes, (d, length) => this.exports.sim_vfs_put(p, n, d, length)));
   }
-  init(rules: Record<string, unknown> = {}, seedLow = 0, seedHigh = 0, flags = 0): number {
+  init(rules: Partial<MatchRules> | Record<string, unknown> = {}, seedLow = 0, seedHigh = 0, flags = 0): number {
     return this.withBytes(encoder.encode(JSON.stringify(rules)), (p, n) => this.exports.sim_init(p, n, seedLow, seedHigh, flags));
   }
   loadMap(name: string): number {

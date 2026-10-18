@@ -294,19 +294,9 @@ end;
 
 procedure NextMap;
 begin
-  Debug('NextMap');
-
-  if MapsList.Count < 1 then
-  begin
-    MainConsole.console('Can''t load maps from mapslist', GAME_MESSAGE_COLOR);
-  end else
-  begin
-    MapIndex := MapIndex + 1;
-
-    if MapIndex >= MapsList.Count then
-      MapIndex := 0;
-    PrepareMapChange(MapsList[MapIndex]);
-  end;
+  { The simulation owns scoring and the original results countdown. Map
+    selection and the explicit loadMap epoch boundary belong to the host. }
+  if MapChangeCounter<0 then PrepareMapChange(Map.Name);
 end;
 
 

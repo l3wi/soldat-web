@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { encodeTickRecords, validateWeaponChoice, validateWeaponSelection, type TickRecord, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
+import { encodeTickRecords, validateChat, validateWeaponChoice, validateWeaponSelection, validateAppearance, validateTeam, teamCount, type GameMode, type TickRecord, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
 import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@soldat-web/sim-host";
 import type { SimHost, SimManifest } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
@@ -10,6 +10,7 @@ import { hardeningLimits, TokenBucket } from "./hardening.ts";
 
 interface Player {
   inputs: PlayerInputBuffer;
+  nickname: string;
   syncTick: number | undefined;
   nextStateTick: number;
   events: Map<number, ReliableEvent>;
@@ -19,9 +20,12 @@ interface Player {
   lastRewind: number;
   weaponTokens: number;
   lastWeaponChoice: bigint;
+  playerChanges: TokenBucket;
+  chat: TokenBucket;
   lastInput: Uint8Array;
   changedAtMs: number;
   afkRejected: boolean;
+  muted: boolean;
 }
 interface History {
   state: Uint8Array | undefined;
@@ -57,9 +61,20 @@ export class AuthoritativeMatch {
   private readonly bots: number[];
   private readonly targetPlayers: number | undefined;
   private nextBotProfile = 0;
-  private readonly teamMode: boolean;
+  private readonly mode: GameMode;
+  private readonly mapRotation: string[];
+  private readonly allowedMaps: Set<string>;
+  private map: string;
+  private roundEpoch = 0;
   private readonly emit: (response: WorkerResponse) => void;
   tick = 0;
+  paused = false;
+
+  get tickScale(): number {
+    const view = this.host.renderView();
+    if (typeof view === "number") throw new Error(`sim_render_view failed: ${view}`);
+    return view.globals.tickScale;
+  }
 
   private constructor(host: SimHost, config: MatchConfiguration & { botCount: number }, emit: (response: WorkerResponse) => void) {
     this.host = host;
@@ -68,7 +83,10 @@ export class AuthoritativeMatch {
     this.afkMs = limits.afkMs;
     this.targetPlayers = config.targetPlayers;
     this.bots = reservedBotSlots(config.targetPlayers ?? config.botCount);
-    this.teamMode = config.rules.mode === "ctf";
+    this.mode = config.rules.mode as GameMode;
+    this.map = config.map;
+    this.mapRotation = [...(config.mapRotation ?? [config.map])];
+    this.allowedMaps = new Set(config.allowedMaps ?? this.mapRotation);
     this.emit = this.profile ? response => {
       const start = performance.now(); emit(response);
       this.profile!.postMs += performance.now() - start;
@@ -102,26 +120,46 @@ export class AuthoritativeMatch {
 
   receive(message: WorkerRequest, now: bigint): void {
     if (message.type === "stop") return;
+    if (message.type === "pause") {
+      this.flushRecords(); this.commitEvents(this.tick);
+      this.paused = message.paused;
+      this.history.clear();
+      for (const [slot, player] of this.players) {
+        player.inputs.resync(this.tick); player.lastInput.fill(0);
+        player.changedAtMs = performance.now(); player.afkRejected = false;
+        this.apply(slot, this.tick, player.lastInput);
+      }
+      this.sendFullStates();
+      this.emit({ type: "paused", paused: this.paused });
+      return;
+    }
+    if (message.type === "map-control") {
+      const map = message.restart ? this.map : message.next ? this.mapRotation[(this.mapRotation.indexOf(this.map) + 1) % this.mapRotation.length]! : message.map;
+      if (map && this.allowedMaps.has(map)) this.advanceRound(map);
+      return;
+    }
     if (message.type === "join") {
       if (!Number.isInteger(message.slot) || message.slot < 1 || message.slot > 32 || this.players.has(message.slot) || (this.targetPlayers === undefined && this.bots.includes(message.slot)) || (this.targetPlayers !== undefined && this.players.size >= this.targetPlayers)) throw new Error("Invalid player slot");
       if (this.targetPlayers !== undefined && this.bots.length) {
         const bot = this.bots.includes(message.slot) ? message.slot : this.bots.at(-1)!;
-        requireStatus(this.command({ kind: "leave", slot: bot }), "sim_command(bot replacement)");
+        requireStatus(this.command({ kind: "leave", slot: bot, replacement: true }), "sim_command(bot replacement)");
         this.bots.splice(this.bots.indexOf(bot), 1);
       }
-      requireStatus(this.command({ kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}) }), "sim_command(join)");
+      requireStatus(this.command({ kind: "join", slot: message.slot, control: "authoritative", weapon: message.weapon, secondaryWeapon: message.secondaryWeapon, team: this.joinTeam(), ...(message.name ? { name: message.name } : {}), ...(message.appearance ? { appearance: message.appearance } : {}) }), "sim_command(join)");
       requireStatus(this.command({ kind: "weapon-choice", slot: message.slot, weapon: message.weapon, secondaryWeapon: message.secondaryWeapon }), "sim_command(weapon-choice)");
       this.captureCommandEvents();
-      this.players.set(message.slot, { inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, lastInput: new Uint8Array(12), changedAtMs: performance.now(), afkRejected: false });
+      this.players.set(message.slot, { muted: false, nickname: message.nickname ?? message.name ?? `Player ${message.slot}`, chat: new TokenBucket(4, 1, Number(now) / 1e6), inputs: new PlayerInputBuffer(now), syncTick: undefined, nextStateTick: this.tick, events: new Map(), lastEventAck: this.eventId, lastSentEvent: this.eventId, rttMs: 0, lastRewind: -6, weaponTokens: WEAPON_CHOICE_BURST, lastWeaponChoice: now, playerChanges: new TokenBucket(4, 2, Number(now) / 1e6), lastInput: new Uint8Array(12), changedAtMs: performance.now(), afkRejected: false });
       // Never rewind across membership commands (their ownership is not input).
       this.history.clear();
-      this.emit({ type: "joined", slot: message.slot, serverTick: this.tick });
+      this.emit({ type: "joined", slot: message.slot, serverTick: this.tick, map: this.map, roundEpoch: this.roundEpoch });
+      this.publishRoster();
+      if (this.paused) this.sendFullStates();
       return;
     }
     const player = this.players.get(message.slot);
     if (message.type === "leave") {
       if (player) {
-        requireStatus(this.command({ kind: "leave", slot: message.slot }), "sim_command(leave)");
+        requireStatus(this.command({ kind: "leave", slot: message.slot, ...(this.targetPlayers !== undefined ? { replacement: true } : {}) }), "sim_command(leave)");
         this.captureCommandEvents();
         this.players.delete(message.slot); this.history.clear();
         if (this.targetPlayers !== undefined) {
@@ -133,11 +171,80 @@ export class AuthoritativeMatch {
         }
       }
       this.emit({ type: "left", slot: message.slot });
+      this.publishRoster();
+      if (this.paused) this.sendFullStates();
       return;
     }
     if (!player) return;
     switch (message.type) {
+      case "server-mute": player.muted = message.muted; break;
+      case "force-team":
+      case "gesture":
+      case "player-kill": {
+        const command = message.type === "force-team" ? { kind: "team" as const, slot: message.slot, team: message.team, force: true }
+          : message.type === "gesture" ? { kind: "gesture" as const, slot: message.slot, gesture: message.gesture }
+          : { kind: "kill" as const, slot: message.slot };
+        const status = this.command(command);
+        this.captureCommandEvents(); this.history.clear(); this.publishRoster();
+        if (status < 0) this.emit({ type: "send", slot: message.slot, serverTick: this.tick, message: { type: "notice", text: "The native action is unavailable in your current state." } });
+        if (this.paused) this.sendFullStates();
+        break;
+      }
+      case "radio": {
+        if (player.muted) break;
+        const view = this.host.renderView();
+        if (typeof view === "number") throw new Error(`sim_render_view failed: ${view}`);
+        const sender = view.sprite(message.slot - 1);
+        if (!(sender.flags & 1) || sender.team === 5) {
+          this.emit({ type: "send", slot: message.slot, serverTick: this.tick, message: { type: "notice", text: "Spectators cannot send team radio." } }); break;
+        }
+        for (const slot of this.players.keys()) {
+          const recipient = view.sprite(slot - 1);
+          if ((recipient.flags & 1) && recipient.team === sender.team) this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "radio-message", slot: message.slot, nickname: player.nickname, category: message.category, direction: message.direction } });
+        }
+        break;
+      }
+      case "team-change":
+      case "appearance": {
+        try {
+          if (message.type === "team-change") validateTeam(message.team, this.mode);
+          else validateAppearance(message.appearance);
+        } catch { this.emit({ type: "reject", slot: message.slot, reason: "Invalid player change" }); break; }
+        if (!player.playerChanges.take(1, Number(now) / 1e6)) {
+          if (message.type === "team-change") this.emit({ type: "send", slot: message.slot, serverTick: this.tick, message: { type: "notice", text: "Please wait before changing teams again." } });
+          else this.emit({ type: "reject", slot: message.slot, reason: "Player change rate limit exceeded" });
+          break;
+        }
+        const status = this.command(message.type === "team-change"
+          ? { kind: "team", slot: message.slot, team: message.team }
+          : { kind: "appearance", slot: message.slot, appearance: message.appearance });
+        this.captureCommandEvents(); this.history.clear();
+        if (status === -4 && message.type === "team-change") this.emit({ type: "send", slot: message.slot, serverTick: this.tick, message: { type: "notice", text: "Team is full: choose a smaller team while team balancing is enabled." } });
+        else if (status < 0) this.emit({ type: "reject", slot: message.slot, reason: "Player change rejected by simulation" });
+        this.publishRoster();
+        if (this.paused) this.sendFullStates();
+        break;
+      }
+      case "chat": {
+        if (player.muted) break;
+        try { validateChat(message.channel, message.text); }
+        catch { this.emit({ type: "reject", slot: message.slot, reason: "Invalid chat" }); break; }
+        if (!player.chat.take(1, Number(now) / 1e6)) { this.emit({ type: "reject", slot: message.slot, reason: "Chat rate limit exceeded" }); break; }
+        const render = this.host.renderView();
+        if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+        const sender = render.sprite(message.slot - 1);
+        if (!(sender.flags & 1)) break;
+        const delivery = { type: "chat-message", channel: message.channel, slot: message.slot, nickname: player.nickname, text: message.text } as const;
+        for (const slot of this.players.keys()) {
+          const recipient = render.sprite(slot - 1);
+          // Original IsInSameTeam compares exact teams, including solo team 0 and spectators 5.
+          if ((recipient.flags & 1) && (message.channel === "public" || recipient.team === sender.team))
+            this.emit({ type: "send", slot, serverTick: this.tick, message: delivery });
+        }
+        break;
+      }
       case "input": {
+        if (this.paused) break;
         this.replayNow = Number(now) / 1e6;
         const rejected = player.inputs.offer(message.frames, this.tick, now, frame => this.admitFire(message.slot, player, frame));
         if (rejected.includes("rate")) this.emit({ type: "reject", slot: message.slot, reason: "Input rate limit exceeded" });
@@ -184,16 +291,18 @@ export class AuthoritativeMatch {
   }
 
   private joinTeam(): number {
-    if (!this.teamMode) return 0;
+    const count = teamCount(this.mode);
+    if (!count) return 0;
     const render = this.host.renderView();
     if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
-    let alpha = 0, bravo = 0;
+    const populations = new Uint8Array(count + 1);
     for (let index = 0; index < 32; index++) {
       const sprite = render.sprite(index);
-      if (sprite.team === 1) alpha++;
-      else if (sprite.team === 2) bravo++;
+      if ((sprite.flags & 1) && sprite.team >= 1 && sprite.team <= count) populations[sprite.team]!++;
     }
-    return alpha <= bravo ? 1 : 2;
+    let team = 1;
+    for (let candidate = 2; candidate <= count; candidate++) if (populations[candidate]! < populations[team]!) team = candidate;
+    return team;
   }
 
   private command(command: Parameters<SimHost["command"]>[1]): number {
@@ -229,7 +338,11 @@ export class AuthoritativeMatch {
   }
 
   step(nowMs = performance.now()): void {
+    if (this.paused) return;
     if (this.tick === 0xffffffff) throw new Error("Network tick space exhausted; restart match");
+    const phase = this.host.renderView();
+    if (typeof phase === "number") throw new Error(`sim_render_view failed: ${phase}`);
+    if (phase.globals.roundPhase === 2) this.advanceRound();
     if (!this.players.size) {
       this.tick = requireStatus(this.host.step(), "sim_step"); this.events();
       this.commands = []; this.records = [];
@@ -277,6 +390,46 @@ export class AuthoritativeMatch {
       }
     }
     if (this.tick % 30 === 0) this.retransmitEvents();
+  }
+
+  private advanceRound(map = this.mapRotation[(this.mapRotation.indexOf(this.map) + 1) % this.mapRotation.length]!): void {
+    this.flushRecords();
+    this.commitEvents(this.tick);
+    this.map = map;
+    requireStatus(this.host.loadMap(this.map), "sim_load_map(next round)");
+    const view = this.host.renderView();
+    if (typeof view === "number") throw new Error(`sim_render_view failed: ${view}`);
+    this.roundEpoch = view.globals.roundEpoch;
+    this.history.clear(); this.records = []; this.commands = []; this.pendingEvents.clear();
+    this.events();
+    this.emit({ type: "round", serverTick: this.tick, map: this.map, roundEpoch: this.roundEpoch });
+    const bytes = this.save(), hash = this.hash();
+    for (const [slot, player] of this.players) {
+      player.inputs.resync(this.tick);
+      player.events.clear(); player.lastEventAck = this.eventId; player.lastSentEvent = this.eventId;
+      player.syncTick = this.tick; player.nextStateTick = this.tick + 30;
+      player.lastInput.fill(0); player.changedAtMs = performance.now(); player.afkRejected = false;
+      this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "state", tick: this.tick, hash, lastConsumedInputSeq: player.inputs.lastConsumedSequence, bytes } });
+    }
+    this.publishRoster();
+  }
+
+  private publishRoster(): void {
+    const view = this.host.renderView();
+    if (typeof view === "number") throw new Error(`sim_render_view failed: ${view}`);
+    this.emit({ type: "roster", players: [...this.players.keys()].map(slot => ({ slot, team: view.sprite(slot - 1).team })) });
+  }
+
+  private sendFullStates(): void {
+    this.flushRecords();
+    this.commitEvents(this.tick);
+    // Paused commands must not replay when the same-tick fullstate already includes them.
+    this.commands = []; this.records = [];
+    const bytes = this.save(), hash = this.hash();
+    for (const [slot, player] of this.players) {
+      player.inputs.resync(this.tick); player.syncTick = this.tick; player.nextStateTick = this.tick + 30;
+      this.emit({ type: "send", slot, serverTick: this.tick, message: { type: "state", tick: this.tick, hash, lastConsumedInputSeq: player.inputs.lastConsumedSequence, bytes } });
+    }
   }
 
   private admitFire(slot: number, player: Player, frame: InputFrame): FireAdmission {
@@ -374,9 +527,9 @@ export class AuthoritativeMatch {
     this.records = [];
   }
 
-  private commitEvents(): void {
+  private commitEvents(throughTick = this.tick - REWIND_TICKS): void {
     for (const [tick, bytes] of this.pendingEvents) {
-      if (tick > this.tick - REWIND_TICKS) continue;
+      if (tick > throughTick) continue;
       this.pendingEvents.delete(tick);
       const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
       let batch: ReliableEvent[] = [];

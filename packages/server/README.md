@@ -57,6 +57,9 @@ Required JSON fields: `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal
 | `globalCreationsPerSecond` | `20` | Global resource-creation burst and refill per second |
 | `regions` | current listener as Local | Configured `{id,name,url}` entries with HTTPS origins |
 | `allowedOrigins` | localhost/127.0.0.1 HTTP port 5195 | Explicit CORS/WSS origin allowlist; no wildcard |
+| `operatorToken` | absent / operator login disabled | High-entropy 32–256 UTF-8 byte token; TLS only, never a nickname/password shortcut |
+| `banFile` | absent / memory only | Global operator-ban JSON path; parent directory must exist and be writable |
+| `voice` | direct/LAN ICE, no third-party endpoints | `{iceServers?,relayOnly?,turn?:{urls,secret,ttlSeconds?}}`; environment alternatives below |
 | `rules.botDifficulty` | native default `100` | Original 0–300 skill value |
 | `rules.world` | `original` | Native gameplay world; `fixture` is for controlled qualification |
 
@@ -75,7 +78,7 @@ See the [shared protocol reference](../protocol/README.md#matchmaking-http-refer
 - `GET /api/ping`: tiny no-store RTT probe.
 - `GET /api/regions`: actual configured regions.
 - `POST /api/quickplay {nickname}`: lowest-load available public match, or a new bot-capable DM rotation match. Returns `{matchId,wsUrl,map,mode,humans,bots}`. Connect with the existing binary hello using the returned single-use, expiring ticket URL.
-- `POST /api/lobbies {mode,map}`: returns `{code,hostToken,wsUrl}`. Keep the token secret; share `/?lobby=CODE`.
+- `POST /api/lobbies {mode,map,rules?,mapRotation?}`: returns `{code,hostToken,wsUrl}`. Seven original modes are supported. Keep the token secret; share `/?lobby=CODE`.
 - `GET /api/lobbies/:code`: public lobby state plus canonical lobby `wsUrl`, never the host token or a usable match-admission ticket. Use this WSS URL even when the HTTP API is reached through a development proxy.
 - Lobby WSS `/lobbies/CODE`: `lobby-join`, `lobby-update`, `lobby-ready`, `lobby-start`, `lobby-kick {id}`, `lobby-leave`; receives personalized `lobby-state {selfId,state}` or `lobby-error {reason}`.
 
@@ -83,11 +86,11 @@ Codes have eight random Crockford base32 characters (40 bits; no I/L/O/U); entry
 
 ## Population ownership
 
-Dynamic targets start full of original waypoint bots. A human join removes a bot through the simulation's original leave command before joining; a human departure rejoins an original rotating profile in a free slot. Every CTF join chooses the less populated team, keeping the full target balanced. Humans plus bots never exceed 32. Profile names, appearance, loadouts, scores and gameplay stay simulation-owned.
+Dynamic targets start full of original waypoint bots. A human join removes a bot through the simulation's original leave command before joining; a human departure rejoins an original rotating profile in a free slot. Every team-mode join/refill chooses the least populated team (TM has four; CTF/INF/HTF two), with original team order breaking ties. FFA modes use team zero. Humans plus bots never exceed 32. Profile names, appearance, loadouts, scores and gameplay stay simulation-owned.
 
 `createGameServer` remains the lower-level single-match API used by existing capture/security qualification. Its fixed `botCount` configuration is unchanged when `targetPlayers` is absent. Both APIs require TLS; there is no insecure WebSocket fallback.
 
-## Input relay reference (protocol v4)
+## Input relay reference (protocol v7)
 
 Admission sends `welcome`, then one full `state` at a completed step boundary; subsequent `ticks` messages start with that boundary's step. No ACK gates input relay or timing probes. Every two ticks the worker encodes one shared ordered record buffer and the listener adds each recipient's consumed-input sequence header. Human input rosters are self-contained per message; later steps compress unchanged controls. Bots never appear in the input roster.
 
@@ -96,6 +99,74 @@ All runtime membership and weapon commands are retained as exact JSON bytes and 
 Resync requests coalesce while a full state is pending. A request inside the 30-tick rate window is deferred rather than dropped, so a client with one request in flight always gets a response. Recovery required by a pre-sync historical correction bypasses that deferral.
 
 The DOM-free client runs both confirmed and prediction simulations with AI on. Confirmed follows records and verifies hashes; prediction holds remote humans and reloads only when newly confirmed intent differs. See [client network reference](../client/README.md) and [wire reference](../protocol/README.md). Historical G4 delta measurements remain in [the retained gate report](../../docs/gates/G4.md), not current-protocol qualification.
+
+## Gameplay rules and round lifecycle
+
+Imported map metadata must include `modes:GameMode[]`, derived from active native spawn points. The launcher rejects old content indexes rather than inferring objective support from filenames. Reimport content after updating the pipeline; realistic mode also needs `configs/weapons_realistic.ini` in the verified simulation pack.
+
+Friend creation and host updates accept shared `MatchRules` and `mapRotation`. Rules are validated before creating a worker or mutating a lobby. A rotation contains 1–32 distinct known bot-capable maps compatible with that mode, including the selected map. An omitted rotation defaults to compatible maps; `[map]` repeats the same map. Changes reset guest readiness. Product matchmaking forces original world/AI and retains the server RNG policy; clients cannot update rules after match admission. The default total population remains **12**.
+
+Native time/score limits produce match-end events and the real results/countdown phase. Once native `roundPhase` is ready, the server flushes old-map events and records, calls `loadMap(nextMap)` preserving connected players, and sends an ordered protocol-v6 welcome/fullstate boundary. Tick, reliable-event IDs and input sequence remain monotonic; replay/queued-input history is cleared. Browser rendering prepares asynchronously with generation guards; asset downloads never hold state/tick processing or pongs. Late match admission and started friend-lobby state describe the current round/map. No transition ticket, reconnect or artificial fast-forward is needed.
+
+Team and appearance requests derive their slot from the admitted connection and pass native eligibility checks. The original ChangeTeam path owns deaths/spawn/team shirts. Appearance uses bounded RGB/style fields; user shirt colors are retained but native team shirts take precedence. All these state-changing commands are relayed identically to confirmed and predicted replicas and invalidate server rewind history. Bullet time changes worker wall-clock cadence from 60 to 20 fixed simulation ticks per second while active, with clients using the confirmed native scale.
+
+### Team balancing and message controls
+
+`balanceTeams` is immutable and defaults false. Enable it in friend/practice rules for least-populated playing-team admission, rejection of worsening voluntary switches and automatic departure/spectator balancing, moving genuine bots before humans. Spectators do not count and FFA is unchanged. Native `ChangeTeam` preserves original objective drops and Survival waiting/deaths. Automatic departure balancing extends original admission-only enforcement; a trusted replacement leave waits for immediate refill to avoid unnecessary human moves.
+
+Balance denial and the normal player-change throttle send a nonfatal `notice`; malformed/unauthorized controls and aggregate abuse remain rejected. Accepted membership commands, including trusted replacement metadata, are retained verbatim for every replica.
+
+Public/team chat and taunts use wire7 presentation messages, not simulation events or commands. The worker derives identity from admission and exact current team from native state: team0 reaches solo peers, team5 spectators only. Separate chat buckets allow four immediately and refill one per second, checked before IPC and in the worker. Text rejects controls/invisibles and is limited to 1,024 UTF-8 bytes. A client cannot forge delivery or gain administrator authority through chat.
+
+### Native actions, live administration and votes
+
+Alt+1–4 requests smoke/tabac/takeoff/victory for the admitted player. Original native idle/animation, cigar/helmet and interruption rules apply; dead, spectator, moving/nonstanding requests are denied without mutation. `/kill` uses native suicide. ABI6 is unchanged because these commands use already-serialized state.
+
+Friend hosts receive match authority only through their validated host reservation. Operators authenticate with `/admin <token>`; configure `operatorToken` explicitly, for example with an independently generated `openssl rand -hex 32` value. No default operator credential exists. The browser masks credentials and excludes them from history, drafts, binds and saved settings. Login/logout changes typed permissions; it never opens a shell or PascalScript/RCON interpreter.
+
+`/matchmenu` or **Match controls** exposes permission-aware numbered controls. Typed commands support kick, `/ban <slot> <minutes> [reason]`, `/bans`, `/unban <id>`, `/servermute <slot>`, `/serverunmute <slot>`, `/setteam <slot> <team>`, `/kill <slot>`, compatible `/map`, `/nextmap`, `/restart`, `/pause` and `/unpause`. Protected host/operator targets cannot be moderated by a lesser role. Forced team/kill commands use native mechanics; pause freezes native/predicted ticks and resets clock/input debt on resume while console, heartbeats and vote deadlines continue.
+
+Hosts' bans are match-scoped and in memory; operators' bans cover this server process's matches and persist only when `banFile` is set. There is no cross-region ban replication. Stores hold at most 256 unexpired records each; duration is 1–43,200 minutes. Writes serialize, fsync and atomically rename mode-0600 files. Invalid/oversized stores fail startup; write errors do not pretend a ban succeeded. Public ban summaries contain opaque IDs, not addresses.
+
+**Address limitation:** bans and future-admission mute inheritance use the normalized source address (IPv6 /64 grouping). A shared NAT can therefore prevent other people at that address from rejoining. A slot-targeted action disconnects/mutes only that admitted target, not its already-connected neighbors. Forwarded headers remain untrusted; deploy directly with TLS.
+
+Map/kick voting requires at least three non-spectating humans admitted for ten seconds. The authority freezes admission-nonce membership; bots, late joiners and reused slots cannot add ballots. Kick targets stay in the denominator but cannot vote, and host/operator targets are protected. The initiator votes yes; passing requires at least two yes votes and `ceil(60% × electorate)`. Deadline is 20 seconds. The global 120-second cooldown is deliberately stronger than upstream's per-starter cooldown. F12=yes, F11=no. A passed kick creates an original-style 60-minute **match-only** address ban and disconnects the selected admission; map votes use the real compatible map/epoch transition.
+
+### Radio and voice deployment
+
+V opens the original numbered 3×3 radio menu. Requests contain only canonical choice codes; identity and exact native team come from the authority. Dead non-spectators may send; spectators and server-muted players may not. Solo team0 routes only to other solo players. Native complete-phrase recordings 151–159 play with a three-second radio cooldown. Local `/mute` filters radio/voice playback independently of authoritative `/servermute`.
+
+Voice is opt-in, disabled in browser preferences by default, and has no default talk binding in the pinned controls. Enable it and capture a **Hold-to-talk binding** under Settings → Taunts & console controls. Enabling/listening never requests microphone capture; pressing the talk key does. Release, typing, menus, blur, pause, disable, disconnect and teardown stop capture. Team/public selection controls **outgoing** audio; opted-in recipients can hear authorized public transmissions from other teams. Spectators cannot transmit.
+
+The server authenticates admission-nonce peers and directional channel/mute policy, then relays bounded audio-only SDP/ICE. Server-owned pair generations reject stale signaling after revoke/re-enable, even when admission IDs are unchanged. Directional mute/channel changes retain valid transports; ICE credential renewal updates configuration and restarts ICE without replacing DTLS/microphone state. Actual audio uses browser WebRTC, not gameplay WSS. Signaling has a separate 512-token burst/128-per-second listener bucket plus a 600-per-ten-second relay ceiling. This is peer audio, not a media-authoritative SFU: legitimate receivers enforce mute policy; colluding modified peers can communicate out of band regardless.
+
+HTTPS (or localhost) and browser microphone permission are required. Empty ICE configuration is useful on LAN, not a guarantee of Internet NAT traversal. Configure your own STUN/TURN; no remote endpoint or hosted relay is silently selected. A production TURN service must have working DNS, certificates/ports and bandwidth independently of the game listener. Without relay-only mode, peers may learn one another's network addresses. `relayOnly:true` requires TURN and trades relay bandwidth/cost for address privacy.
+
+Environment settings apply when JSON `voice` is absent:
+
+| Environment | Value |
+| --- | --- |
+| `SOLDAT_VOICE_ICE_SERVERS` | JSON array of `{urls:[\"stun:host:port\",\"turns:host:5349?transport=tcp\"],username?,credential?}`; use only URLs your service supports |
+| `SOLDAT_VOICE_RELAY_ONLY` | `true`/`false` or `1`/`0`; true without TURN fails configuration |
+| `SOLDAT_VOICE_TURN_URL` | Comma-separated operator TURN URLs |
+| `SOLDAT_VOICE_TURN_SECRET` | Coturn-compatible REST shared secret; never delivered to clients |
+| `SOLDAT_VOICE_TURN_TTL` | Ephemeral credential lifetime, 600–86,400 seconds; default 3,600 |
+
+The relay issues per-admission HMAC-SHA1 REST credentials and refreshes configuration before expiry. Static credentials may instead be supplied in `voice.iceServers`; they are necessarily visible to admitted browsers. No provisioned external TURN endpoint is included in this repository.
+
+
+### Gameplay smoke recipes
+
+Run with the rebuilt ABI6 WASM and current verified content, serially:
+
+```sh
+bun test packages/protocol/test
+node --test packages/server/src/bots.test.ts packages/server/src/clock.test.ts
+node --experimental-transform-types --test packages/server/scripts/gameplay.test.ts
+```
+
+For browser coverage, create a friend lobby in each mode with compatible maps, total12, and a short time limit. Join a second browser, request another allowed team and appearance, and confirm both peers see the same native result. Wait through the actual results/countdown; both sockets must remain connected on the next map, with unchanged identity/loadout/appearance and increasing hash matches, zero mismatches. Join a third browser after transition through the original friend code and verify the current map. Repeat a score-limited round and enable realistic/survival/advance/bonuses/bullet-time separately to observe actual native effects. These are recipes, not verification receipts.
+
 
 For a serial LAN measurement with three headless humans and five original bots:
 
@@ -119,4 +190,48 @@ bun test packages/protocol/test packages/protocol/src/transport
 bun run --cwd packages/server test:platform
 ```
 
-The last command checks the unchanged frozen WASM via the existing qualification helper, generates a private test certificate, and uses real HTTPS/WSS listeners on ephemeral ports. It covers quickplay fill/create/capacity and expiration, friend-lobby authority/readiness/start/late-join/leave, malformed/rate-limited requests, all 32 join/leave slots with DM/CTF bot refill, and three production `OnlineSession` headless Node clients against a real match worker. `NET_G4_WASM` and `NET_G4_CONTENT` override qualification input locations; they do not bypass the frozen-module check. No browser or Docker cleanup is involved.
+The last command checks the current pinned WASM, generates a private test certificate, and uses real HTTPS/WSS listeners on ephemeral ports. It covers matchmaking/lobby authority and lifecycle, all 32 slots across seven modes, bot refill, and production headless confirmed/prediction clients. `NET_G4_WASM` and `NET_G4_CONTENT` override input locations without bypassing the module pin; content defaults to `dist/content-next`.
+
+## Historical gameplay expansion verification (ABI5)
+
+Recorded WASM SHA-256: `242d95122688054332a8af4f1f82ee85fdbd0a8c5afe0e2ee3e0676ec42c86b7`, ABI/state `0x00010005`; content `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`. Content includes the original realistic weapon configuration and spawn-derived map modes. The counts below qualify that historical artifact, not ABI6.
+
+`node sim/build/check-gameplay.mjs` passed 22 real-WASM scenarios: seven-mode objectives/bots and save/replay; native PM/TM/Rambo/INF/HTF scoring; team/appearance validation; realistic health; restricted/full weapon lists; time/score endings and reset; bullet-time activation/recovery; Survival waiting/reset including replacement bots; Advance unlocks; and all five native timed bonuses.
+
+Protocol tests: 80 passed. Server unit tests: 28 passed. All server script tests: 87 passed, including real WSS round continuation with two players and a late third player, preserved identity/team/appearance and zero hash mismatches. Client tests: 78 passed. Content parser/pack tests: 25 passed. Protocol/server/client typechecks and client production build passed. Run the native script first, then `node --experimental-transform-types --test packages/server/scripts/*.test.ts` serially with other heavy qualification jobs stopped.
+
+Receipts are under `build-out/gameplay/`. These checks do not requalify historical full native-oracle/browser matrices, impaired-network acceptance, long soaks or VPS capacity.
+
+## Historical controls expansion verification — 2026-10-17
+
+Historical WASM SHA-256: `57eb13e9a988a43ac31f63aa5538bd00cda19ff79e86121ef0e837879c348057`; macOS native SHA-256: `39898e0b6b9ac7f23741ce73ea3e4ad77c843a355ef2ecbf9d2f71ed2b9861d8`. This ABI6/wire6 artifact predates native gestures and typed administration/communication. Content identity was `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`; these receipts do not qualify later artifacts.
+
+- Native/WASM build passed its 15 signed-packed-load compiler probes. `GAMEPLAY_OUT=build-out/controls/features.json node sim/build/check-gameplay.mjs` passed **32** real-WASM scenarios, including all-mode balancing, bot-first departures/replacement, Survival, immutable rules, state replay and Realistic bot-follow visibility.
+- Protocol tests: **86** passed. Server unit tests: **28** passed. All server script tests: **92** passed, including real WSS balance denial without disconnect/hash divergence, authenticated public/team/solo/spectator routing, forged delivery rejection, flood enforcement, native rounds and existing transport/lag-compensation hardening.
+- Client tests: **116** passed. Protocol/server/client typechecks and production client build passed. The production build retains the existing large Phaser-chunk warning.
+- Three private Chrome155 contexts verified a real 6/6 CTF roster, public/team taunts and opponent isolation, local mute/unmute, live binds/settings, balance denial, following/freecam, actual screenshot download and unbind/restore without reconnect/hash mismatch. The complete shell capture also passed.
+
+Evidence: `build-out/controls/features.json`, `browser.json`, and `shell/screens.json`; the client reference describes the visual evidence. These results are not full native-oracle equivalence, a Firefox/Safari matrix, adverse-network acceptance or a long VPS capacity soak.
+
+## Native actions and communications verification — 2026-10-18
+
+WASM SHA-256: `89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198`; macOS native SHA-256: `dadc9d87c527384cdc9cd87b7a9d841d9f863f094369c39806e538672032164f`. ABI/state/render/FX remain `0x00010006`; wire is **7**. Content remains `710dc47da59a5b779c6ac2efbe050d8226d34182b161fb0a21b5a2b5de87533e`.
+
+| Verification | Passed |
+| --- | ---: |
+| Signed packed-load compiler probes | 15 |
+| Real-WASM gameplay/gesture scenarios | 40 |
+| Protocol tests | 90 |
+| Server unit tests | 46 |
+| Real HTTPS/WSS server integration tests | 96 |
+| Isolated client tests | 150 |
+
+Protocol/server/client typechecks and the production client build passed. The existing large Phaser-chunk warning remains. Native scenarios include all gesture/cigar/helmet transitions, dead/bow/movement rejection, byte-exact replay, original suicide/objective release and trusted forced-team/Survival behavior. WSS integration covers shared-NAT voting, off-rotation compatible catalog maps, protected capabilities, targeted bans, pause/AFK/epoch ordering, radio routing, signaling budgets and existing bot/transport/lag-compensation controls.
+
+Permanent regressions also cover revoked same-admission voice generations, directional mute/channel changes retaining valid transports, idle TURN credential renewal, ICE restart without microphone destruction, credential secrecy, and once-per-death weapon selection. External TURN service operation, Firefox/Safari gameplay/media, impaired-network acceptance, full new native-oracle matrices and long production/VPS capacity are not qualified by these checks.
+
+Native receipt: `build-out/communications/features.json`. Existing `build-out/controls/` and `build-out/gameplay/` receipts remain historical and bind different binaries/wire versions.
+
+Three private Chrome155 clients passed the real friend-game surface with synthetic microphone devices: authenticated host/operator controls, original Alt+4 animation, exact imported 1.784-second radio recording playback to the teammate but not opponent, real getUserMedia → WebRTC RTP/decoded audio sink, team/public channel changes, local/server mute and microphone release, pause/unpause, secret-safe login/logout, F12 map voting to off-rotation Airpirates, post-round audio, native kill, targeted ban, rejected readmission, unban and fresh-admission audio. Zero page exceptions were recorded. Failed banned WSS admission currently shows the browser's generic connection-failed alert; the authenticated host has the explicit ban reason.
+
+The full existing shell harness also passed: 21 screenshots and eight single-canvas menu/game transitions, including quickplay, lobby kick/readmission denial and host/guest admission. Receipts: `build-out/communications/verification.json`, `browser.json`, `features.json`, `shell/screens.json`; visual evidence includes `admin-menu.png`, `vote-active.png`, `radio-menu.png` and `voice-settings.png`. The owned API was restarted on **7443**; the user-owned **5195** client was not restarted and serves the new verified WASM.

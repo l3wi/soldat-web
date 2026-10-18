@@ -38,6 +38,8 @@ describe("production hosting contract", () => {
     assert.equal(mimeType("audio.opus"), "audio/ogg");
     assert.equal(mimeType("map.spk"), "application/octet-stream");
     assert.equal(mimeType("image.webp"), "image/webp");
+    assert.equal(mimeType("sitemap.xml"), "application/xml; charset=utf-8");
+    assert.equal(mimeType("robots.txt"), "text/plain; charset=utf-8");
   });
 
   it("rejects encoded traversal, NUL and backslashes before file access", () => {
@@ -63,10 +65,16 @@ describe("production hosting contract", () => {
       await writeFile(join(source, "objects/master.wav"), "master");
       await writeFile(join(source, "objects/audio.opus"), "opus");
       await copyProductionContent(source, destination);
-      await precompressTree(destination);
+      const sitemap = '<?xml version="1.0"?><urlset></urlset>';
+      const robots = "User-agent: *\nDisallow: /\n";
+      await writeFile(join(temporary, "client/sitemap.xml"), sitemap);
+      await writeFile(join(temporary, "client/robots.txt"), robots);
+      await precompressTree(join(temporary, "client"));
       assert.deepEqual(await readFile(join(destination, "sim/manifest.json")), manifest);
       assert.deepEqual(brotliDecompressSync(await readFile(join(destination, "sim/packs/Arena.spk.br"))), pack);
       assert.deepEqual(gunzipSync(await readFile(join(destination, "sim/manifest.json.gz"))), manifest);
+      assert.equal(brotliDecompressSync(await readFile(join(temporary, "client/sitemap.xml.br"))).toString(), sitemap);
+      assert.equal(gunzipSync(await readFile(join(temporary, "client/robots.txt.gz"))).toString(), robots);
       await assert.rejects(stat(join(destination, "sim/maps")), { code: "ENOENT" });
       await assert.rejects(stat(join(destination, "objects/master.wav")), { code: "ENOENT" });
       await assert.rejects(stat(join(source, "sim/manifest.json.br")), { code: "ENOENT" });

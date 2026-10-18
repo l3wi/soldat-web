@@ -1,20 +1,24 @@
-export const RENDER_ABI_VERSION = 0x00010004;
+export const RENDER_ABI_VERSION = 0x00010006;
 export const RENDER_LAYOUT = {
-  headerBytes: 32, spriteBytes: 656, slots: 32, skeletonPoints: 24,
+  headerBytes: 32, spriteBytes: 696, slots: 32, skeletonPoints: 24,
   header: { version: 0, tick: 4, spriteCount: 8, slots: 12, spriteStride: 16, bulletsOffset: 20, thingsOffset: 24, totalBytes: 28 },
   sprite: { slot: 0, flags: 4, direction: 8, legsId: 12, legsFrame: 16, bodyId: 20, bodyFrame: 24, aimX: 28, aimY: 32, weapon: 36, posX: 40, posY: 44, health: 48, fuel: 52, previousSkeleton: 56, currentSkeleton: 248, team: 440, inventory: 444,
     fired: 448, clipTexture: 452, clipInTime: 456, clipOutTime: 460, secondaryWeapon: 464, tertiaryWeapon: 468, vest: 472, jetpack: 476,
     alpha: 480, wearHelmet: 484, hasCigar: 488, chain: 492, headCap: 496, hairStyle: 500, shirtColor: 504, pantsColor: 508, skinColor: 512, hairColor: 516,
     ceaseFireCounter: 520, visible: 524, style: 528, demoPlayer: 532, weaponAmmo: 536, weaponReloadTime: 540, weaponFireInterval: 544, fireIntervalCount: 548,
     kills: 552, deaths: 556, ping: 560, playerFlags: 564, controlMethod: 568, playerNameLength: 572, playerName: 576, jetColor: 624, primaryIndex: 628, secondaryIndex: 632,
-    weaponBink: 636, controlBits: 640, mouseDist: 644, currentWaypoint: 648, nextWaypoint: 652 },
+    weaponBink: 636, controlBits: 640, mouseDist: 644, currentWaypoint: 648, nextWaypoint: 652,
+    availableWeaponsMask: 656, limboAvailable: 660, respawnCounter: 664, bonusStyle: 668, bonusTime: 672, multikills: 676, aimDistCoef: 680, position: 684, visibleMask: 688, cursorVisibilityMask: 692 },
   playerNameBytes: 48,
   sectionHeaderBytes: 8, bulletBytes: 96, thingBytes: 324, maxBullets: 254, maxThings: 90,
-  bulletsOffset: 21024, thingsOffset: 45416, globalsOffset: 74584, globalsBytes: 44, totalBytes: 74628,
+  bulletsOffset: 22304, thingsOffset: 46696, globalsOffset: 75864, globalsBytes: 112, totalBytes: 75976,
   bullet: { owner: 24, ownerWeapon: 28, velocityX: 32, velocityY: 36, timeout: 40, imageStyle: 44,
     velocityPrevX: 48, velocityPrevY: 52, hitMultiply: 56, hitMultiplyPrev: 60, timeoutPrev: 64, initialX: 68, initialY: 72, hitBody: 76, pingAdd: 80, pingAddStart: 84, active: 88, presentationFlags: 92 },
   thing: { owner: 24, ammo: 28, holdingSprite: 32, flags: 36, pointCount: 40, skeleton: 48, timeout: 304, interest: 308, color: 312, presentationFlags: 316, creationFacing: 320 },
-  globals: { teamScores: 0, startHealth: 24, mapStartJet: 28, gameMode: 32, killLimit: 36, ceaseFireTime: 40 },
+  globals: { teamScores: 0, startHealth: 24, mapStartJet: 28, gameMode: 32, killLimit: 36, ceaseFireTime: 40,
+    timeLimitTicks: 44, timeLeftTicks: 48, mapChangeCounter: 52, roundPhase: 56, roundEpoch: 60,
+    realistic: 64, survival: 68, advance: 72, bulletTime: 76, tickScale: 80, sniperLine: 84, friendlyFire: 88,
+    enabledWeaponsMask: 92, survivalEndRound: 96, advanceAmount: 100, bonusFrequency: 104, bulletTimeTimer: 108 },
   section: { count: 0, stride: 4 },
   movingEntity: { slot: 0, style: 4, posX: 8, posY: 12, oldPosX: 16, oldPosY: 20, owner: 24 },
 } as const;
@@ -38,6 +42,8 @@ export interface RenderSprite {
   weaponAmmo: number; weaponReloadTime: number; weaponFireInterval: number; fireIntervalCount: number;
   kills: number; deaths: number; ping: number; playerFlags: number; controlMethod: number; playerName: string;
   weaponBink: number; controlBits: number; mouseDist: number; currentWaypoint: number; nextWaypoint: number;
+  availableWeaponsMask: number; limboAvailable: boolean; respawnCounter: number;
+  bonusStyle: number; bonusTime: number; multikills: number; aimDistCoef: number; position: number; visibleMask: number; cursorVisibilityMask: number;
   previousSkeleton: Float32Array; currentSkeleton: Float32Array;
 }
 export interface RenderMovingEntity {
@@ -61,6 +67,12 @@ export interface RenderGlobals {
   /** Borrowed original TeamScore[0..5], not a sorted scoreboard. */
   teamScores: Int32Array;
   startHealth: number; mapStartJet: number; gameMode: number; killLimit: number; ceaseFireTime: number;
+  timeLimitTicks: number; timeLeftTicks: number; mapChangeCounter: number;
+  /** 0 playing, 1 native results countdown, 2 awaiting explicit host map epoch. */
+  roundPhase: number; roundEpoch: number;
+  realistic: boolean; survival: boolean; advance: boolean; bulletTime: boolean; tickScale: number;
+  sniperLine: boolean; friendlyFire: boolean; enabledWeaponsMask: number; survivalEndRound: boolean;
+  advanceAmount: number; bonusFrequency: number; bulletTimeTimer: number;
 }
 export interface RenderView {
   version: number; tick: number; spriteCount: number; slots: number;
@@ -122,6 +134,23 @@ export function readRenderView(memory: WebAssembly.Memory, ptr: number): RenderV
       get gameMode() { return globals.getInt32(g.gameMode, true); },
       get killLimit() { return globals.getInt32(g.killLimit, true); },
       get ceaseFireTime() { return globals.getInt32(g.ceaseFireTime, true); },
+      get timeLimitTicks() { return globals.getInt32(g.timeLimitTicks, true); },
+      get timeLeftTicks() { return globals.getInt32(g.timeLeftTicks, true); },
+      get mapChangeCounter() { return globals.getInt32(g.mapChangeCounter, true); },
+      get roundPhase() { return globals.getInt32(g.roundPhase, true); },
+      get roundEpoch() { return globals.getUint32(g.roundEpoch, true); },
+      get realistic() { return globals.getUint32(g.realistic, true) !== 0; },
+      get survival() { return globals.getUint32(g.survival, true) !== 0; },
+      get advance() { return globals.getUint32(g.advance, true) !== 0; },
+      get bulletTime() { return globals.getUint32(g.bulletTime, true) !== 0; },
+      get tickScale() { return globals.getFloat32(g.tickScale, true); },
+      get sniperLine() { return globals.getUint32(g.sniperLine, true) !== 0; },
+      get friendlyFire() { return globals.getUint32(g.friendlyFire, true) !== 0; },
+      get enabledWeaponsMask() { return globals.getUint32(g.enabledWeaponsMask, true); },
+      get survivalEndRound() { return globals.getUint32(g.survivalEndRound, true) !== 0; },
+      get advanceAmount() { return globals.getInt32(g.advanceAmount, true); },
+      get bonusFrequency() { return globals.getInt32(g.bonusFrequency, true); },
+      get bulletTimeTimer() { return globals.getInt32(g.bulletTimeTimer, true); },
     },
     bullet(index: number) {
       const view = new DataView(memory.buffer, ptr + bulletsOffset + 8 + index * RENDER_LAYOUT.bulletBytes, RENDER_LAYOUT.bulletBytes);
@@ -181,6 +210,11 @@ export function readRenderView(memory: WebAssembly.Memory, ptr: number): RenderV
         weaponBink: view.getInt32(s.weaponBink,true), controlBits: view.getUint32(s.controlBits,true),
         mouseDist: view.getInt32(s.mouseDist,true), currentWaypoint: view.getInt32(s.currentWaypoint,true),
         nextWaypoint: view.getInt32(s.nextWaypoint,true),
+        availableWeaponsMask: view.getUint32(s.availableWeaponsMask,true), limboAvailable: view.getUint32(s.limboAvailable,true) !== 0,
+        respawnCounter: view.getInt32(s.respawnCounter,true), bonusStyle: view.getUint32(s.bonusStyle,true),
+        bonusTime: view.getInt32(s.bonusTime,true), multikills: view.getUint32(s.multikills,true),
+        aimDistCoef: view.getFloat32(s.aimDistCoef,true), position: view.getInt32(s.position,true), visibleMask: view.getUint32(s.visibleMask,true),
+        cursorVisibilityMask: view.getUint32(s.cursorVisibilityMask,true),
         previousSkeleton: new Float32Array(memory.buffer, base + s.previousSkeleton, RENDER_LAYOUT.skeletonPoints * 2),
         currentSkeleton: new Float32Array(memory.buffer, base + s.currentSkeleton, RENDER_LAYOUT.skeletonPoints * 2),
       };

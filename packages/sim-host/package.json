@@ -3,6 +3,9 @@
   "private": true,
   "type": "module",
   "exports": "./src/index.ts",
+  "dependencies": {
+    "@soldat-web/protocol": "workspace:*"
+  },
   "scripts": {
     "spike:node": "node src/node.ts",
     "spike:serve": "bun src/serve.ts",

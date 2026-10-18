@@ -12,7 +12,7 @@ import { SIM_ABI_VERSION, type SimManifest } from "@soldat-web/sim-host";
 import { createGameServer, type GameServer } from "../src/server.ts";
 import type { MatchConfiguration, WorkerResponse } from "../src/worker-messages.ts";
 
-export const FROZEN_WASM_SHA256 = "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1";
+export const FROZEN_WASM_SHA256 = "89e5d4b4afed8f68a2fc3fa3348f5ba4574c1ddc4094b23eae8bfcf08fcbc198";
 export const exec = promisify(execFile);
 export const delay = (milliseconds: number) => new Promise<void>(resolve => setTimeout(resolve, milliseconds));
 export const json = (value: unknown) => JSON.stringify(value, (_key, item) => typeof item === "bigint" ? item.toString() : item);
@@ -44,7 +44,7 @@ export interface QualificationServer extends QualificationConfig {
 export async function qualificationConfig(out: string): Promise<QualificationConfig> {
   await mkdir(out, { recursive: true });
   const wasmPath = resolve(process.env.NET_G4_WASM ?? fileURLToPath(new URL("../../../build-out/sim/sim.wasm", import.meta.url)));
-  const contentRoot = resolve(process.env.NET_G4_CONTENT ?? fileURLToPath(new URL("../../../dist/content", import.meta.url)));
+  const contentRoot = resolve(process.env.NET_G4_CONTENT ?? fileURLToPath(new URL("../../../dist/content-next", import.meta.url)));
   const wasm = new Uint8Array(await readFile(wasmPath));
   const hash = createHash("sha256").update(wasm).digest("hex");
   if (hash !== FROZEN_WASM_SHA256) throw new Error(`Frozen WASM mismatch: ${hash}`);
@@ -96,7 +96,10 @@ export class RawPeer {
     });
   }
   async connect(hash: string, nickname = "Security", weapon = 4): Promise<Extract<Message, { type: "welcome" }>> {
-    await once(this.socket, "open");
+    // Peers are often constructed together, then admitted sequentially. TLS may
+    // already have completed while an earlier peer awaited its welcome.
+    if (this.socket.readyState === WebSocket.CONNECTING) await once(this.socket, "open", { signal: AbortSignal.timeout(5000) });
+    if (this.socket.readyState !== WebSocket.OPEN) throw this.error ?? new Error(`WSS unavailable before hello (${this.socket.readyState})`);
     this.send({ type: "hello", protocolVersion: PROTOCOL_VERSION, contentSetHash: Buffer.from(hash, "hex"), simAbiVersion: SIM_ABI_VERSION, nickname, weapon, secondaryWeapon: 0 });
     return this.waitFor((message): message is Extract<Message, { type: "welcome" }> => message.type === "welcome");
   }

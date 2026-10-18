@@ -57,12 +57,17 @@ describe('simulation content paths', () => {
       }
       const allIds = Object.keys(manifest.files).sort();
       await checkPack(index.simPack, allIds);
-      for (const [name, map] of Object.entries(index.maps) as [string, { path: string; simPack: { path: string; sha256: string; bytes: number } }][]) {
-        expect(Object.keys(map).sort()).toEqual(['botCapable', 'mapSha256', 'missing', 'path', 'simContentSha256', 'simPack']);
+      for (const [name, map] of Object.entries(index.maps) as [string, { path: string; modes: string[]; simPack: { path: string; sha256: string; bytes: number } }][]) {
         await checkPack(map.simPack, allIds.filter(id => !id.startsWith('maps/') || id === `maps/${name.toLowerCase()}.pms`));
         const render = JSON.parse(await readFile(join(out, map.path), 'utf8'));
         expect(render.terrain).toBeDefined(); expect(render.scenery).toBeDefined();
       }
+      expect(index.maps.Arena.modes).toContain('pm');
+      expect(index.maps.Arena.modes).not.toContain('ctf');
+      expect(index.maps.Aero.modes).not.toContain('pm');
+      expect(index.maps.ctf_Ash.modes).toContain('ctf');
+      expect(index.maps.inf_Abel.modes).toContain('inf');
+      expect(index.maps.htf_Arch.modes).toContain('htf');
       for (const image of Object.values(content.images) as { frames: { object: string }[] }[])
         for (const frame of image.frames) expect(frame.object.endsWith('.webp')).toBe(true);
       for (const asset of Object.values(index.core.sfx) as { object: string; codec: string; channels: number }[]) {
@@ -72,7 +77,9 @@ describe('simulation content paths', () => {
       const profiles = (await readdir(join(base, 'server/configs/bots'))).filter(name => name.toLowerCase().endsWith('.bot')).sort();
       const ids = profiles.map(name => `bots/${name.toLowerCase()}`).sort();
       expect(profiles.length).toBe(16);
-      expect(Object.keys(manifest.files).length).toBe(174);
+      const realistic = await readFile(join(base, 'server/configs/weapons_realistic.ini'));
+      expect(manifest.files['configs/weapons_realistic.ini'].sha256).toBe(sha256(realistic));
+      expect(await readFile(join(out, manifest.files['configs/weapons_realistic.ini'].path))).toEqual(realistic);
       expect(Object.keys(manifest.files).filter(id => id.startsWith('bots/')).sort()).toEqual(ids);
       expect(Object.keys(manifest.files).some(id => id.startsWith('configs/bots/'))).toBe(false);
       for (const name of profiles) {

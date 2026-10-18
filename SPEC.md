@@ -1,6 +1,6 @@
 # soldat-web — Specification
 
-Status: draft v1, 2026-10-15. Codename only; see §9.2 for public naming.
+Status: scope updated 2026-10-18 for seven-mode gameplay, balancing, console/taunts, spectator controls, native actions, moderation/communications and the browser menu. This is the product contract, not a completed-port claim. See [current porting status](docs/porting-status.md) for missing capabilities and qualification gaps; historical gate results qualify their recorded artifacts only.
 Evidence: `docs/research/*.md` (six research reports; each claim there carries a source-line or URL citation). The originating chat is `[raw planning conversation omitted]`.
 
 ## 0. Decision log
@@ -9,10 +9,10 @@ Evidence: `docs/research/*.md` (six research reports; each claim there carries a
 |---|---|---|
 | D1 | Simulation core = **original OpenSoldat Pascal mechanics, extracted and compiled to WebAssembly**, hosted from TypeScript in both browser and server. No hand-port to TS. | User, after prior-art findings |
 | D2 | Fidelity baseline = **OpenSoldat 1.8 source as-is**, pinned to `opensoldat@bf43a43bdd7a069e02c906768807f66e621b2888`. Classic 1.7.1.1 is informational only. | User |
-| D3 | **Strict server authority**: clients send inputs only; server owns movement, projectiles, hits, ammo, health, pickups, score. Clients predict locally. | User |
-| D4 | Launch scope = **DM + CTF, all stock weapons, original waypoint bots**, vanilla rules, humans and bots. | User |
+| D3 | **Strict server authority**: clients submit inputs and bounded weapon/team/appearance intent; the server owns movement, projectiles, hits, ammo, health, pickups, scoring and round transitions. Clients predict locally. | User |
+| D4 | Gameplay scope = **DM, PM, TM, CTF, Rambo, INF and HTF**, stock weapons/waypoint bots, rounds/rotations, alternate rules, bonuses, team changes/balancing and appearance. Includes console/binds/taunts, spectator controls, native gestures, authenticated live moderation, map/kick voting, native team radio and opt-in push-to-talk voice. Default total population remains **12**. | User, expanded 2026-10-17 |
 | D5 | Renderer = **Phaser 4.2.1 + custom Soldat map render node**, conditional on spike gate G0.4; fallback PixiJS v8 with the same shader. | Default (chat preference + RenderingPhaser) |
-| D6 | Transport = **WSS first** (binary, versioned); **WebTransport datagrams** evaluated before any WebRTC work. Custom thin protocol, not Colyseus (sim state is an opaque WASM blob that Colyseus Schema cannot own). | Default (NetcodeTransport) |
+| D6 | Gameplay transport = **WSS first** (binary, versioned); evaluate WebTransport before gameplay WebRTC. Voice separately uses opt-in WebRTC audio with authenticated WSS signaling and operator-configured ICE/TURN. No gameplay authority moves to peers. | Default (NetcodeTransport), voice expanded by user |
 | D7 | Server runtime **Node 24 LTS**; one WASM instance per match, one match per `worker_thread`. Bun for tooling/build only. | Default |
 | D8 | Content = **opensoldat/base pinned at `5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`** (CC BY 4.0), curated and hash-manifested. No files from the classic 1.7.1.1 installer are shipped. | Default (LicensingProvenance) |
 | D9 | Platforms: desktop, keyboard + mouse; current and previous major of Chrome/Edge, Firefox, Safari ≥ 26.4. Mobile/touch out of scope. | Default |
@@ -26,11 +26,11 @@ A browser-native, online multiplayer game that **plays identically to OpenSoldat
 
 ### 1.1 Non-goals (launch)
 
-- Network compatibility with existing Soldat/OpenSoldat servers or clients.
-- Game modes other than DM and CTF (PM, TM, Rambo, INF, HTF), realistic/survival/bonus modes, bullet time.
+- Native gameplay/lobby protocol compatibility with existing Soldat/OpenSoldat servers or clients.
+- Demo recording/playback and the original TCP RCON administration service. Browser administration uses authenticated typed WSS requests, never arbitrary OS commands.
 - PascalScript server scripts, Kraken anti-cheat, custom HUD (`.sif`/`.sint`) layouts, pre-1.7.1 weapon mods, pre-v11 `.pms`/`.pmp` maps.
 - In-game music (OpenSoldat 1.8 does not reference the three tracker modules).
-- Accounts, rankings, persistence (no PostgreSQL at launch), public user map hosting.
+- Accounts, rankings and progression persistence (no PostgreSQL at launch), public user map hosting. Optional operator address-ban persistence is local JSON.
 - Mobile/touch controls, WebGPU.
 
 ## 2. Assumptions register
@@ -88,7 +88,7 @@ flowchart LR
     SIMC --> PH
   end
   subgraph Server[Node 24 match worker]
-    NETS[net server WSS/WT] --> AUTH[authoritative loop 60 Hz]
+    NETS[net server WSS<br/>WT evaluation deferred] --> AUTH[authoritative loop 60 Hz]
     AUTH --> SIMS[sim.wasm instance<br/>AI enabled]
   end
   BUNDLE --> PH
@@ -105,7 +105,7 @@ flowchart LR
 
 **Platform shims.** PhysFS replaced by an in-memory VFS populated by the host (`sim_vfs_put`). No C objects, FreeType, SDL or OpenAL in the sim. [INFERENCE: this may remove the need for humanova's Clang/linker patch; verify in G0.2.]
 
-**ABI (C calling convention, numeric args, linear-memory buffers).** Initial contract; refine in Phase 1, version every layout.
+**ABI (C calling convention, numeric args, linear-memory buffers).** The table below is the initial architectural contract, not the current binary layout. The implemented ABI/state/render/FX version is `0x00010006`; use [the ABI reference](docs/formats/sim-abi.md) and `packages/sim-host/src/sim.ts` for exact exports and schemas.
 
 | Export | Purpose |
 |---|---|
@@ -143,7 +143,7 @@ flowchart LR
 
 ### 4.3 Client (`packages/client`)
 
-- Vite + React 19 shell for menus, server list, settings, key binding, credits/licenses. React never touches per-frame state.
+- Vite + React 19 browser shell: loading/nickname, quick play with region probing and cancellable countdown, friend-lobby create/join/readiness/host controls and invite links, compatible map selection, seven-mode bot practice, categorized settings, appearance, credits/licenses and in-game pause navigation. React never touches per-frame state. This is a browser adaptation, not the native launcher or a filterable public server-list UI; the latter remains a scope gap (R-SRV-1).
 - Phaser 4.2.1 scene owns the canvas, input sampling, audio (Web Audio via Phaser Sound) and draw.
 - `SoldatMap` render node: vertex `(x,y,u,v,RGBA8)` 20 bytes, static buffers, vertex shader `color = vec4(rgb*a, a)`, fragment `texture(PMA) * color`, blend `ONE, ONE_MINUS_SRC_ALPHA`, terrain `REPEAT` incl. NPOT (WebGL2 native or repeat-aware shader), original polygon order within layer, consecutive same-texture runs batched.
 - Draw order exactly `GameRendering.pas:1004-1086`: gradient (world-anchored) → background edges → background polys → scenery L0 → bullets → soldiers → things → sparks → scenery L1 → thing polys → foreground edges → foreground polys → scenery L2 → HUD.
@@ -155,14 +155,17 @@ flowchart LR
 
 ### 4.4 Server and netcode (`packages/server`, `packages/protocol`)
 
-- Match worker: monotonic accumulator, fixed 1/60 s steps, max 4 catch-up ticks per wake, overload recorded; never variable dt.
+- Match worker: monotonic accumulator, fixed native steps at 60 Hz normally and 20 Hz during original bullet time; max 4 catch-up ticks per wake, overload recorded; never variable simulation dt.
 - Messages: explicit versioned little-endian binary codec. Asset delivery via CDN, never over the game socket.
 - Client→server: input frame every tick `{seq, tick, input}` + previous 2 frames (redundancy). Server buffers per player and accepts inputs up to 8 ticks (133 ms) ahead of its current tick — early inputs are only queued, consumed at their tick, and buy no simulation time; the client targets a small positive buffer (adaptive jitter margin ≤ 6 ticks, leaving 2 for clock error). Server repeats last input on gap and rejects stale one-shot actions.
-- Server→client (protocol v4, input relay; user decision 2026-10-16, replacing v3 full-state deltas that measured 0.5 MB/s per client at 8 players and 2 MB/s at 32): the server streams its **confirmed timeline** as ordered records, flushed every 2 ticks (30 Hz):
+- Server→client (protocol v7, retaining v4 input relay, v5 gameplay/round bootstrap and v6 chat/notices, adding typed gestures, moderation, votes, radio and voice signaling): the server streams its **confirmed timeline** as ordered records, flushed every 2 ticks (30 Hz normally, 10 Hz during bullet time). Historical v3 full-state deltas measured 0.5 MB/s per client at 8 players and 2 MB/s at 32:
   - `step {tick, commands[], inputs[]}` — membership/weapon `sim_command` JSON bytes the server applied before stepping `tick`, then the consumed 12-byte input of every **human** slot. Bots are never on the wire: every client instance runs original AI from the same state (verified bit-identical vs the AI-on server for 10,000 ticks on ctf_Ash 8 bots, Arena 8, ctf_Laos 31). Within one message the first `step` carries every human input; later steps carry only inputs that changed.
   - `correct {tick, slot, input}` — a lag-compensation rewind replaced one historical input; clients roll back to `tick` and replay.
   - `hash {tick, hash}` — `sim_hash_state` of the server's current boundary at that point of the stream, every 30 ticks and after every `correct`. Mismatch ⇒ full resync.
-  - Per-recipient header: `lastConsumedInputSeq`. Join/resync send one full `sim_save_state` (`state {tick, hash, lastConsumedInputSeq, bytes}`), then the record stream from that tick; a `correct` older than a recipient's sync tick is replaced by a fresh full state for that recipient. No baselines, deltas or snapshot ACKs. Reliable events (kills, captures, pickups, chat, score) unchanged: IDs, exactly-once at the application layer.
+  - Per-recipient header: `lastConsumedInputSeq`. Join/resync send one full `sim_save_state` (`state {tick, hash, lastConsumedInputSeq, bytes}`), then the record stream from that tick; a `correct` older than a recipient's sync tick is replaced by a fresh full state for that recipient. No baselines, deltas or snapshot ACKs. Reliable gameplay events (kills, captures, pickups, score) use IDs and exactly-once application delivery. Chat and nonfatal notices are separate reliable presentation messages.
+- Round boundary: native time/score limits enter results/countdown. At readiness, the server commits old-map events, loads the next compatible map without removing players and sends `welcome {roundEpoch,...}` then a full state. Ticks, event IDs and input sequences stay monotonic; old-map rewind/prediction history is discarded. Render assets prepare independently while authoritative records and timing probes continue. Late joiners bootstrap the current map/epoch.
+- Optional `balanceTeams` is immutable, default false: least-populated playing-team admission, rejection of worsening switches, and bot-first balancing after departure/spectating. Spectators are excluded and FFA is unchanged. Every move uses original native `ChangeTeam` and is reproduced by all replicas; automatic departure balancing is an explicit extension to original admission-only policy.
+- Public/team chat, taunts and numbered radio derive identity from admission and teams from native state; presentation does not enter simulation hashing. Only validated typed gestures, self-kill and authenticated moderator actions reach native commands. Map/kick votes run on the authority with frozen admitted-human electorates. Opt-in voice media is separate WebRTC audio; the server authorizes signaling, channel/mute policy and admission-scoped peer identities.
 - Client confirmed instance: AI on, steps exactly the record stream (commands, then human inputs, then `sim_step`); keeps a state anchor every 8 confirmed ticks for rollback (save ≈ 1.6 ms, step ≈ 0.2 ms, so anchors are sparse and replays are cheap) and verifies each `hash`.
 - Prediction instance: AI on (bots predicted by original AI), remote humans held at their last confirmed input; when newly confirmed ticks contain inputs/commands/corrections different from what prediction stepped, `sim_load_state(confirmed)` and replay unacknowledged local inputs with `REPLAY`; otherwise no reload. Ring of 128 frames; overflow ⇒ full resync.
 - Remote soldiers render from interpolated confirmed-instance poses (start 50 ms, adapt 33–100 ms); local soldier renders from prediction; corrections smoothed visually only.
@@ -170,7 +173,7 @@ flowchart LR
 - Lag compensation for projectiles: on an admissible delayed fire command, derive muzzle/aim/cooldown from historical shooter state and step the projectile through historical target states to now; history 500 ms, catch-up cap 200 ms. Grenades/rockets/melee get explicit per-style policy. The cap limits compensation, not admission: movement inputs are accepted regardless of the client's view age, and fire/grenade commands whose view is older than the cap execute at present time without rewind (counted as a metric), never dropped.
 - Client prediction lead is adaptive (smoothed one-way delay + jitter margin + 1–2 ticks, bounded by the 128-frame ring), not a fixed cap.
 - Validation: finite/range checks, input rate cap, sequence/replay rejection; client never sends position, velocity, hits or damage.
-- Transport interface: two channels `reliableControl` and `latestState`. WSS implements both on one socket. In v4 the record stream is ordered and reliable on WSS; a future WebTransport adapter sends it as datagrams that each repeat the unacknowledged tick range (records are tens to hundreds of bytes, so one datagram holds several ticks). Transport chosen once at admission; no mid-match switching.
+- Transport interface: two channels `reliableControl` and `latestState`. WSS implements both on one socket. The v7 record stream is ordered and reliable on WSS; a future datagram adapter must retain ordered recovery rather than drop tick records. Transport is chosen once at admission; no mid-match switching. WebTransport and gameplay WebRTC are not implemented transports; voice WebRTC is separate.
 - Matchmaking and lobbies (user decision 2026-10-16): a server process runs a registry of matches (one worker + one WASM instance each). HTTPS API `/api/ping`, `/api/regions`, `/api/quickplay`, `/api/lobbies`, `/api/lobbies/:code`; lobby updates over WSS (same binary protocol version as matches). Quick play: client pings each configured region, auto-selects the lowest after a 3 s cancellable countdown, joins the least-loaded public match with room or creates one. Friend lobbies: 8-character Crockford base32 code / `/?lobby=CODE` link (case-insensitive, 40 bits), host sets mode then map, guests ready, host starts and may kick guests; late join allowed. Every match keeps a target player total filled with original bots: a joining human replaces a bot, a leaving human is replaced by one. Multi-region is a stretch goal (config-driven region list; dev ships one Local region).
 
 ### 4.5 Bots
@@ -180,13 +183,13 @@ Original `AI.pas` runs inside every sim instance (`AI_ENABLED`) — server, clie
 ## 5. Functional requirements
 
 ### 5.1 Simulation
-- **R-SIM-1** 60 Hz fixed tick; positions/forces in original tick units; bullet time disabled.
+- **R-SIM-1** 60 Hz fixed tick normally, with original tick-unit physics; optional `bulletTime` (default false) retains native activation/timer and publishes the slower host tick scale (20 Hz), rather than using variable simulation dt.
 - **R-SIM-2** All movement states: run, air control, jump/sidejump (frame-gated), backflip, roll, crouch, prone, get-up, jets with `floor(119·StartJet/100)` capacity and grounded/airborne refill.
 - **R-SIM-3** All 26 polytypes with source semantics, including background transitions, team/flag filters, bouncy (raw normal magnitude), deadly/hurts/lava/regenerate/explodes.
 - **R-SIM-4** All 23 stock weapon definitions and 14 bullet styles, INI overrides over compiled defaults, grenade charge/release frames 15–36, cluster fragments, ricochet, arrows, flamer, LAW posture gates, melee.
 - **R-SIM-5** Things: flags, kits, dropped weapons, parachute, stationary gun; pickup rules; flag throw/return (1500 ticks) /capture.
 - **R-SIM-6** Death, ragdoll (skeleton Verlet), respawn via spawnpoints.
-- **R-SIM-7** DM and CTF rules, scoring, match end, map rotation.
+- **R-SIM-7** All seven original modes, native objectives/scoring, time/score endings, results/countdown and compatible map rotation; original alternate rules and bonus scheduler. Player identity, chosen loadout, team and appearance survive round transitions.
 - **R-SIM-8** Bots per §4.5.
 - **R-SIM-9** Up to 32 player slots (original `MAX_PLAYERS`); launch acceptance at 16.
 
@@ -204,6 +207,8 @@ Original `AI.pas` runs inside every sim instance (`AI_ENABLED`) — server, clie
 - **R-CLI-4** Sound: positional SFX from sim events with original attenuation semantics; explicit audio-unlock gesture.
 - **R-CLI-5** Offline practice mode: local sim instance with bots, no server.
 - **R-CLI-6** Credits & Licenses screen reachable from main menu and in-game About (§9).
+- **R-CLI-7** Original-style console/history, persistent last-bind-wins controls, editable taunts, native Alt+1–4 gestures, public/team chat/radio and local mute. Authenticated typed moderation, map/kick votes and opt-in push-to-talk voice include permission/error feedback and secret-safe history. Browser connection commands obtain fresh admission; native network/RCON interoperability and demos remain excluded.
+- **R-CLI-8** Spectator/dead-player follow/cycle/free-camera controls with original team/Realistic restrictions, neutral gameplay input, target invalidation on membership changes and conservative follow reset on full-state recovery.
 
 ### 5.4 Server/ops
 - **R-SRV-1** Server list, join by link, nickname only.
@@ -274,15 +279,15 @@ Bun workspaces for build/test tooling; server runs on Node 24.
 
 ## 9. Content, licensing, branding
 
-1. Ship only files derived from pinned `opensoldat/base` (CC BY 4.0) plus the unmodified Play TTF (SIL OFL 1.1). Classic 1.7.1.1 installer is a local reference fixture only.
+1. Ship gameplay content derived from pinned `opensoldat/base` (CC BY 4.0), the unmodified Play TTF (SIL OFL 1.1), and the browser menu's Anton/Barlow Condensed display fonts under their retained SIL OFL notices. Classic 1.7.1.1 installer is a local reference fixture only.
 2. Code: project code MIT; retain OpenSoldat MIT notice in the sim fork and served third-party notices; `Vector.pas` stays under MPL 1.1 with its header and published source; Kraken SDK, PascalScript, dglOpenGL and SDL bindings are not built into `sim.wasm`. humanova/soldat-web (MIT) attribution for reused toolchain scripts.
-3. Credits & Licenses screen: Michał Marcinkowski / Transhuman Design; OpenSoldat contributors; base `Credits.md` names; known map authors from the 1.7.1.1 manual; BSG for the modules if ever shipped; CC BY 4.0 link + pinned base commit; list of browser transformations; Play OFL notice; non-endorsement disclaimer.
+3. Credits & Licenses screen: Michał Marcinkowski / Transhuman Design; OpenSoldat contributors; base `Credits.md` names; known map authors from the 1.7.1.1 manual; BSG for the modules if ever shipped; CC BY 4.0 link + pinned base commit; list of browser transformations; Play, Anton and Barlow Condensed OFL notices; non-endorsement disclaimer.
 4. Naming: product name "Soldat Online" (D10). Before any public release: obtain written THD/MM authorization covering the name, wordmark, domain and store listings; if refused, fall back to an independent title. Until then: no original Soldat logo/title art as branding, keep "Unofficial … not affiliated with or endorsed by Transhuman Design" on landing and About.
 5. User content is local-only at launch; public hosting requires a separate rights/takedown design.
 
 ## 10. Open items (do not block Phase 0)
 
 - Reference hardware for R-CLI-1 (named in G0.4).
-- Public product name.
+- Written public-branding permission for the chosen development/private-build name **Soldat Online** (D10 and §9.4); choosing the name did not clear the mark.
 - Regions and monthly hosting budget (needed before Phase 7).
 - Bug-compatibility exceptions: default is "reproduce", including `TeamCollides` blue/yellow anomaly (`Sprites.pas:434-438`); any fix is a ledger entry.

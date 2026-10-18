@@ -100,7 +100,7 @@ export async function importContent(options: { base: string; out: string; source
       archives[source] = { sourceSha256: sha256(bytes), entries: [...entries].map(([path, data]) => ({ path, bytes: data.length, sha256: sha256(data) })), mountPolicy: 'preserve entry paths; no implicit root stripping' };
     }
   }
-  for (const id of ['mod.ini', 'configs/weapons.ini']) {
+  for (const id of ['mod.ini', 'configs/weapons.ini', 'configs/weapons_realistic.ini']) {
     const source = sourceFor(id), bytes = await readFile(join(options.base, source));
     simFiles[id] = { path: `sim/${id}`, sha256: sha256(bytes), object: await writer.put(bytes, 'ini', provenance(source, bytes, [])), bytes: bytes.length };
     simBytes.set(id, bytes);
@@ -139,6 +139,16 @@ export async function importContent(options: { base: string; out: string; source
     counts.polygons += map.polygons.length; counts.props += map.props.length; counts.scenery += map.scenery.length;
     counts.colliders += map.colliders.length; counts.spawnpoints += map.spawnpoints.length; counts.waypoints += map.waypoints.length;
     counts.trailingMaps += Number(map.trailingBytes.length > 0); counts.trailingBytes += map.trailingBytes.length;
+    const spawnTypes = new Set(map.spawnpoints.filter(point => point.active).map(point => point.team));
+    const modes: string[] = [];
+    if (spawnTypes.has(0)) {
+      modes.push('dm');
+      if (spawnTypes.has(14)) modes.push('pm');
+      if (spawnTypes.has(15)) modes.push('rambo');
+    }
+    if ([1, 2, 3, 4].every(team => spawnTypes.has(team))) modes.push('tm');
+    if ([1, 2, 5, 6].every(team => spawnTypes.has(team))) modes.push('ctf', 'inf');
+    if ([1, 2, 14].every(team => spawnTypes.has(team))) modes.push('htf');
     const render = { schemaVersion: 1, name, mapSha256: sha256(raw), description: map.description, terrain, edge,
       polygons: map.polygons, props: map.props, scenery, colliders: map.colliders, spawnpoints: map.spawnpoints,
       backgroundTop: map.backgroundTop, backgroundBottom: map.backgroundBottom, weather: map.weather, steps: map.steps,
@@ -146,7 +156,7 @@ export async function importContent(options: { base: string; out: string; source
     await writer.json(`maps/${name}.json`, render);
     const pack = encodeSimPack(simBytes, canonicalPath(`maps/${name}.pms`)), packPath = `sim/packs/${name}.spk`;
     await writer.file(packPath, pack);
-    const summary = { path: `maps/${name}.json`, mapSha256: sha256(raw), simContentSha256: simHash, botCapable: render.botCapable, missing,
+    const summary = { path: `maps/${name}.json`, mapSha256: sha256(raw), simContentSha256: simHash, botCapable: render.botCapable, modes, missing,
       simPack: { path: packPath, sha256: sha256(pack), bytes: pack.length } };
     mapSummaries[name] = summary;
     maps[name] = { ...summary, terrain, edge, scenery };

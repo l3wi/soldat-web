@@ -7,3 +7,6 @@ export { MatchController } from "./match-controller.ts";
 export type { MatchConfiguration } from "./worker-messages.ts";
 export { createPlatformServer } from "./platform.ts";
 export type { PlatformOptions } from "./platform.ts";
+export { BanStore } from "./bans.ts";
+export type { BanRecord } from "./bans.ts";
+export type { VoiceOperatorConfiguration } from "./voice.ts";

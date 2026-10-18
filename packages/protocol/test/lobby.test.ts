@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { decodeMessage, encodeLobbyStateMessage, encodeLobbyStateShared, encodeMessage, LIMITS, ProtocolError, PROTOCOL_VERSION, readChannel } from "../src/index.ts";
+import { decodeMessage, encodeLobbyStateMessage, encodeLobbyStateShared, encodeMessage, LIMITS, ProtocolError, PROTOCOL_VERSION, readChannel, normalizeMatchRules, GAME_MODES } from "../src/index.ts";
 import type { Message } from "../src/index.ts";
 
 const messages: Message[] = [
@@ -10,9 +10,10 @@ const messages: Message[] = [
   { type: "lobby-ready", ready: false }, { type: "lobby-start" }, { type: "lobby-leave" },
   { type: "lobby-kick", id: "guest" }, { type: "lobby-kick", id: "é".repeat(LIMITS.lobbyId / 2) },
   { type: "lobby-error", reason: "Only host may start" },
-  { type: "lobby-state", selfId: "one", state: { code: "A1B2C3D4", mode: "dm", map: "Arena", targetPlayers: 8, players: [{ id: "one", nickname: "Sarge", ready: true, host: true }], started: false } },
-  { type: "lobby-state", selfId: "one", state: { code: "A1B2C3D4", mode: "ctf", map: "ctf_Ash", targetPlayers: 32, players: Array.from({ length: 32 }, (_, i) => ({ id: String(i), nickname: "é".repeat(24), ready: true, host: i === 0 })), started: true, matchId: "match", matchWsUrl: "wss://localhost/matches/match?ticket=secret" } },
+  { type: "lobby-state", selfId: "one", state: { code: "A1B2C3D4", mode: "dm", map: "Arena", rules: normalizeMatchRules({ mode: "dm" }), mapRotation: ["Arena"], targetPlayers: 8, players: [{ id: "one", nickname: "Sarge", ready: true, host: true }], started: false } },
+  { type: "lobby-state", selfId: "one", state: { code: "A1B2C3D4", mode: "ctf", map: "ctf_Ash", rules: normalizeMatchRules({ mode: "ctf" }), mapRotation: ["ctf_Ash"], targetPlayers: 32, players: Array.from({ length: 32 }, (_, i) => ({ id: String(i), nickname: "é".repeat(24), ready: true, host: i === 0 })), started: true, matchId: "match", matchWsUrl: "wss://localhost/matches/match?ticket=secret" } },
 ];
+for (const mode of GAME_MODES) messages.push({ type: "lobby-update", mode, rules: normalizeMatchRules({ mode }), mapRotation: ["Arena"] });
 for (const [index, message] of messages.entries()) test(`lobby codec ${message.type} ${index}`, () => {
   const packet = encodeMessage(message);
   expect(packet[0]).toBe(PROTOCOL_VERSION);

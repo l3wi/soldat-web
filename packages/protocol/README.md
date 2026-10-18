@@ -1,4 +1,4 @@
-# Binary protocol reference — version 4
+# Binary protocol reference — version 7
 
 Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/protocol` is dependency-free at runtime. It does not interpret simulation save-state schemas or deliver assets. The simulation ABI is independently versioned; see [`sim-abi.md`](../../docs/formats/sim-abi.md).
 
@@ -8,7 +8,7 @@ Reference for client/server integrators implementing SPEC §4.4. `@soldat-web/pr
 
 All integers are unsigned, little-endian, except the signed i16 aim fields inside simulation input. There is no implicit padding. Strings are UTF-8 with byte lengths, not character counts, and must be well-formed Unicode. Invalid UTF-8, unknown versions/types/channels, nonzero reserved controls, truncation, trailing fields, and oversized declarations are rejected. Encoding rejects invalid numeric ranges rather than truncating them. Step commands are bounded UTF-8 JSON bytes, validated without rewriting their original representation. `welcome.rules` remains a bounded opaque byte string; applications interpret the sim rules.
 
-Decoded byte fields are **borrowed views** into the packet, not copies. Keep the packet immutable for as long as a decoded field is retained; unchanged inputs in later decoded steps may share the earlier step's view. Encoders make a new packet; transport `send` copies it before returning. Protocol IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slots are original one-based 1–32; zero input acknowledgement means no input has yet been consumed. Version 4 is a clean cutover to input relay: older wire versions are rejected. There are no snapshot IDs, snapshot acknowledgements, baselines, or full-state deltas.
+Decoded byte fields are **borrowed views** into the packet, not copies. Keep packets immutable while retained. Encoders allocate a new packet; transport `send` copies before returning. IDs/sequences are u32 without wraparound; restart/reconnect before exhaustion. Slots are one-based 1–32; zero input acknowledgement means none consumed. Version 7 adds typed gestures, authenticated administration, voting, radio and voice signaling to version 6 chat/round/input relay. Older wire versions are rejected; simulation ABI remains independently versioned at 6. Input relay has no snapshot IDs, acknowledgements, baselines or full-state deltas.
 
 ## Packet header
 
@@ -16,39 +16,71 @@ One WebSocket binary message contains exactly one packet. There is no stream con
 
 | Offset | Type | Field |
 | ---: | --- | --- |
-| 0 | u16 | Wire version, exactly `4` |
+| 0 | u16 | Wire version, exactly `7` |
 | 2 | u8 | Message type from the table below |
 | 3 | u8 | Channel: `0` reliableControl, `1` latestState |
 | 4 | u32 | Payload byte length, excluding this 8-byte header |
 | 8 | bytes | Message-specific payload |
 
-Only `state` and `ticks` use channel 1. Every other type uses channel 0; a mismatch is invalid. Both channels are ordered and reliable on WSS. The server→client decoder packet limit remains `32 MiB + 512` bytes. Server WebSocket ingress instead uses `MAX_CLIENT_PACKET_BYTES` (**2,048 bytes**), derived from the largest legal client payload plus the eight-byte header, rounded up to 1 KiB. The tighter per-type payload limits below also apply.
+Only `state` and `ticks` use channel 1. Every other type uses channel 0; mismatches are invalid. Both channels are ordered/reliable on WSS. Server→client decoder limit remains `32 MiB + 512` bytes. WebSocket ingress uses `MAX_CLIENT_PACKET_BYTES` (**60,416 bytes**), derived from legal client payloads plus framing, rounded up to 1 KiB. Per-type limits below also apply. Voice media never travels over this connection.
 
 | ID | Type | Direction | Maximum payload bytes |
 | ---: | --- | --- | ---: |
-| 1 | hello | client → server | 90 |
-| 2 | welcome | server → client | 4,245 |
+| 1 | hello | client → server | 113 |
+| 2 | welcome | server → client | 4,249 |
 | 3 | input | client → server | 73 |
 | 4 | ticks | server → client | 1,048,576 |
 | 5 | state | server → client | 32 MiB + 20 |
 | 6 | events | server → client | 1,048,576 |
 | 7 | eventAck | client → server | 4 |
-| 8 | chat | client → server; server policy handles delivery | 1,026 |
+| 8 | chat | client → server | 1,027 |
 | 9 | ping | either | 8 |
 | 10 | pong | reply to ping | 8 |
 | 11 | resync | client → server | 0 |
 | 12 | disconnect | either | 260 |
 | 13 | weapon-choice | client → server | 3 |
 | 14 | lobby-join | client → server | 116 |
-| 15 | lobby-update | host → server | 133 |
+| 15 | lobby-update | host → server | 8,448 |
 | 16 | lobby-ready | client → server | 1 |
 | 17 | lobby-start | host → server | 0 |
 | 18 | lobby-leave | client → server | 0 |
-| 19 | lobby-state | server → client | 8,192 |
+| 19 | lobby-state | server → client | 16,384 |
 | 20 | lobby-error | server → client | 258 |
 | 21 | lobby-kick | host → server | 34 |
+| 22 | team-change | client → server | 1 |
+| 23 | appearance | client → server | 23 |
+| 24 | chat-message | server → client | 1,078 |
+| 25 | notice | server → client | 258 |
+| 26 | gesture | client → server | 60,004 |
+| 27 | self-kill | client → server | 60,004 |
+| 28 | admin-auth | client → server | 60,004 |
+| 29 | admin-logout | client → server | 60,004 |
+| 30 | admin-action | client → server | 60,004 |
+| 31 | vote-start | client → server | 60,004 |
+| 32 | vote-cast | client → server | 60,004 |
+| 33 | radio | client → server | 60,004 |
+| 34 | voice-configure | client → server | 60,004 |
+| 35 | voice-signal | client → server | 60,004 |
+| 36 | control-state | server → client | 60,004 |
+| 37 | admin-bans | server → client | 524,292 |
+| 38 | radio-message | server → client | 60,004 |
+| 39 | voice-state | server → client | 262,148 |
+| 40 | voice-signal-delivery | server → client | 60,004 |
 
 The direction column describes application policy, not a different wire encoding. The authoritative server rejects messages inappropriate to its admission/session state.
+
+### Feature payloads (IDs 26–40)
+
+Payload is `u32 JSON UTF-8 byte length`, then that many bytes. The JSON object includes its `type`, which must exactly match the outer message ID. `features.ts` defines the discriminated request/delivery schemas; `feature-codec.ts` rejects unknown fields, missing fields, wrong scalar/discriminant types, malformed Unicode and field bounds. Generic client feature JSON is at most 60,000 bytes. SDP is audio-only at the relay, at most 32,768 UTF-8 bytes; ICE candidates are at most 2,048 bytes. Signaling is authenticated and rate-limited separately from ordinary controls.
+
+- `gesture {gesture}` and `self-kill` carry no target slot: admission determines the actor.
+- `admin-auth {token}` / `admin-logout` change operator authority. `admin-action {action}` accepts only kick, timed ban/unban/list, mute/unmute, force-team/kill, compatible map/next/restart and pause/unpause. Tokens never enter server responses. Host privilege comes from a validated lobby reservation, not hello fields.
+- `vote-start {proposal}` proposes a map or kick target; `vote-cast {id,choice}` binds yes/no to the active vote and admission nonce. Personalized `control-state` includes host/admin/paused/muted and the vote tally, eligibility, ballot, deadline and result. Reused slots do not inherit votes.
+- `radio {category,direction}` carries two integers 1–3, never client text/name/team. `radio-message` supplies authenticated name/slot and canonical choice codes; the authority routes exact native teams and rejects spectator/muted senders.
+- `voice-configure {enabled,channel,transmitting}` opts in to public/team audio. `voice-state` includes `selfId`, ICE configuration and admission-nonce peers with server-owned positive-safe-integer `generation`, directional `canSend`/`canReceive` and talking policy. `voice-signal {peerId,generation,signal}` routes offer/answer/candidate only to an authorized current pair; delivery supplies its authenticated sender nonce and matching generation. Revoked/re-enabled pairs get a new generation, so old same-admission SDP/ICE cannot attach to a replacement connection.
+
+Pause freezes native/predicted ticks and gameplay input, not control messages, heartbeats or vote deadlines. Resume installs authoritative state and resets input/clock debt. WebRTC carries only voice; native mechanics and hashes remain server-authoritative.
+
 
 ## Admission
 
@@ -60,11 +92,12 @@ Offsets below and in the remaining message tables are relative to payload start.
 | ---: | --- | --- |
 | 0 | u16 | Admission protocol version (must match server policy) |
 | 2 | 32 bytes | Raw SHA-256 content-set hash, not hexadecimal text |
-| 34 | u32 | Simulation ABI version, currently `0x00010004` |
+| 34 | u32 | Simulation ABI version, currently `0x00010006` |
 | 38 | u16 | Nickname UTF-8 byte length N, 1–48 |
 | 40 | N bytes | Nickname |
 | 40+N | u8 | Primary weapon original number, server admission accepts 1–10 |
 | 41+N | u8 | Secondary weapon original number: 0 (USSOCOM), 11 (knife), 12 (chainsaw), 13 (LAW) |
+| 42+N | 23 bytes | Player appearance: five u32 RGB colors, then three u8 style indices |
 
 The outer wire version is checked before admission fields. Content identity must match the verified simulation content manifest, not a map filename alone.
 
@@ -80,6 +113,18 @@ The outer wire version is checked before admission fields. Content identity must
 | 17 | N bytes | Map name |
 | 17+N | u32 | Rules byte length R, 0–4,096 |
 | 21+N | R bytes | Opaque rules bytes |
+| 21+N+R | u32 | Round epoch |
+
+### Gameplay settings and round bootstrap
+
+Mode IDs use the original order: `dm=0`, `pm=1`, `tm=2`, `ctf=3`, `rambo=4`, `inf=5`, `htf=6`. `normalizeMatchRules` fills omitted defaults and rejects unknown keys, non-booleans, non-finite/fractional numbers and invalid enum values. Rules include realistic, survival, advance/advanceAmount (1..9999), bulletTime, five bonus switches, bonusFrequency (0..5), friendlyFire, balanceTeams, stationaryGuns, sniperLine, timeLimitTicks (0..2147483647), scoreLimit (0..9999), and unique original enabled weapon numbers (0..13). Zero time/score disables that limit. Defaults are the native 360000-tick time limit, no score limit, bonuses enabled but frequency zero, all weapons, and alternate rules/balancing off.
+
+Appearance field order is shirtColor, pantsColor, skinColor, hairColor, jetColor (RGB 0..0xffffff), then hairStyle (0..4), headStyle (0..2), chainStyle (0..2). Team shirts override custom shirts through native simulation policy. `appearance` carries that same 23-byte structure; `team-change` carries one u8 team. The server derives the slot and mode: FFA team0, TM1..4, CTF/INF/HTF1..2, spectator5. Both controls share a worker player-change bucket (burst4, refill2/s), independent of the weapon-choice bucket; all also consume aggregate connection control tokens. Neither can write arbitrary sim commands or change match rules.
+
+With `balanceTeams` enabled, native admission selects a least-populated playable team, voluntary switches cannot worsen imbalance, and departures/spectator transitions move genuine AI bots before humans until team counts differ by at most one. FFA is unchanged and spectators do not count. Automatic departure rebalancing extends the original admission-only enforcement; all moves still call native `ChangeTeam`, including flag drops and Survival waiting/deaths. A trusted bot replacement leave defers rebalancing until its immediate refill. Expected balance denials and rapid repeated team requests produce `notice` rather than disconnecting the player; malformed/unauthorized messages remain errors.
+
+The native simulation owns match-end scoring, results and countdown. At roundPhase2 the server commits remaining old-map events, loads the next compatible map without removing players, and broadcasts a new `welcome` followed immediately by `state`. Tick numbers, input sequences, reliable event IDs, identity, team, loadout and appearance continue across maps; roundEpoch increments. Clients discard old replay/input history, call loadMap on both existing hosts, then load the following full state; they must not reinitialize at a transition. A late join's first welcome describes the current map/epoch, not the original URL map. Browser `connectOnline` processes bootstrap, records and timing probes synchronously, independently of asynchronous `onRound` render preparation. Generation guards discard stale asset results, with neutral local input and suspended world drawing until the latest map is ready. `BrowserOnline.round` exposes current metadata.
+
 
 ## In-match weapon choice
 
@@ -185,11 +230,15 @@ The sim header is five u32 fields: kind, tick, source, target, payloadBytes. Its
 
 | Type | Payload layout |
 | --- | --- |
-| chat | Offset 0 u16 text byte length N (1–1,024); offset 2 UTF-8 text |
+| chat | Offset 0 u8 channel (0 public, 1 team); offset 1 u16 text byte length N (1–1,024); offset 3 UTF-8 text |
+| chat-message | Offset 0 u8 chat channel; offset 1 u8 authenticated slot (1–32); offset 2 u16 nickname byte length M (1–48); offset 4 nickname; offset 4+M u16 text byte length N; offset 6+M text |
+| notice | Offset 0 u16 text byte length N (1–256); offset 2 UTF-8 text |
 | ping / pong | Offset 0 u64 sender timestamp; pong echoes it unchanged |
 | disconnect | Offset 0 u16 application reason code; offset 2 u16 reason byte length N (0–256); offset 4 UTF-8 reason |
 
 Timestamp units are sender-defined monotonic microseconds. A pong is an echo, not a synchronization of two unrelated clocks. `disconnect.code` is the application's reason code, independent of WebSocket close status.
+
+Chat is reliable presentation traffic, not a simulation event or rollback record. The worker derives sender identity from admission and teams from the current native render view. Public messages reach active human sessions; team messages reach exactly matching teams, including solo team0 and spectator team5. Clients cannot send `chat-message` or forge a sender. Text rejects controls/invisibles and must fit 1,024 UTF-8 bytes. Separate chat buckets allow a burst of four and refill one token per second before IPC and in the worker; abuse closes the offending session. Taunts and `/say`/`say_team` use this same path; text never grants server command authority.
 
 ## WSS transport and backpressure
 
@@ -222,13 +271,13 @@ Start the configured WSS listener from the repository root:
 SOLDAT_SERVER_CONFIG=/absolute/path/server.json node packages/server/src/main.ts
 ```
 
-The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`; `targetPlayers` defaults to eight and accepts 1–32; `maxMatches` defaults to eight. `publicUrl` is the external HTTPS origin, required behind a reverse proxy. `regions` is an explicit list of `{id,name,url}` HTTPS origins; without it the server advertises its single Local listener. Paths are relative to the process working directory. Never commit private TLS keys. `contentRoot/index.json` supplies the validated bot-capable map catalog, and `sim/manifest.json` supplies the admission hash. Match workers are created lazily; each independently verifies content before mounting it.
+The configuration file contains `wasmPath`, `contentRoot`, `map`, `matchSeed` (u64 decimal string), `rules` (object), `tlsKeyPath`, and `tlsCertPath`. Optional `host` and `port` default to `0.0.0.0` and `443`; `targetPlayers` defaults to **12** and accepts 1–32; `maxMatches` defaults to eight. `publicUrl` is the external HTTPS origin, required behind a reverse proxy. `regions` is an explicit list of `{id,name,url}` HTTPS origins; without it the server advertises its single Local listener. Paths are relative to the process working directory. Never commit private TLS keys. `contentRoot/index.json` supplies the validated bot-capable map catalog and spawn-evidenced mode lists, and `sim/manifest.json` supplies the admission hash. Match workers are created lazily; each independently verifies content before mounting it.
 
 The programmatic `createGameServer` API accepts either `{ match, tls: { key, cert } }` or `{ match, httpsServer }`, never HTTP or an insecure fallback. A caller-supplied HTTPS listener remains caller-owned; closing the game service stops only its WSS connections and match worker. Internally managed HTTPS listeners are closed too. One `worker_thread` owns one real `SimHost`/WASM instance.
 
 Missing WASM/content, an incompatible ABI, unsupported rules/seed policy, or failed sim initialization rejects match creation explicitly. The server enables `ai:true` and defaults `rules.world` to `"original"` for native flags, medikits, grenade kits and map-authored stationary guns. Explicit `"fixture"` retains the controlled legacy harness world; welcome carries this match-identity rule unchanged. `rules.botDifficulty` accepts an integer in 0–300 (sim default 100). Product matchmaking uses dynamic `targetPlayers`; standalone qualification callers may still specify fixed `botCount:0..31` when no target is configured.
 
-With a population target, each human join removes one original bot with `leave` before the human is admitted; each human departure joins an original profile in a free slot. Profiles rotate through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. The simulation retains each profile's original name, cosmetics and weapon preference. DM uses team zero; every CTF join/refill selects the less populated current team (Alpha on ties). Without a target, standalone fixed bots retain their highest-slot reservations for qualification. Human slots are not reused until the worker confirms leave; a replacement connection waits in a bounded admission queue during that acknowledgement race.
+With a population target, each human join removes one original bot with `leave` before admission; each departure joins an original profile in a free slot. Profiles rotate through Admiral, Billy, Blain, Boogie Man, Commando, D Dave, Danko, Dutch, John, Kruger, Poncho, Roach, Sgt. Mac, Sniper, Stevie, and Terminator, loaded from `bots/<lowercase basename>.bot`. Profile names, cosmetics and weapons remain native. FFA modes use team zero; TM balances four teams, and CTF/INF/HTF balance two, choosing original team order on ties. Without a target, fixed bots retain highest-slot reservations. Human slots are not reused until the worker confirms leave; replacement connections wait in a bounded queue during that race.
 
 Human joins explicitly use `control:"authoritative"` and the admitted loadout. Welcome carries the effective server rules, including `ai:true`; confirmed and prediction hosts retain AI execution so bots evolve deterministically.
 
@@ -284,33 +333,33 @@ Server/client integration and real-network qualification require the current fro
 
 ## Matchmaking HTTP reference
 
-The HTTPS origin corresponding to the game WSS endpoint serves JSON endpoints. All responses use `Cache-Control: no-store`; allowed development origins receive explicit CORS headers. POST requests require `Content-Type: application/json`, at most 1,024 body bytes, and no unknown fields. Errors are `{error:string}` with 400 (invalid), 403 (origin), 404 (missing), 409 (full), 413/415 (body), 429 (rate), or 503 (server capacity). Successful POSTs return 201; GETs return 200.
+The HTTPS origin corresponding to the game WSS endpoint serves JSON endpoints. All responses use `Cache-Control: no-store`; allowed development origins receive explicit CORS headers. POST requests require `Content-Type: application/json`, at most 1,024 body bytes for quickplay or 8,192 for lobby setup, and no unknown fields. Errors are `{error:string}` with 400 (invalid), 403 (origin), 404 (missing), 409 (full), 413/415 (body), 429 (rate), or 503 (server capacity). Successful POSTs return 201; GETs return 200.
 
 | Method and path | Request | Response |
 | --- | --- | --- |
 | `GET /api/ping` | — | `{ok:true}`; measure actual RTT, not a configured latency |
 | `GET /api/regions` | — | `[{id,name,url}]`; `url` is an HTTPS origin; only configured regions exist |
 | `POST /api/quickplay` | `{nickname}` | `{matchId,wsUrl,map,mode,humans:string[],bots:number}` |
-| `POST /api/lobbies` | `{mode:"dm"|"ctf",map}` | `{code,hostToken,wsUrl}` |
+| `POST /api/lobbies` | `{mode:GameMode,map,rules?:MatchRules,mapRotation?:string[]}` | `{code,hostToken,wsUrl}` |
 | `GET /api/lobbies/:code` | — | `LobbyLookup`: `LobbyState` plus canonical lobby `wsUrl`, without host token or admission ticket |
 
 Quickplay selects the available public match with the lowest human-plus-reservation load, otherwise starts a separate worker/WASM with a rotating bot-capable stock DM map. The response roster includes pending reservations. `wsUrl` includes a random, single-use admission ticket valid for 30 seconds. Connect there using the ordinary binary `hello`; there is no new simulation admission message. Unconsumed reservations expire and cannot exhaust capacity permanently.
 
-The eight-character lobby code uses random Crockford base32 (40 bits; alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`). Input and lookups are case-insensitive; old six-character links fail clearly. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Use the canonical lobby `wsUrl` returned by create/lookup; do not derive it from the browser's HTTP origin, which may be a development proxy. Lobby state is `{code,mode,map,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. The WSS state personalizes `matchWsUrl` with that member's ticket; the public GET intentionally does not. `selfId` identifies the receiving member. Different users may have identical display names.
+The eight-character lobby code uses random Crockford base32 (40 bits; alphabet `0123456789ABCDEFGHJKMNPQRSTVWXYZ`). Input and lookups are case-insensitive; old six-character links fail clearly. The creator keeps the random host capability private and sends it only in `lobby-join`. Share `/?lobby=CODE`, never the token. Use the canonical lobby `wsUrl` returned by create/lookup, not the browser's possibly proxied HTTP origin. Lobby state is `{code,mode,map,rules,mapRotation,targetPlayers,players:[{id,nickname,ready,host}],started,matchId?,matchWsUrl?}`. WSS personalizes `matchWsUrl` with that member's ticket; the public GET does not. `selfId` identifies the receiving member. Started lobbies update their map as rounds advance and admit late members to the current round.
 
 ## Lobby binary payload reference
 
-Every lobby message uses reliableControl and the existing eight-byte binary header. Strings below use the codec's u16 UTF-8 byte length prefix; modes are u8 (`0` DM, `1` CTF), booleans u8 (`0` false, `1` true), and populations u8 (`1..32`). Invalid flags, booleans, modes, bounds, truncation and trailing fields are rejected.
+Every lobby message uses reliableControl and the existing eight-byte binary header. Strings below use the codec's u16 UTF-8 byte length prefix; modes use original u8 IDs 0..6 above, booleans u8 (`0` false, `1` true), and populations u8 (`1..32`). Rules are a bounded JSON string validated by `normalizeMatchRules`. Rotations are u8 count (1..32) followed by distinct map strings (1..128 bytes); the server validates every entry against bot-capable mode metadata and requires the selected map in the list. Invalid flags, booleans, modes, bounds, truncation and trailing fields are rejected.
 
 | Message | Ordered payload fields |
 | --- | --- |
 | `lobby-join` | nickname string (1..48 bytes), hostToken string (0..64; empty means guest) |
-| `lobby-update` | u8 presence mask (mode=1, map=2, targetPlayers=4; 1..7), then present mode, map string (1..128), targetPlayers |
+| `lobby-update` | u8 presence mask (mode=1, map=2, targetPlayers=4, rules=8, mapRotation=16; 1..31), then present fields in that order |
 | `lobby-ready` | ready boolean |
 | `lobby-start`, `lobby-leave` | empty |
 | `lobby-kick` | guest id string (1..32 bytes) |
 | `lobby-error` | reason string (1..256) |
-| `lobby-state` | selfId string (1..32), code string (8), mode, map string (1..128), targetPlayers, u8 roster length (0..32), roster entries, started boolean, then matchId string (1..64) and personalized matchWsUrl string (1..1024) only when started |
+| `lobby-state` | selfId string (1..32), code string (8), mode, map string (1..128), rules JSON string, mapRotation, targetPlayers, u8 roster length (0..32), roster entries, started boolean, then matchId string (1..64) and personalized matchWsUrl string (1..1024) only when started |
 | roster entry | id string (1..32), nickname string (1..48), ready boolean, host boolean |
 
 Only the host may update mode/map/target, start, or kick a guest. Kicking closes the guest with an explicit reason and blocks its source IP from that lobby for ten minutes. Send compatible mode/map changes together. Setup changes reset guest readiness; the host is always ready. Unchanged setup/readiness does not broadcast. Start requires all current guests ready. The server locks setup during worker creation, broadcasts the started state, and late joins receive a ticket to the same match, replacing a bot. Leaving closes that member's lobby session; closing an unstarted host session closes its lobby rather than transferring the capability to a stranger. Once started, the match survives host departure.

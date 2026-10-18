@@ -5,6 +5,8 @@ import type { GameMode, Region } from "@soldat-web/protocol";
 import type { MatchConfiguration } from "./worker-messages.ts";
 import { hardeningLimits } from "./hardening.ts";
 import { installTlsReload } from "./tls-reload.ts";
+import { isGameMode } from "@soldat-web/protocol";
+import { voiceConfigurationFromEnv, type VoiceOperatorConfiguration } from "./voice.ts";
 
 try {
   if (Number(process.versions.node.split(".")[0]) !== 24) throw new Error("The authoritative server requires Node 24 LTS");
@@ -25,8 +27,11 @@ try {
     ...(config.botCount === undefined ? {} : { botCount: config.botCount as number }),
   };
   const [key, cert] = await Promise.all([readFile(config.tlsKeyPath as string), readFile(config.tlsCertPath as string)]);
-  const index = JSON.parse(await readFile(resolve(contentRoot, "index.json"), "utf8")) as { maps: Record<string, { botCapable: boolean }> };
-  const maps = Object.entries(index.maps).map(([name, value]) => ({ name, botCapable: value.botCapable, mode: (name.toLowerCase().startsWith("ctf_") ? "ctf" : "dm") as GameMode }));
+  const index = JSON.parse(await readFile(resolve(contentRoot, "index.json"), "utf8")) as { maps: Record<string, { botCapable: boolean; modes: GameMode[] }> };
+  const maps = Object.entries(index.maps).flatMap(([name, value]) => {
+    if (!Array.isArray(value.modes) || value.modes.some(mode => !isGameMode(mode))) throw new Error("Content map modes missing or invalid; reimport the content set");
+    return value.modes.map(mode => ({ name, botCapable: value.botCapable, mode, modes: value.modes }));
+  });
   const hardening = hardeningLimits(config);
   const server = await createPlatformServer({
     match, maps, tls: { key, cert }, host: config.host as string ?? "0.0.0.0", port: config.port as number ?? 443,
@@ -37,6 +42,9 @@ try {
     ...(config.allowedOrigins === undefined ? {} : { allowedOrigins: config.allowedOrigins as string[] }),
     ...(config.targetPlayers === undefined ? {} : { targetPlayers: config.targetPlayers as number }),
     ...(config.maxMatches === undefined ? {} : { maxMatches: config.maxMatches as number }),
+    ...(config.operatorToken === undefined ? {} : { operatorToken: config.operatorToken as string }),
+    ...(config.banFile === undefined ? {} : { banFile: config.banFile as string }),
+    voice: config.voice === undefined ? voiceConfigurationFromEnv(process.env) : config.voice as VoiceOperatorConfiguration,
   });
   console.log(JSON.stringify({ type: "listening", address: server.httpsServer.address(), contentSetHash: manifest.sha256 }));
   const stopReload = installTlsReload(server.httpsServer, config.tlsKeyPath as string, config.tlsCertPath as string);

@@ -1,4 +1,4 @@
-import { enterShell, openPractice, choosePracticeMap, leaveGame } from './shell-driver.mjs';
+import { enterShell, openPractice, chooseGameMode, choosePracticeMap, leaveGame } from './shell-driver.mjs';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -59,8 +59,7 @@ try {
     else await leaveGame(page);
     if (stage !== 'Then ctf_Ash') await enterShell(page);
     await openPractice(page);
-    const modeRow = page.getByRole('button', { name: /^Game type / });
-    if ((await modeRow.textContent()).includes('Capture the flag') !== (mode === 'ctf')) await modeRow.click();
+    await chooseGameMode(page, mode === 'ctf' ? 'Capture the flag' : 'Deathmatch');
     await choosePracticeMap(page, map);
     await page.fill('#bot-count', '4');
     await page.getByRole('button', { name: 'Start practice [Enter]', exact: true }).click();
