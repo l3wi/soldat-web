@@ -13,12 +13,14 @@ No particular branch naming or automated release pipeline is prescribed here. Pr
 
 ## Preserve the Pascal mechanics
 
-The fidelity baseline is **OpenSoldat 1.8 at the commit in `pins.json`**, not the classic installer or a remembered feel. Editable product simulation source is **`sim/opensoldat/`**, including the repository's extraction changes. `reference/` is ignored and **read-only**: import/compare against it, never patch it in place or use it as a hidden build input containing unrecorded fixes.
+The fidelity baseline is **OpenSoldat 1.8 at the commit in `pins.json`**, not the classic installer or a remembered feel. Editable product simulation source is the reduced, maintained **`sim/opensoldat/{sim,shared}`** core, including the repository's extraction changes and retained license/author notices. `reference/opensoldat` and `reference/base` are optional pinned upstream submodules registered as gitlinks, not ignored clones. Treat their initialized checkouts as **pristine, read-only** comparison/import inputs: never patch them in place or use unrecorded fixes as hidden build inputs. Native client/server and dependency code outside the maintained core remains available in pinned upstream for research and future porting.
 
 - Do not hand-port movement, weapons, hit testing, bots or gameplay pose evaluation to TypeScript. TypeScript hosts Pascal, records intent and renders its published views.
 - Preserve fixed simulation steps, float/rounding behavior, RNG consumption, input ordering, original raw map normals, POA/PO inputs and complete state serialization. Rendering must not mutate gameplay state.
 - Follow the server-role policy and [`docs/role-divergence-ledger.md`](docs/role-divergence-ledger.md). Deliberate original/client/server differences and bug fixes need an explicit decision and evidence, not a silent "improvement."
 - Change the real path rather than suppressing an error, changing a golden to match an unexplained regression, or adding a parallel substitute simulation.
+
+Prepared-artifact application work can skip the optional references; simulation rebuilds still require the maintained Pascal source and pinned/patched compiler. Follow the [nonrecursive submodule setup](docs/development.md#pinned-upstream-checkouts-and-dependencies) for import/oracle/native-reference work. Default `bun run check:pins` checks exact staged gitlink pins and initialized references' own HEADs and working-tree cleanliness while allowing absent optional references; `bun scripts/check-pins.ts --require-references` requires both. Dirty references, including non-ignored untracked files, fail without being modified. Neither pin check qualifies the compiler or built WASM.
 
 ## Authority and trust boundaries
 
@@ -63,7 +65,7 @@ Keep useful reproducible fixtures and source-level regression tests in version c
 
 ## Generated files and secrets
 
-Do not stage `reference/`, `node_modules/`, `dist/`, `build-out/`, `sim/build/.toolchain/`, compiled WASM/object/unit files, local browser profiles or temporary captures as source changes. Deliberate committed fixtures under `tests/fixtures/` are different: review their provenance and the behavior they assert before changing them. Do not delete upstream notices, historical research/gates or user-owned generated artifacts as repository cleanup.
+Do not stage `node_modules/`, `dist/`, `build-out/`, `sim/build/.toolchain/`, compiled WASM/object/unit files, local browser profiles or temporary captures as source changes. The registered `reference/opensoldat` and `reference/base` **gitlinks are tracked**: stage a gitlink change only for an intentional upstream-baseline update, together with the matching `pins.json` change and affected provenance/evidence. Do not vendor the submodule contents into the main repository or update nested upstream dependencies recursively. Deliberate committed fixtures under `tests/fixtures/` are different: review their provenance and the behavior they assert before changing them. Do not delete upstream notices, historical research/gates or user-owned generated artifacts as repository cleanup.
 
 Keep local `.env` files, TLS private keys, operator tokens, TURN secrets, deployment credentials and ban/address stores out of commits, screenshots and logs. `VITE_` variables are delivered to browsers, so never put secrets there. Use documented sanitized example configurations when configuration needs review; removing a secret from the latest diff does not make a leaked historical credential safe.
 

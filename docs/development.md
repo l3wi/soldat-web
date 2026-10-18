@@ -31,19 +31,30 @@ The authoritative pins live in [`pins.json`](../pins.json):
 | Base content | `5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4` |
 | FPC | `bcd728860dcd953cb6f3bbda788eab07b0d16c85` |
 
-For **missing** reference directories only:
+The pristine upstream repositories are **optional submodules**: `.gitmodules` registers their official upstream URLs, Git records their pinned gitlink commits, and `pins.json` records the expected baselines. They are development inputs, not the editable simulation core or browser payload.
+
+For application work with an existing `build-out/sim/sim.wasm` and full `dist/content-next` import, leave the references uninitialized:
 
 ```sh
-mkdir -p reference
-git clone --no-checkout https://github.com/opensoldat/opensoldat.git reference/opensoldat
-git -C reference/opensoldat checkout --detach bf43a43bdd7a069e02c906768807f66e621b2888
-git clone --no-checkout https://github.com/opensoldat/base.git reference/base
-git -C reference/base checkout --detach 5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4
 bun install --frozen-lockfile
 bun run check:pins
 ```
 
-For existing checkouts, install dependencies and run `check:pins` without replacing local files. Investigate mismatches rather than resetting someone else's work. The checker compares reference **HEAD commits only**; it does not prove clean trees, validate the patched compiler, or verify the built WASM. Keep `reference/` read-only after setup. Product changes belong in vendored `sim/opensoldat/`, not a second upstream clone. The vendored source starts from the OpenSoldat pin and deliberately excludes KrakenSDK.
+For content import, oracle or native-reference work, initialize missing/uninitialized references at the recorded commits, **without recursive initialization**:
+
+```sh
+bun install --frozen-lockfile
+git submodule update --init -- reference/opensoldat reference/base
+bun scripts/check-pins.ts --require-references
+```
+
+Do not add `--recursive`, use `--remote` or force/reset an existing checkout. Upstream's nested dependencies are not part of this setup. If either path already contains a checkout, inspect its local changes and run the pin checker first; investigate mismatches rather than overwriting, deleting or resetting someone else's work. An existing standalone clone is not an invitation to reclone over it.
+
+Default `bun run check:pins` validates the exact **staged gitlink commits** against `pins.json`, then checks each initialized reference's own HEAD and cleanliness using `git status --porcelain --untracked-files=normal`. Tracked modifications and non-ignored untracked files make the check fail without modifying the checkout. Absent optional references are allowed; empty/uninitialized paths are not mistaken for the superproject's checkout. `bun scripts/check-pins.ts --require-references` additionally requires both checkouts for workflows that use them; unknown flags are rejected.
+
+A pin check does not qualify the patched compiler or built WASM. Keep references pristine/read-only after setup. Intentional upstream-pin changes must update and stage the corresponding tracked gitlink together with the matching `pins.json` change and affected provenance/evidence; do not stage upstream contents as main-repository files.
+
+Product changes belong in the reduced, maintained `sim/opensoldat/{sim,shared}` core, not the pristine submodule. The core retains its upstream license/author notices and per-file exceptions; unused native client/server/dependency source lives in pinned upstream rather than the maintained build tree. Source pruning does not change the browser payload, make Pascal source optional for rebuilds, or remove historical research/receipts and future porting material. KrakenSDK remains excluded from the product; initializing a reference does not authorize redistribution of excluded or differently licensed upstream components.
 
 ## Build native and WASM explicitly
 
@@ -73,17 +84,22 @@ The image builds the same pinned/patched compiler. The explicit Docker command w
 
 `bun run --cwd packages/client build`, client preview, server startup and server qualification consume an existing WASM. **None invokes FPC.** A production client build hashes/copies that artifact and content into `dist/client/`; it is not a simulation rebuild or parity proof.
 
+These application commands can run without initialized upstream submodules when their prepared artifacts are available. A simulation rebuild still needs `sim/opensoldat/{sim,shared}` and the pinned/patched compiler; it does not substitute the pristine upstream checkout for the maintained core.
+
 Online admission currently checks a frozen SHA-256 in `packages/client/src/net/browser.ts`; server qualification checks the matching value in `packages/server/scripts/support.ts`. Changing Pascal source alone does not update either artifact or pin. When intentionally replacing the shared artifact, rebuild once, record its actual digest, update affected pins/contracts together and requalify the affected layers. Never change a pin merely to hide an unexplained mismatch. See [contribution rules](../CONTRIBUTING.md#simulation-abi-and-wire-changes).
 
 ```sh
 shasum -a 256 build-out/sim/sim.wasm
 ```
 
+FPC embeds the absolute output filename in the WASM custom `name` section. Building with a different `SIM_OUT` can therefore change the full-file SHA-256 even when every standard WASM section and the native executable are byte-identical. Compare the actual sections when diagnosing this; do not repin or replace an approved runtime artifact merely because an isolated build uses another output directory.
+
 ## Import required content
 
-With the media prerequisites and both pinned reference checkouts available:
+With the media prerequisites and both pinned reference checkouts initialized as above, require their pins before importing:
 
 ```sh
+bun scripts/check-pins.ts --require-references
 bun packages/content/src/cli.ts --base reference/base --out dist/content-next
 bun packages/content/src/cli.ts --hash dist/content-next
 ```
@@ -149,10 +165,13 @@ bun run --cwd packages/client check
 bun run --cwd packages/protocol test
 bun run --cwd packages/server test
 bun run --cwd packages/client test
+bun scripts/check-pins.ts --require-references
 bun test packages/content/src
 ```
 
 Client tests intentionally isolate globals/module caches via the package script. Some suites load real WASM/raw content; complete setup first. For a small change, run a relevant existing test file directly before the encompassing package suite rather than fabricating a root test command.
+
+Content corpus/import tests require initialized pristine references; require their pins before running that layer. Protocol, server and client work using prepared WASM/content does not require initializing upstream just to run the application.
 
 ### 2. Current real-WASM and HTTPS/WSS integration
 

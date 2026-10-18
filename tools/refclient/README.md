@@ -7,7 +7,9 @@ Local macOS arm64 OpenSoldat map-view reference for the G0.4 renderer spike. Thi
 Run from the repository root on an interactive macOS desktop:
 
 ```sh
-# Coordinate compiler installation with the Toolchain agent when applicable.
+# Complete the main developer setup, then initialize only the pinned references.
+git submodule update --init -- reference/opensoldat reference/base
+bun scripts/check-pins.ts --require-references
 brew install fpc cmake sdl2 openal-soft freetype physfs protobuf openssl@3
 sh tools/refclient/build.sh
 
@@ -21,7 +23,7 @@ sh tools/refclient/capture.sh Synthetic
 sh tools/refclient/capture-gostek.sh
 ```
 
-`build.sh` was exercised successfully, including repeat use of the existing isolated GNS download. It copies upstream source with `ditto`, applies the viewer/gallery patches and copies `ReferenceGostek.inc`, configures CMake, patches the downloaded GNS compatibility issue, builds the native client, copies base data into the isolated runtime, and generates the synthetic PMS. It never compiles or patches anything under `reference/`. CMake fetches pinned GNS v1.4.1 on the first configuration; other assets are local.
+The historical build/capture above used `ditto`. The current `build.sh` verifies the pristine submodule pins, archives the exact registered OpenSoldat gitlink into the isolated source tree (without copying submodule Git metadata), applies the viewer/gallery patches and copies `ReferenceGostek.inc`, configures CMake, patches the downloaded GNS compatibility issue, builds the native client, copies base data into the isolated runtime, and generates the synthetic PMS. It retains the isolated GNS download between builds and never compiles or patches anything under `reference/`. CMake fetches pinned GNS v1.4.1 on the first configuration; other assets are local. Source-layout verification does not by itself requalify the full native OpenGL build or raster captures.
 
 The executable is `build-out/refclient/cmake/bin/opensoldat` (observed Mach-O 64-bit arm64). `source/` and `cmake/` beneath `build-out/refclient/` contain generated/compiled files. `data/` merges the unmodified bytes from `reference/base/shared`, `reference/base/client`, and `play-regular.ttf`. It is a copy, **not a symlink back into reference**, because the native client writes configs/logs/screens below its user directory. No server, network connection, sound initialization, or gameplay simulation is needed for capture.
 

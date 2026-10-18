@@ -1,5 +1,8 @@
-# Local upstream checkouts, dependencies and generated build evidence.
-reference/
+# Generated dependencies and local build evidence.
+# Only the pinned upstream submodules belong under reference/.
+/reference/*
+!/reference/opensoldat/
+!/reference/base/
 node_modules/
 dist/
 build-out/

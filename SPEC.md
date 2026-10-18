@@ -68,13 +68,15 @@ What the original chat assumed, and what research established. "Consequence" is 
 | Node | 24 LTS |
 | Weapons | `base/server/configs/weapons.ini` (Version=1.7.1 units) |
 
+The source and base pins are recorded both in `pins.json` and in tracked gitlinks for the optional pristine `reference/opensoldat` and `reference/base` submodules. [Development setup](docs/development.md#pinned-upstream-checkouts-and-dependencies) initializes only those paths, without fetching nested dependencies. Default `bun run check:pins` validates exact staged gitlinks against `pins.json` and initialized references' own HEADs and working-tree cleanliness while permitting absent optional references. Dirty references, including non-ignored untracked files, fail without modification; empty/uninitialized paths cannot resolve to the superproject's HEAD. `bun scripts/check-pins.ts --require-references` requires both for import/oracle/native-reference workflows; unknown flags are rejected. Prepared-WASM/content app work can omit the references, not the maintained Pascal source when rebuilding.
+
 ## 4. Architecture
 
 ```mermaid
 flowchart LR
   subgraph Build
     BASE[opensoldat/base @pin] --> IMP[content importer<br/>Bun/TS]
-    OS[sim/opensoldat<br/>vendored @pin] --> FPC[FPC trunk<br/>wasm32 + native]
+    OS[sim/opensoldat<br/>maintained Pascal core] --> FPC[FPC trunk<br/>wasm32 + native]
     FPC --> WASM[sim.wasm]
     FPC --> NAT[sim-native + oracle]
     IMP --> BUNDLE[content bundles<br/>hash-addressed]
@@ -99,7 +101,7 @@ flowchart LR
 
 ### 4.1 Simulation core (`sim.wasm`)
 
-**Source.** `opensoldat/opensoldat` at the pinned commit, vendored into `sim/opensoldat` (KrakenSDK excluded) by the repository's first commit, so every change is a reviewable diff against that commit. Units in scope: `Vector, Calc, Parts, Anims, PolyMap, MapFile, Waypoints, Weapons, SharedConfig (weapon INI subset), Game (state subset), Sprites, Control, Bullets, Things, AI, Sparks`.
+**Source.** A reduced, maintained extraction of `opensoldat/opensoldat` at the pinned commit lives in `sim/opensoldat/{sim,shared}`, with reviewable extraction/mechanics changes and required license/author notices. The original full vendor import is historical; unused native client/server and third-party code is no longer maintained in that tree. The optional pristine `reference/opensoldat` submodule preserves upstream comparison and future porting material; `reference/base` supplies pinned import content. Neither is a replacement for the patched core during simulation rebuilds. Source pruning does not change the shipped browser payload, erase historical receipts, or authorize redistribution of excluded KrakenSDK/native dependencies. Units in scope: `Vector, Calc, Parts, Anims, PolyMap, MapFile, Waypoints, Weapons, SharedConfig (weapon INI subset), Game (state subset), Sprites, Control, Bullets, Things, AI, Sparks`.
 
 **Role.** Compiled once with a single role-neutral define (`SIM`). Gameplay semantics follow the **server-role** branches. Every client-role branch that changes gameplay (self-bink, recoil-to-cursor, client jet-fuel 1→0 adjustment, client-only bullet history collision, push-tick scheduling) is recorded in `docs/role-divergence-ledger.md` with an explicit decision. Network, audio, menu, SDL, script and Steam calls are removed or replaced by event emission.
 
@@ -247,9 +249,11 @@ Original `AI.pas` runs inside every sim instance (`AI_ENABLED`) — server, clie
 
 ```
 soldat-web/
-  reference/            pinned upstream clones (read-only, never shipped)
+  reference/            optional pristine upstream submodules (tracked gitlinks, never shipped)
+    opensoldat/         pinned source for comparison, oracle/native reference and future porting
+    base/               pinned content input for imports
   sim/
-    opensoldat/         vendored upstream @pin; all sim edits are diffs against the vendor commit
+    opensoldat/         maintained patched Pascal core: sim/, shared/, retained rights notices
     build/              Dockerfile (pinned FPC trunk), build scripts → sim.wasm, sim-native
   tools/oracle/         upstream + harness patch, trace capture CLI
   packages/

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)
+bun "$root/scripts/check-pins.ts" --require-references
 image=${ORACLE_IMAGE:-soldat-web/fpc:bcd7288}
 platform=${ORACLE_PLATFORM:-linux/arm64}
 fpc=${FPC:-fpc}

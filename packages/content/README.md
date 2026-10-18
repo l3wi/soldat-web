@@ -7,13 +7,17 @@ Build-time TypeScript/Bun importer for the pinned OpenSoldat base checkout. The 
 From the repository root:
 
 ```sh
-bun install
+bun install --frozen-lockfile
+git submodule update --init -- reference/opensoldat reference/base
+bun scripts/check-pins.ts --require-references
 bun packages/content/src/cli.ts --base reference/base --out dist/content-next
 bun test packages/content/src
 bun packages/content/src/cli.ts --hash dist/content-next
 ```
 
 `--source` defaults to `reference/opensoldat`; `--pins` defaults to `pins.json`. These provide the source graphics tables and provenance pins. Run comparisons in **fresh output directories**; the importer overwrites its own current outputs but deliberately does not delete old objects or unrelated files from an existing directory. No network access is used during import. `dist/` is ignored by Git.
+
+Both reference paths are optional, commit-pinned development submodules. They are required for import and the content corpus tests, but not for running prepared WASM/content. Initialize only those paths, without `--recursive`; preserve local changes instead of forcing/resetting a checkout. See the [development setup](../../docs/development.md#pinned-upstream-checkouts-and-dependencies).
 
 Media tools must be installed before import: `cwebp`, `dwebp` and `ffmpeg` on `PATH`, with FFmpeg's `libopus` encoder available. The importer invokes `cwebp -lossless -exact -z 9` and independently decodes **every frame** with `dwebp`; any dimension or RGBA-byte mismatch aborts the import. Audio is encoded to 64-kbps VBR mono Ogg Opus at 48 kHz. Temporary PNG/WAV/decoded media stays outside the output tree and is removed after each conversion, including failures. Imports are CPU-heavy; schedule one full import at a time. Do not overwrite an existing content tree while another process is qualifying it.
 

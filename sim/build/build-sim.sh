@@ -33,8 +33,7 @@ fi
 SRC="$ROOT/sim/opensoldat"
 COMMON=(-B -MDelphi -Scgi -O3 -OoREGVAR -dSERVER -dSIM -dTESTING
   -Fi"$SRC/shared" -Fu"$SRC/sim" -Fu"$SRC/shared"
-  -Fu"$SRC/shared/mechanics" -Fu"$SRC/shared/network"
-  -Fu"$SRC/shared/libs" -Fu"$SRC/server")
+  -Fu"$SRC/shared/mechanics")
 mkdir -p "$OUT"
 if [[ "$TARGET" == all || "$TARGET" == wasm ]]; then
   mkdir -p "$OUT/wasm-units"

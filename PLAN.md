@@ -8,6 +8,10 @@ Later work has implemented all seven modes and round transitions, waypoint bots 
 
 Gate criteria and receipts remain intact. A receipt proves only its named artifact, corpus, runtime and conditions; implementation or a newer targeted check does not retroactively pass an old gate. The retained G4 report explicitly does not pass its historical gate, and current adverse-network/capacity/platform release acceptance remains separate. The “First actions” section is also historical, not an instruction to recreate the repository.
 
+The original vendor-layout instructions below are historical too. Current `reference/opensoldat` and `reference/base` are optional pinned submodules registered as tracked gitlinks, **not ignored clones**; initialize only those two paths, without recursion, using the [development guide](docs/development.md#pinned-upstream-checkouts-and-dependencies). The maintained, patched simulation is now reduced to `sim/opensoldat/{sim,shared}` plus retained rights notices; pristine upstream retains unused native client/server/dependency code and future porting material. This layout change does not change the shipped browser payload or make maintained Pascal source optional for rebuilds. Prepared-artifact app work can omit the references; import/oracle/native-reference work requires them. Current setup/pin-check behavior supersedes Phase 0.1's ignored-reference/vendor instructions without rewriting the original plan or receipts.
+
+Current `bun run check:pins` validates exact staged gitlink pins plus initialized references' own HEADs and cleanliness; absent optional references are allowed, and dirty checkouts fail without modification. `bun scripts/check-pins.ts --require-references` additionally requires both references. These checks do not qualify the compiler or rebuilt WASM.
+
 ## Original roadmap
 
 Implements `SPEC.md` (requirement IDs R-*, acceptance §6, decisions D*). Each phase ends in a **gate**: a pass/fail check with recorded evidence in `docs/gates/<gate>.md`. A failed gate stops dependent work and triggers the listed fallback; nothing downstream proceeds on an assumed pass.

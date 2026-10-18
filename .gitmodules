@@ -1,0 +1,6 @@
+[submodule "upstream-opensoldat"]
+	path = reference/opensoldat
+	url = https://github.com/opensoldat/opensoldat.git
+[submodule "upstream-base"]
+	path = reference/base
+	url = https://github.com/opensoldat/base.git

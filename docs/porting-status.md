@@ -4,7 +4,9 @@ Reference snapshot: 2026-10-18. Audience: contributors and release reviewers dec
 
 ## Baseline and evidence rules
 
-The mechanics baseline is OpenSoldat `bf43a43bdd7a069e02c906768807f66e621b2888`, not classic 1.7.1.1 or current upstream HEAD. Content is `opensoldat/base@5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`; pins and the product contract are in [SPEC](../SPEC.md). `reference/opensoldat/` is the read-only comparison checkout; the extracted implementation is in `sim/opensoldat/`.
+The mechanics baseline is OpenSoldat `bf43a43bdd7a069e02c906768807f66e621b2888`, not classic 1.7.1.1 or current upstream HEAD. Content is `opensoldat/base@5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`; pins and the product contract are in [SPEC](../SPEC.md). `reference/opensoldat/` and `reference/base/` are optional pristine upstream submodules registered as pinned gitlinks; the reduced, maintained implementation is in `sim/opensoldat/{sim,shared}`, with required license/author notices retained.
+
+Native client/server and third-party source outside that maintained core remains accessible in the upstream reference, including the unported capabilities cited below. Initialize references [nonrecursively](development.md#pinned-upstream-checkouts-and-dependencies) before using those paths for import, comparison, oracle or native-reference work. Default `bun run check:pins` permits absent references while validating exact staged gitlink pins and initialized references' own HEADs and cleanliness; dirty references fail without modification. `bun scripts/check-pins.ts --require-references` requires both. Prepared-WASM/content application work can skip them, but rebuilding still requires the maintained Pascal source and compiler. This source-layout reduction is not a browser-payload reduction, a new qualification receipt or a deletion of historical evidence.
 
 Use these categories separately:
 
@@ -32,6 +34,8 @@ Current interfaces are simulation ABI/state/render/FX **`0x00010006`** and gamep
 
 The [2026-10-18 communications verification record](../packages/server/README.md#native-actions-and-communications-verification--2026-10-18) identifies the current recorded WASM/content identities and reports 40 real-WASM scenarios, protocol/server/client checks, real HTTPS/WSS integration and three private Chrome155 clients with synthetic microphones. The [menu verification notes](../packages/client/README.md) record exercised shell flows. These are existing reports, not checks performed by this documentation change, and not full-port certification.
 
+The optional-reference source cutover was checked with isolated native/WASM builds both with and without initialized references, 40 real-WASM gameplay scenarios, native/WASM RNG conformance and fresh-checkout pin/init/error workflows. Native executables matched the preserved binary byte-for-byte. Every standard WASM section and all non-module-name symbols matched; only the custom module name reflected each isolated output path. The approved runtime artifact and its admission pins were not replaced. Receipts are under `build-out/upstream-prune/`; this source-layout check is not a fresh full native OpenGL/oracle/platform qualification.
+
 ## Remaining implementation in the agreed browser scope
 
 ### Local custom-map/mod inspection (R-CON-5)
@@ -48,7 +52,7 @@ Distinguish this scope gap from the native ecosystem: pinned `reference/opensold
 
 ## Native capabilities intentionally not carried over at launch
 
-These are documented boundaries, not instructions to delete the retained upstream source or to implement more features during cleanup.
+These are documented boundaries, not instructions to delete upstream reference material or to implement more features during cleanup. Their source paths refer to the optional pinned upstream checkout, not files promised in the reduced maintained simulation tree.
 
 | Capability | Pinned evidence | Browser decision / remaining compatibility boundary |
 | --- | --- | --- |

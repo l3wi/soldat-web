@@ -2,11 +2,17 @@
 # macOS arm64, invoked from repository root. Never compiles inside reference/.
 set -eu
 root=$(pwd)
+bun "$root/scripts/check-pins.ts" --require-references
 source="$root/build-out/refclient/source"
 cmake="$root/build-out/refclient/cmake"
 mkdir -p "$root/build-out/refclient"
-# Refresh only upstream tracked files; downloaded GNS remains in the isolated copy.
-ditto "$root/reference/opensoldat" "$source"
+# Archive the verified gitlink, never a submodule's relocatable .git file.
+# Overlay only tracked upstream files; retain the isolated downloaded GNS.
+pin=$(git -C "$root" rev-parse :reference/opensoldat)
+archive="$root/build-out/refclient/upstream.tar"
+git -C "$root/reference/opensoldat" archive --format=tar --output="$archive" "$pin"
+mkdir -p "$source"
+tar -xf "$archive" -C "$source"
 patch -d "$source" -p1 -i "$root/tools/refclient/patches/001-fixed-map-view.patch"
 patch -d "$source" -p1 -i "$root/tools/refclient/patches/003-gostek-gallery.patch"
 cp tools/refclient/ReferenceGostek.inc "$source/client/ReferenceGostek.inc"
