@@ -2,6 +2,8 @@
 
 **Soldat Online** is a browser adaptation of pinned OpenSoldat 1.8: original Pascal gameplay compiled to WebAssembly, a React/Phaser client, and a Node 24 authoritative multiplayer server. It is not compatible with native Soldat/OpenSoldat network servers.
 
+![Soldat Online homepage showing the main menu over an in-game backdrop](docs/images/homepage.png)
+
 **Development/private builds only.** Written THD/MM permission for the Soldat name and related branding is still a public-launch prerequisite. This is an unofficial project, not affiliated with or endorsed by Transhuman Design.
 
 ## Start here
@@ -10,7 +12,7 @@
 - [Current porting status](docs/porting-status.md): implemented scope, remaining unported items, qualification gaps and explicit non-goals.
 - [Contributing](CONTRIBUTING.md): mechanics, authority, compatibility, evidence and licensing rules.
 - [Specification](SPEC.md): decisions and fidelity requirements.
-- [Implementation plan](PLAN.md): original phase/gate sequence; not a current feature checklist.
+- [Delivery and release roadmap](PLAN.md): current priorities, remaining product gaps and release exit criteria.
 - [Deployment guide](deploy/README.md): direct-TLS region operation; reconcile any recorded artifact hashes with the current qualified release before deploying.
 
 After completing the [one-time setup](docs/development.md#prepare-a-checkout), start these in separate terminals from the repository root:
@@ -46,7 +48,7 @@ Prepared-artifact client/server work can omit both upstream submodules when the 
 
 ## Evidence and rights
 
-`pins.json` and `bun.lock` fix source/dependency baselines. Historical `PLAN.md` gates and package verification notes qualify only their recorded WASM/content/runtime/fixture combinations; an old pass does not qualify a rebuilt binary. There is no root test/build aggregator or enforced CI gate implied by the plan; use the [serial check layers](docs/development.md#run-checks-in-layers).
+`pins.json` and `bun.lock` fix source/dependency baselines. Historical gate reports, research and package verification notes qualify only their recorded WASM/content/runtime/fixture combinations; an old pass does not qualify a rebuilt binary. `PLAN.md` tracks the remaining delivery and release work, not completed bootstrap instructions. There is no root test/build aggregator or enforced CI release gate today; use the [serial check layers](docs/development.md#run-checks-in-layers).
 
 Default `bun run check:pins` validates exact staged upstream gitlink pins and initialized references' own HEADs and cleanliness, allowing absent optional references. Dirty references fail without modification. Use `bun scripts/check-pins.ts --require-references` when the workflow requires both upstream checkouts; pin checks do not qualify the compiler or built WASM.
 

@@ -1,6 +1,8 @@
 # Prior art and port paths: Soldat in a browser
 
-Research date: 2026-10-15. Read-only investigation; no reference/project modifications, compiler installation, build, or gameplay smoke test was performed. Repository/API/README claims below are distinguished from runtime verification. FPC is not installed, per assignment; this observation was not rerun.
+Research date: 2026-10-15. No compiler installation, build, or gameplay smoke test was performed. Repository/API/README claims below are distinguished from runtime verification. FPC was reported absent from the research environment; that observation was not independently checked.
+
+> Historical port-path evaluation. Current requirements, implementation/qualification and delivery sequencing live in [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md). The maintained Pascal core is now `sim/opensoldat/{sim,shared}`; `reference/opensoldat` and `reference/base` are optional pinned pristine references, not working source trees. The competing full-client/TS/WASM rankings and build suggestions below are dated research recommendations, not current setup instructions.
 
 ## 1. Verified facts (with citations)
 
@@ -85,7 +87,7 @@ Source-size fact from `wc -l` on named local files: **17,036 lines** across Spri
 
 - Native macOS build is documented (`reference/opensoldat/README.md:22,51-57`); server-only configuration is explicitly documented (`:59-65`). **Headless server does not require rendering/audio**: root includes client only when `BUILD_CLIENT` is enabled (`reference/opensoldat/CMakeLists.txt:182-188`), and client-specific CMake finds SDL/OpenAL/FreeType.
 - FPC stable supports aarch64 macOS on its [official downloads page](https://www.freepascal.org/download.html); [Homebrew formula](https://formulae.brew.sh/formula/fpc) gives **`brew install fpc`**, version **3.2.2**. No installation was performed.
-- Suggested future trace build configuration, **unexecuted**: `cmake -S <source-copy> -B <temporary-build> -DBUILD_CLIENT=OFF -DBUILD_SERVER=ON -DBUILD_SCRIPTCORE=OFF -DBUILD_RCON=OFF -DADD_ASSETS=OFF -DOPENSSL_ROOT_DIR=<brew-prefix>` and build there. Supply intentional pinned assets separately. Important: **copy the source to /tmp too** under this assignment's read-only contract: the GNS CMake sets download/build `SOURCE_DIR` beneath `${CMAKE_CURRENT_LIST_DIR}/build`, so an out-of-tree build alone can still write into the original source (`reference/opensoldat/shared/libs/GameNetworkingSockets/CMakeLists.txt:18-21,41,49-62`).
+- Suggested reference trace build configuration at research time, **unexecuted**: `cmake -S <source-copy> -B <temporary-build> -DBUILD_CLIENT=OFF -DBUILD_SERVER=ON -DBUILD_SCRIPTCORE=OFF -DBUILD_RCON=OFF -DADD_ASSETS=OFF -DOPENSSL_ROOT_DIR=<brew-prefix>` and build there. Supply intentional pinned assets separately. Important: **copy the source to /tmp too** to preserve the reference checkout: the GNS CMake sets download/build `SOURCE_DIR` beneath `${CMAKE_CURRENT_LIST_DIR}/build`, so an out-of-tree build alone can still write into the original source (`reference/opensoldat/shared/libs/GameNetworkingSockets/CMakeLists.txt:18-21,41,49-62`).
 - Caveats: server hardcodes `/usr/local/lib` (`reference/opensoldat/server/CMakeLists.txt:1-7`); README/workflow hardcode `/usr/local/opt/openssl@3` rather than arm Homebrew's typical prefix. Use `brew --prefix`-derived locations rather than copying that path. Root Darwin cross options explicitly name x86_64/i386, not arm64 (`reference/opensoldat/CMakeLists.txt:14-15,147-153`), although a native FPC arm64 build need not use those cross flags.
 - `Server.pas:580-583` guards `Set8087CW` with `IFNDEF CPUARM`; whether that is sufficient for the installed compiler's aarch64 definitions/RTL is unverified. Treat as an architecture audit target, not a claimed compile failure.
 - macOS workflow uses `macos-latest` but labels its output **macos-x64**, and there is no explicit arm64 build matrix (`reference/opensoldat/.github/workflows/opensoldat.yml:167-192`). A workflow definition is not proof of a current successful arm64 run. Latest published macOS artifact is dated **2024-04-21**, x64-labeled. [release API](https://api.github.com/repos/opensoldat/opensoldat/releases?per_page=4).
@@ -100,7 +102,7 @@ Source-size fact from `wc -l` on named local files: **17,036 lines** across Spri
 - Stronger than generic “open source welcomes contributions”: on [PR #175](https://github.com/opensoldat/opensoldat/pull/175), Shoozza explicitly says **“Thanks for the pull request! I don't have a FreeBSD system but I'm happy to add support”**, reviews it, and merges Dec 25 2025. README explicitly hopes open source empowers community improvements (`README.md:9`).
 - [INFERENCE] A focused browser-platform patch, parser fixture, build fix, or trace harness is likely more upstreamable than demanding a wholesale TS engine migration. **No maintainer has agreed to this particular project**, and we should approach humanova as well as OpenSoldat before duplicating their work.
 
-## 2. Chat assumptions
+## 2. Research assumptions
 
 | Claim | Verdict | Evidence |
 |---|---|---|
@@ -128,7 +130,7 @@ Source-size fact from `wc -l` on named local files: **17,036 lines** across Spri
 6. **Preserving source means preserving every native feature. Does not hold.** New protocol, authority rules and browser security boundaries are intentional changes. Preserve gameplay math, not unrelated Steam/native scripting/UDP assumptions.
 7. **Public GitHub means freely reusable. Does not hold.** Three useful parser/viewer projects expose no clear license in inspected material; contact author or independently implement from MIT original/format facts. Existing browser game's content licensing is mixed.
 8. **Recent source implies healthy releases. Does not hold upstream.** Separate source changes, successful CI runs, maintained binaries and community activity; only the first and published-release dates were verified here.
-9. **Original means one stable target. Does not hold.** Chat named classic 1.7.1.1, local source is unfinished 1.8, browser port says 1.7.1, Soldat 2 is another product. User-visible fidelity baseline must be chosen before treating divergence as a bug.
+9. **Original means one stable target. Does not hold.** The research considered classic 1.7.1.1, local source is unfinished 1.8, browser port says 1.7.1, Soldat 2 is another product. User-visible fidelity baseline must be chosen before treating divergence as a bug.
 
 ## 4. Risks and mitigations
 
@@ -146,6 +148,8 @@ Source-size fact from `wc -l` on named local files: **17,036 lines** across Spri
 | **Low** | Reimplementing static parser basics | Cross-check MIT original against independent JS/Rust/Python readers and real base corpus; keep security bounds review independent of compatibility |
 
 ## 5. Concrete recommendations / decisions for the spec
+
+The rankings and gates in this section were proposed on 2026-10-15. They explain the original decision space; they do not reopen the maintained Pascal WASM core and React/Phaser architecture or establish new roadmap work.
 
 ### 5.1 Ranked strategy recommendation
 
@@ -182,11 +186,11 @@ The correct ranking depends on whether Phaser/TS is a means or a non-negotiable 
 - Preserve no-existing-server-compatibility scope. Reuse code/docs where useful, but legacy reverse-engineered protocol and UDP relay are optional historical capabilities, not reasons to widen the spec.
 - Collaboration: first technical outreach to humanova about goals, reproducible build/fidelity and headless extraction; OpenSoldat Discord/PR about narrow extraction/hooks/reference tests. Existing accepted platform PR demonstrates openness, not a commitment to maintain our fork.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 1. Is **Phaser/hand-owned TS gameplay** a hard constraint, or may we reuse an original Pascal WASM client if it gets much closer to faithful browser play with less duplicate work?
 2. Which experience is the fidelity authority: **classic 1.7.1.1**, **OpenSoldat 1.8**, or specific remembered movement/weapon tuning from another version? “Original” is not sufficiently precise.
 3. Is the goal a distinct modern product/new authoritative ecosystem, or would collaborating with/extending an existing browser Soldat project satisfy the revival goal?
 4. Are bug-for-bug behaviors important even when they complicate modern architecture, or may selected movement/network/gameplay bugs change if explicitly identified?
 
-Technical unknowns (actual browser-port fidelity, current ARM64 build, exact reusable-code license grants from unlicensed parsers) are **not** questions to burden the user with; they require direct evaluation or author/maintainer follow-up. This report does not claim those checks were exercised.
+Technical unknowns (actual browser-port fidelity, current ARM64 build, exact reusable-code license grants from unlicensed parsers) require direct evaluation or author/maintainer follow-up rather than product preference decisions. This report does not claim those checks were exercised.

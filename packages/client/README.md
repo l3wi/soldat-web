@@ -30,7 +30,7 @@ After rebuilding the simulation, reimport content before playing: the native rea
 
 Multi-map practice mounts the complete verified simulation pack **before** `sim_init`, because the native VFS rejects writes after initialization. Empty/current-map-only practice rotations and combat qualification retain the selected-map pack. Subsequent round handoffs only load already-mounted PMS files.
 
-Suggested browser qualification (not exercised by this edit): cycle all seven friend/practice types and inspect compatible maps; start eleven-bot practice; toggle every rule/bonus and inspect native globals; restrict all guns and verify limbo eligibility; use a one-minute round with two-map rotation, change team/appearance, and verify continued identity across handoff; reload and verify saved appearance/presentation settings; verify guests cannot edit host rules and primary weapon choice remains closed until the next death.
+Browser qualification recipe (not a verification record): cycle all seven friend/practice types and inspect compatible maps; start eleven-bot practice; toggle every rule/bonus and inspect native globals; restrict all guns and verify limbo eligibility; use a one-minute round with two-map rotation, change team/appearance, and verify continued identity across handoff; reload and verify saved appearance/presentation settings; verify guests cannot edit host rules and primary weapon choice remains closed until the next death. Record the tested artifact and actual outcomes separately.
 
 
 ```sh
@@ -360,9 +360,9 @@ Console `/retry` also rejoined the friend match with the original host capabilit
 
 Receipts: `build-out/controls/browser.json`, `features.json`, and `shell/screens.json`; screenshots `spectator-follow-final.png`, `spectator-free-final.png` and `downloads/final-f4.png`. The earlier strict request-cancellation audit remains historical/failed; this run does not claim zero resource cancellations. Full native-oracle equivalence, Firefox/Safari, adverse-network acceptance and long production capacity remain unqualified.
 
-## Native actions and communications verification — 2026-10-18
+## Historical native actions and communications verification — 2026-10-18
 
-The current ABI6/wire7 artifact passed **150** isolated client tests, all three package typechecks and the production build. Complete current identities/counts are in the [server verification reference](../server/README.md#native-actions-and-communications-verification--2026-10-18).
+That ABI6/wire7 artifact passed **150** isolated client tests, all three package typechecks and the production build. Its recorded identities/counts are in the [historical server verification reference](../server/README.md#historical-native-actions-and-communications-verification--2026-10-18). The later privacy-safe artifact and its targeted checks are recorded in the [current artifact verification](../server/README.md#privacy-safe-artifact-verification--2026-10-18); the earlier browser/media results below are not a fresh qualification of that later artifact.
 
 Three independent private Chrome155 clients exercised actual native gestures, numbered radio recording playback/team isolation, host/operator menus and secret masking, real synthetic-microphone capture and received WebRTC audio, team/public/mute transitions, pause/unpause, map voting and post-round media, native kill, targeted ban/unban and fresh-admission voice. Microphones were not requested until PTT; release and server mute ended capture. No page exceptions occurred. The existing full shell harness also passed 21 screenshots and eight single-canvas transitions.
 

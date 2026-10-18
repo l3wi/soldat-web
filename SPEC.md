@@ -3,6 +3,8 @@
 Status: scope updated 2026-10-18 for seven-mode gameplay, balancing, console/taunts, spectator controls, native actions, moderation/communications and the browser menu. This is the product contract, not a completed-port claim. See [current porting status](docs/porting-status.md) for missing capabilities and qualification gaps; historical gate results qualify their recorded artifacts only.
 Evidence: `docs/research/*.md` (six research reports; each claim there carries a source-line or URL citation). Product requirements and decisions are recorded here; raw private conversations are not retained.
 
+Document authority: this specification defines requirements and thresholds; [PLAN](PLAN.md) defines delivery order; [porting status](docs/porting-status.md) records implementation and qualification gaps; [development](docs/development.md) provides current commands. Dated research proposals and gate results do not override the current decisions below or establish release acceptance for another artifact.
+
 ## 0. Decision log
 
 | # | Decision | Source |
@@ -238,7 +240,7 @@ Original `AI.pas` runs inside every sim instance (`AI_ENABLED`) — server, clie
 - LAN: local movement visible on the next rendered frame; zero persistent correction drift.
 - 100 ms RTT + 15 ms jitter + 1 % loss: 60 Hz sustained at 16 players; reliable events exactly-once; no stuck fire/jet; correction p95 < 2 world units and > 10-unit corrections < 1/min/player on ordinary movement (initial targets).
 - 250 ms / 5 % bursty: degraded but invariant-safe (no extra ammo, speedhack, duplicate kill/pickup), clean resync, no leak.
-- Bandwidth (v4): steady-state server→client wire bytes ≤ 16 KB/s per client at 16 humans and ≤ 32 KB/s at 32 humans, excluding join/resync full states; confirmed-instance hash mismatches = 0 in every non-adversarial run.
+- Bandwidth (current wire7 relay; budget introduced in v4): steady-state server→client wire bytes ≤ 16 KB/s per client at 16 humans and ≤ 32 KB/s at 32 humans, excluding join/resync full states; confirmed-instance hash mismatches = 0 in every non-adversarial run.
 - Server: sim+encode p99 < 8 ms, tick lateness p99 < 4 ms at 16 players; 30-min soak and 2-h memory soak stable.
 - Security: rejects NaN/inf, malformed packets, sequence jumps, future/stale fire timestamps, input flooding; a stalled client gains no simulation time.
 
@@ -258,12 +260,12 @@ soldat-web/
   tools/oracle/         upstream + harness patch, trace capture CLI
   packages/
     sim-host/           TS bindings for sim.wasm (Node + browser), typed views, trace diff
-    content/            importer CLI → dist/content/
+    content/            importer CLI → dist/content-next/ (older captures retain dist/content/)
     protocol/           binary codecs, transport interface
     client/             Vite + React + Phaser
     server/             Node 24 match server
   tests/fixtures/       input scripts, golden traces, screenshots
-  docs/                 research/, role-divergence-ledger.md, licenses/
+  docs/                 development/status, formats/, research/, gates/, provenance and ledgers
 ```
 Bun workspaces for build/test tooling; server runs on Node 24.
 
@@ -273,10 +275,10 @@ Bun workspaces for build/test tooling; server runs on Node 24.
 |---|---|---|
 | High | Extraction drags in net/UI/audio graph | Replace with event emission; T1 bit-exact gate catches behaviour drift per unit |
 | High | FPC trunk + wasm toolchain breaks or rots | Pinned commit in Docker; sim needs no C; contact humanova; upstream small fixes |
-| High | Server authority makes jets/knockback feel corrected | Full-state rollback, smoothing, correction metrics in §6.4; tune snapshot/interp before launch |
+| High | Server authority makes jets/knockback feel corrected | Full-state rollback, smoothing and correction metrics in §6.4; qualify input scheduling, prediction and interpolation before launch |
 | High | Phaser custom node intrusive or slow | G0.4 gate; Pixi v8 fallback with same shader and data |
 | High | `save_state` misses hidden state ⇒ prediction desync | T3 save/load round-trip tests every tick on corpora; hash compares server vs client in debug builds |
-| Med | Full-state snapshots too large at 32 players | **Measured and replaced**: v3 deltas were 14.5 KB/snapshot at 8 players, 63 KB at 32; v4 relays human inputs only (~0.2–0.8 KB per 2-tick batch before compression); full state only at join/resync |
+| Med | Full-state snapshots too large at 32 players | **Historical v3/v4 comparison:** v3 deltas were 14.5 KB/snapshot at 8 players, 63 KB at 32; v4 introduced human-input relay (~0.2–0.8 KB per 2-tick batch before compression). Current wire7 retains relay plus join/resync full states; qualify its actual wire budgets under §6.4 |
 | Med | Native oracle won't build on arm64 macOS | Build in Linux container (amd64/arm64) |
 | Med | License contamination (Vector.pas MPL, Kraken, classic files) | §9 policy; Kraken excluded from fork; Vector.pas kept with MPL 1.1 notice and source availability |
 | Med | Global Pascal state limits rooms per process | One instance per match per worker; measure memory per instance |
@@ -289,9 +291,9 @@ Bun workspaces for build/test tooling; server runs on Node 24.
 4. Naming: product name "Soldat Online" (D10). Before any public release: obtain written THD/MM authorization covering the name, wordmark, domain and store listings; if refused, fall back to an independent title. Until then: no original Soldat logo/title art as branding, keep "Unofficial … not affiliated with or endorsed by Transhuman Design" on landing and About.
 5. User content is local-only at launch; public hosting requires a separate rights/takedown design.
 
-## 10. Open items (do not block Phase 0)
+## 10. Open release decisions
 
-- Reference hardware for R-CLI-1 (named in G0.4).
+- Name reference desktop/laptop hardware for R-CLI-1 and the release rendering benchmarks.
 - Written public-branding permission for the chosen development/private-build name **Soldat Online** (D10 and §9.4); choosing the name did not clear the mark.
-- Regions and monthly hosting budget (needed before Phase 7).
+- Regions and monthly hosting budget, required before production deployment.
 - Bug-compatibility exceptions: default is "reproduce", including `TeamCollides` blue/yellow anomaly (`Sprites.pas:434-438`); any fix is a ledger entry.

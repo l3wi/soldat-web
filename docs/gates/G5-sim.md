@@ -1,5 +1,7 @@
 # G5 simulation — Original waypoint bots and world
 
+> **Historical ABI-4 simulation evidence:** all results, implementation descriptions and reproduction commands below are bound to the frozen artifact/content identities in this record and their contemporaneous source/toolchain. They do not qualify today's artifact or describe its complete behavior. Use [development](../development.md) for current workflows and [porting status](../porting-status.md) for current implementation and qualification.
+
 ## Gate status
 
 **PASS for the requested installed-runtime correctness matrix; robustness measurements include nonzero stall flags.** The frozen ABI-4 artifact passes oracle/T1 **168/168**, T2 **336/336**, Node save/load **336/336**, Chrome **336/336** and Firefox **336/336** across both RNG policies. Presentation checks pass and all **194/194** five-minute stock-map/mode runs complete without crashes. The measured **281 bot-run stall flags / 433 episodes** are not a zero-stuck-bot claim. Safari is excluded by user decision; installed Firefox 115.0 does not satisfy a current/previous-major Firefox qualification. No earlier artifact's receipt is reused.
@@ -19,7 +21,7 @@ The native builds passed all 15 signed-packed-load compiler regression cases; th
 ## Implemented boundaries
 
 
-The client coordinator reports final-artifact integration passes: three package typechecks; 92 client/protocol unit tests, 19 server unit tests, nine real Node prediction tests, three Node bot-fill tests; Vite build/invariants; and four actual private-Chrome original-world gameplay rows (4/8 bots in Arena DM and ctf_Ash CTF), zero console errors and dropped ticks. Those rows observed medikits/grenade kits, CTF flags, movement, shooting, deaths, respawns and scores. This is useful integration evidence, **not a replacement for the determinism matrices or five-minute full-stock robustness**.
+The client integration record reports final-artifact passes: three package typechecks; 92 client/protocol unit tests, 19 server unit tests, nine real Node prediction tests, three Node bot-fill tests; Vite build/invariants; and four actual private-Chrome original-world gameplay rows (4/8 bots in Arena DM and ctf_Ash CTF), zero console errors and dropped ticks. Those rows observed medikits/grenade kits, CTF flags, movement, shooting, deaths, respawns and scores. This is useful integration evidence, **not a replacement for the determinism matrices or five-minute full-stock robustness**.
 - Original `AI.pas` and `Waypoints` execute inside authoritative/local instances. Bot profiles use original parsing and respawn/weapon selection. All original brain fields, controls and RNG state serialize explicitly.
 - Original RNG retains the shared FPC stream; keyed AI decisions and bot respawn weapon selection use the separate serialized AI stream. Prediction instances disable decisions without changing snapshot identity.
 - `world:"original"` is the product default. Original startup creates CTF flags, medical kits, grenade kits and conditional stationary guns in source order. `world:"fixture"` explicitly preserves controlled initial Things for legacy fixtures. Native pickup/out-of-bounds kit Respawn remains unchanged; no medical/grenade timer is invented.
@@ -50,14 +52,14 @@ Safari is excluded by the user's decision, not passed. Five-minute robustness co
 
 ## Serial qualification command
 
-After the client coordinator releases the heavy-job slot, run from the repository root:
+For archival reproduction with the recorded source, toolchain and frozen inputs, run serially from the repository root:
 
 ```sh
 node sim/build/run-g5.mjs build-out/sim/g5/final \
   210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1
 ```
 
-The runner checks memory pressure before heavy steps and freezes the WASM identity throughout. It builds corrected Linux native/oracle targets, captures/repeats goldens, executes T1, exhaustively reports the ledgered authoritative-inventory differences, runs T2/Node, actual Chrome then Firefox with private profiles, validates receipts, checks presentation, and runs five-minute full-stock plus thirty-minute selected-map robustness. It stops on a failure and preserves the stage log and execution receipt rather than manufacturing a completed gate. All Docker writes remain host-bound; nothing prunes Docker or touches user browsers/dev server 5195.
+The runner checks memory pressure before heavy steps and freezes the WASM identity throughout. It builds corrected Linux native/oracle targets, captures/repeats goldens, executes T1, exhaustively reports the ledgered authoritative-inventory differences, runs T2/Node, actual Chrome then Firefox with private profiles, validates receipts, checks presentation, and runs five-minute full-stock plus thirty-minute selected-map robustness. It stops on a failure and preserves the stage log and execution receipt rather than manufacturing a completed gate. All Docker writes remain host-bound; Docker objects and the separate dev server on 5195 were left unchanged.
 
 ## Pre-qualification corrections
 
@@ -73,13 +75,13 @@ Both harness and extracted simulation intentionally have an **empty map-rotation
 
 `build-out/sim/g5/final/execution.json` records zero-exit captures, movement/combat/bot T1 and all three T2/Node corpus stages. The authoritative-control command exits 1 for the three deliberate C08 secondary-inventory differences; its explicit `movementAndPoseIdentical:98` acceptance passes. Full results are `movement-t1/results.json`, `movement-authoritative/results.json` (including exhaustive differences in each failed fixture's `comparison.stdout`), and `{movement,combat,bots}/results-{t1,t2}.json` under that directory (movement T1 uses `movement-t1/`). T1 bot fixtures include both complete 10,000-tick Arena runs, each comparing 10,002 records / 10,001 states with zero float differences: the original-world call at tick 5,607 and fixture-world call at tick 5,020 and all subsequent ticks through 10,000 are covered, not shortened away before the kill limit.
 
-The original serial runner was deliberately stopped as its first Chrome lane opened, to obey coordinator browser-slot arbitration and mandatory audio muting. No incomplete browser lane is counted. Remaining stages resumed with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence was not discarded or rerun just because browser scheduling was interrupted.
+The original serial runner was stopped as its first Chrome lane opened to preserve browser isolation and audio muting. No incomplete browser lane is counted. Remaining stages resumed with the same documented commands and frozen inputs; native/oracle/T1/T2/Node evidence was not discarded or rerun because browser scheduling was interrupted.
 
 ## Presentation checks
 
 Final-artifact render evidence (`final/render-check.json`) records 722 publications, 577 bullet and 282 Thing observations, cross-instance creation-facing `[1,0]`, and 180 replay comparisons. Immediate limbo secondary/primary application and rejection after closure pass. Exact-input bink amount 65 is observed, replay suppresses its presentation event, and gameplay hashes are identical. Explicit bot respawn retains AI, waypoints are observed, and an AI-off instance loads the authoritative snapshot with identical hash.
 
-The three 600-tick weather lanes each pass 600 FX-on/off hash comparisons and 600 rewind/replay comparisons, with alpha 105. Rain observes 1,867 sounds / 24,250 active-spark observations; sand 1,866 / 27,836; snow 1,866 / 29,317. Commands are `node sim/build/check-render.mjs build-out/sim/sim.wasm build-out/sim/g5/final/render-check.json` and `node sim/build/check-presentation.mjs N build-out/sim/g5/final/presentation-N.json` for N=1,2,3, each preceded by `memory_pressure`. These checks ran during the coordinator-imposed browser hold, without overlapping another G5 heavy job.
+The three 600-tick weather lanes each pass 600 FX-on/off hash comparisons and 600 rewind/replay comparisons, with alpha 105. Rain observes 1,867 sounds / 24,250 active-spark observations; sand 1,866 / 27,836; snow 1,866 / 29,317. Commands are `node sim/build/check-render.mjs build-out/sim/sim.wasm build-out/sim/g5/final/render-check.json` and `node sim/build/check-presentation.mjs N build-out/sim/g5/final/presentation-N.json` for N=1,2,3, each preceded by `memory_pressure`. These checks ran separately from browser work, without overlapping another G5 heavy job.
 
 ## Five-minute full-stock robustness
 
@@ -197,7 +199,7 @@ The first muted Chrome matrix accepted all 196 movement and 104 combat receipts,
 
 Both installed engines accepted every required receipt: per engine/policy, movement 98, combat 52 and bots 18. Node, Chrome and Firefox therefore each cover **168 fixtures per policy / 336 total**, including save/load every 50 ticks. The acceptance validates exact WASM/fixture/map/content/ABI/policy identities, every baseline/restored hash and event byte, and every checkpoint state digest. No missing receipt or mismatch is relabeled as passed. Summaries are `final/browser-{chrome,firefox}.json`; all six corpus/policy lane summaries and individual receipts are under `final/{movement,combat,bots}/{original,keyed}/browser/{Chrome,Firefox}/`. The final independent validators are `{movement,combat,bots}/results-t3.json`, each with `status:"pass"` and empty `missing` arrays for both policies.
 
-The browser-hold resumption used the documented equivalents below, one heavy job/private browser at a time, with `memory_pressure` checked before each stage and WASM identity rechecked. Chrome uses `--mute-audio`; Firefox's temporary profile sets `media.volume_scale="0.0"`. Profiles and owned browser/server children close after each lane. Full-stock Node robustness ran during the coordinator-directed non-browser hold; optional long probes ran after browser acceptance.
+Resumption used the documented equivalents below, one heavy job/private browser at a time, with `memory_pressure` checked before each stage and WASM identity rechecked. Chrome uses `--mute-audio`; Firefox's temporary profile sets `media.volume_scale="0.0"`. Profiles and test browser/server children close after each lane. Full-stock Node robustness ran separately from browser work; optional long probes ran after browser acceptance.
 
 ```sh
 node sim/build/run-browser-matrix.mjs --engine Chrome --out build-out/sim/g5/final

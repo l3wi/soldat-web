@@ -1,5 +1,7 @@
 # G2 client integration — partial evidence, not a gate pass
 
+> **Historical client-shell evidence:** results and commands apply only to the implementation and artifacts recorded here, including the explicitly unavailable simulation. They are not current product qualification. Use [development](../development.md) for current workflows and [porting status](../porting-status.md) for current implementation and qualification.
+
 Date: 2026-10-15.
 **Historical shell-only evidence.** The later [G2 integration record](G2.md) supersedes the pending-G1 statements below and records the actual rendered-loop qualification and manual-session status.
 
@@ -20,7 +22,7 @@ bun run --cwd packages/client dev --port 5195 --strictPort
 bun run --cwd packages/client capture
 ```
 
-- **Strict TypeScript: PASS.** An initial strict check exposed a shared sim-host generic assertion error; its owner corrected the assertion and the integrated check then passed. No sim-host file was edited by the client lane.
+- **Strict TypeScript: PASS.** An initial strict check exposed a shared sim-host generic assertion error; correcting the assertion allowed the integrated check to pass.
 - **Production Vite build: PASS.** Vite 7.1.7, React 19.2.4, Phaser 4.2.1 exact; output `dist/client`. Vite reports an ordinary 1.94 MB minified large-chunk warning.
 - **Client invariants: PASS.** Synthetic clock drivers at 60/120/144 Hz each produce exactly 600 fixed steps over ten seconds. Four-tick catch-up cap, discarded overload debt, reset/resume, camera logical dimensions and mouse/world round trips, quarter-step zoom, original sound attenuation/pan formulas, event framing/unmapped-kind counts, default flag binding and native absolute map pivot were exercised. These synthetic checks do not run or certify the game simulation.
 - **Actual Chrome headless visual parity: PASS.** Installed Chrome 155.0.8059.79, 1280×720/DPR1, camera `(0,0,0)`, linear filtering, mipmaps/dither/MSAA off, map-only first-frame scenery. `client-Airpirates.png` versus the retained `phaser-Airpirates.png`: **0 / 921,600 pixels differ by >8 in any RGBA channel (0%); maximum channel delta 0**. Required threshold is ≤0.1%. The image was also visually inspected.

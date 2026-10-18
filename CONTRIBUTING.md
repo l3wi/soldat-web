@@ -1,12 +1,12 @@
 # Contributing
 
-Start with the [development guide](docs/development.md) and [current porting status](docs/porting-status.md). [`SPEC.md`](SPEC.md) records the intended contracts; [`PLAN.md`](PLAN.md) and `docs/gates/` preserve the original implementation sequence and artifact-specific evidence, not a current completion checklist. Do not implement or delete an unported feature merely because it appears in the status ledger.
+Start with the [development guide](docs/development.md) and [current porting status](docs/porting-status.md). [`SPEC.md`](SPEC.md) defines the product contract; [`PLAN.md`](PLAN.md) orders the remaining delivery work and release criteria. `docs/gates/` and `docs/research/` retain dated evidence, failures and original proposals, not a second live roadmap. Do not implement or delete an unported feature merely because it appears in the status ledger.
 
 ## Current process
 
 1. Define the behavior being changed and read the existing implementation, relevant pinned upstream code, package reference and tests. Identify authority, determinism, content and compatibility impacts before editing.
 2. Make a focused, reviewable change with its tests and affected documentation. Keep unrelated local work intact; generated artifacts or another contributor's changes are not cleanup targets.
-3. Run the relevant [serial check layers](docs/development.md#run-checks-in-layers). Stop on failures and report them accurately. There is no root test/build aggregator or current CI gate to substitute for this evidence; statements in the original plan about CI are planning intent, not an installed workflow.
+3. Run the relevant [serial check layers](docs/development.md#run-checks-in-layers). Stop on failures and report them accurately. There is no root test/build aggregator or current CI release gate to substitute for this evidence; the automation work tracked in PLAN is not an installed pipeline.
 4. Submit a commit/pull request describing the behavior, touched contracts, actual commands/results, artifact/content/runtime identities where relevant, and remaining qualification gaps. Distinguish automated results, observed browser/human smoke and unexercised recipes. Do not label an old gate receipt as proof of the new artifact.
 
 No particular branch naming or automated release pipeline is prescribed here. Prefer small commits that can be reviewed against the pinned source and reproduced from the documented contracts.

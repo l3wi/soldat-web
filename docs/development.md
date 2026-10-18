@@ -1,6 +1,6 @@
 # Development
 
-How-to for contributors running and changing this checkout. Commands below run from the repository root unless stated otherwise. They describe the existing workflow; this guide does **not** claim a clean-clone setup or any check was executed while writing it.
+How-to for contributors running and changing this checkout. Commands below run from the repository root unless stated otherwise. This is the current workflow; recipes are not qualification results. Use [PLAN](../PLAN.md) for delivery priorities, [porting status](porting-status.md) for implementation and qualification gaps, and dated gate/package reports for evidence bound to a particular artifact.
 
 ## Prepare a checkout
 

@@ -2,6 +2,8 @@
 
 Research date: 2026-10-15. This is evidence-based engineering/licensing triage, not a legal opinion or a trademark-clearance certificate. Reference repositories were not modified. Research downloads and a reproducible comparison script are under `/tmp/soldat-research/LicensingProvenance/`.
 
+> Historical licensing/provenance triage. [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md) define current requirements, implementation/qualification and release sequencing. The name/art policies and unchecked checklist below are recommendations recorded on the research date, not evidence of today's branding, clearance or release compliance. Original-source findings and attribution/license cautions remain applicable evidence; implementation does not resolve missing permissions or chain-of-title evidence.
+
 ## 1. Verified facts
 
 ### 1.1 Code: MIT is the default, not a whole-tree warranty
@@ -90,7 +92,7 @@ Same-relative-path comparisons below are case-insensitive; counts include non-im
 - For public map/mod hosting, require the uploader to own rights or identify a license allowing hosting, browser conversion and redistribution of **the map plus every dependency**. A custom map may use textures/scenery/audio from third parties with different permissions. Engine MIT and base CC BY do not automatically license all user creations.
 - Other projects are not clearance evidence. The existing browser port itself warns its distributed asset folders combine CC BY base and proprietary freeware/older-release files, and recommends omitting the `--v171` overlay to build a freely shareable pack: <https://github.com/humanova/soldat-web#credits-and-license>. That warning corroborates the need for a curated clean base, not permission to copy its mixed pack.
 
-## 2. Chat assumptions: claim / verdict / evidence
+## 2. Research assumptions: claim / verdict / evidence
 
 | Claim | Verdict | Evidence / correction |
 |---|---|---|
@@ -140,6 +142,8 @@ Same-relative-path comparisons below are case-insensitive; counts include non-im
 
 ## 5. Concrete recommendations / spec decisions
 
+The policies and checklist below preserve the 2026-10-15 recommendations. They do not select a new public title or art baseline, or report completion of a current release audit.
+
 ### 5.1 Default legal/content policy
 
 1. **Ship a curated base-derived pack**, pinned initially to `5b6e5bef23f5c0d58fb1d4d887b9b94ebcf799b4`, under CC BY 4.0. It already supplies **all 97 original 1.7.1.1 maps**, so no proprietary installer overlay is needed to meet that map-content criterion.
@@ -182,7 +186,7 @@ Suggested compact asset-credit entry (expand author list/changes from the manife
 
 > Soldat/OpenSoldat base content — original Soldat by Michał Marcinkowski / Transhuman Design, with community contributions; licensed under CC BY 4.0. Source: opensoldat/base at [pinned commit]. Browser adaptations: [actual changes]. Music: “Bloody Soil”, “Gore”, “Necromancide” by BSG. Additional authors and notices: [Credits & Licenses]. No endorsement is implied. Play font © 2011 Jonas Hecksher / Playtype / e-types AS, SIL OFL 1.1.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 1. Which nostalgia baseline is intended: **original early-2000s low-resolution art**, **1.7.1.1 HD appearance**, or the **current OpenSoldat base**? The map subset is available in base, but the artwork is not identical across those choices.
 2. Is **Soldat as the primary public name/logo** essential, and is the user willing to seek written brand authorization, or should the product use an independent identity?

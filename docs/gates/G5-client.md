@@ -1,5 +1,7 @@
 # G5 — client practice bots and online bot fill
 
+> **Historical ABI-4 bot-client evidence:** results, implemented boundaries and commands below describe the recorded frozen module and contemporaneous source/content, not today's product. Reproduction requires those exact inputs; do not substitute the current WASM. Use [development](../development.md) and [porting status](../porting-status.md) for current workflows and qualification.
+
 > **Original world qualified:** product sandbox/server use `world:"original"`; controlled combat/prediction and legacy network fixtures use explicit `world:"fixture"`. All final results below were rerun on the original-world module, replacing the preceding `e8c4fbe…` receipts. Native stationary guns remain conditional on the original `stationaryGuns` rule (default false), not forced into maps or represented by fake Things.
 
 ## Client integration result — PASS, 2026-10-16
@@ -17,7 +19,7 @@ Installed **Chrome 155.0.8059.80**, one disposable private headless profile and 
 
 Final receipt: `build-out/client-g5/bots-browser.json`. Screenshots: `tests/fixtures/render/bots-dm-{4,8}-arena.png` and `bots-ctf-{4,8}-ctf_ash.png`. F1 scoreboard screenshots show original profile display names, native team colors and live scores/kill feed. Visual review also found and corrected a team-header/last-player row overlap; the final CTF screenshot and focused canvas-command test show distinct rows.
 
-Every row observed original medical-kit (Thing style 16) and grenade-kit (17) instances; both CTF rows observed native flags (1/2). The original-world Node check also asserts these Things. These observations establish the product world is populated; exact native startup/periodic kit lifecycle and bot kit pickup remain covered by the simulation owner's original-world fixtures rather than inferred from a static screenshot.
+Every row observed original medical-kit (Thing style 16) and grenade-kit (17) instances; both CTF rows observed native flags (1/2). The original-world Node check also asserts these Things. These observations establish that the tested world is populated; exact native startup/periodic kit lifecycle and bot kit pickup remain covered by separate original-world simulation fixtures rather than inferred from a static screenshot.
 
 ```sh
 bun run --cwd packages/client dev --port 5199 --strictPort
@@ -26,7 +28,7 @@ WASM_SHA256=18e60d802b936716f9fdc991a4c5454f9732f74d9e120318954d18e5b003439a \
 node packages/client/scripts/bot-capture.mjs
 ```
 
-`memory_pressure` was checked before heavy jobs (55% system-wide memory free before final code checks, 56% before Chrome). All Node/browser work was serial; only the owned private Chrome and port-5199 dev server were closed afterward. The coordinator's user dev server on 5195 was not stopped. No Docker objects or user's browser windows were touched.
+`memory_pressure` was checked before heavy jobs (55% system-wide memory free before final code checks, 56% before Chrome). All Node/browser work was serial; cleanup was limited to the private Chrome and port-5199 test server. The separate dev server on 5195 and Docker objects were left unchanged.
 
 
 ## Scope
@@ -45,16 +47,16 @@ Server JSON configuration accepts `botCount:0..31` alongside existing `rules` (`
 
 ## Qualification boundary
 
-This client integration is separate from the full G5 requirement for every bot-capable map, 30-minute DM/CTF runs, native side-by-side bot review, and the simulation T1/T2/T3 matrices. Those remain the simulation qualification owner's evidence; no client smoke check substitutes for them.
+This client integration is separate from the full G5 requirement for every bot-capable map, 30-minute DM/CTF runs, native side-by-side bot review, and the simulation T1/T2/T3 matrices. Those require separate simulation qualification evidence; no client smoke check substitutes for them.
 
 The serial browser harness is `packages/client/scripts/bot-capture.mjs`. It requires an explicit frozen `WASM_SHA256`, verifies local and served module bytes, checks `memory_pressure`, launches exactly one private installed headless Chrome/page, and starts 4/8-bot Arena DM and ctf_Ash CTF matches through the production React menu. Its read-only `?bots-check` hook observes the running match; it cannot inject positions, health, kills, scores or controls. It records actual movement, firing-counter changes, deaths, alive-after-dead respawns, kill scores, player names/teams, and immediate secondary/primary limbo application. Screenshots include the F1 scoreboard and use `tests/fixtures/render/bots-*.png`; aggregate receipts use `build-out/client-g5/bots-browser.json`. It does not claim every bot fires or respawns, and CTF captures are reported from team scores rather than inferred from kills.
 
 ## Defects found during integration
 
-- The initial immediate-secondary command rejected original knife/LAW choices because it consulted SERVER-side secondary `WeaponSel` entries, which the original CLIENT initializes differently. The simulation owner corrected the original menu eligibility boundary; the direct server command test then passed secondary → primary → closed-menu fallback without respawn/healing.
+- The initial immediate-secondary command rejected original knife/LAW choices because it consulted SERVER-side secondary `WeaponSel` entries, which the original CLIENT initializes differently. Correcting the original menu eligibility boundary allowed the direct server command test to pass secondary → primary → closed-menu fallback without respawn/healing.
 - The Node control-relay assertion exposed `Buffer.slice()` aliasing in client `heldInput`: Node's borrowed decoded snapshot controls were masked in-place when deriving held remote input. Using an explicit `new Uint8Array(input)` owns the copy for both browser arrays and Node Buffers. A focused Buffer regression test preserves every raw wire byte.
 - A browser qualification hook initially retained a render view across `sim_hash_state` allocation/memory growth. The read-only hook now hashes before reacquiring the borrowed render view; this failure was not hidden by ignoring the exception.
-- The superseded `0b1abc…f509` run showed DM movement/combat but CTF bots fighting with fists: four bots moved, died, respawned and captured flags (4:1) over 14,399 ticks, yet no shot was observed. This failed rather than substituting captures or kills for firing. The simulation owner traced it to the omitted original `Server.StartServer` `WeaponsInGame` count, whose zero value strips bot guns during the original respawn. No superseded-artifact row is final qualification.
+- The superseded `0b1abc…f509` run showed DM movement/combat but CTF bots fighting with fists: four bots moved, died, respawned and captured flags (4:1) over 14,399 ticks, yet no shot was observed. This failed rather than substituting captures or kills for firing. Diagnosis traced it to the omitted original `Server.StartServer` `WeaponsInGame` count, whose zero value strips bot guns during the original respawn. No superseded-artifact row is final qualification.
 
 ## Online bot-fill check
 

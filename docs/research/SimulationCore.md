@@ -2,6 +2,8 @@
 
 Scope: read-only inspection of the supplied OpenSoldat/base checkouts, 2026-10-15. No project/reference edits, installs, builds, or runtime fidelity tests were performed. Physical line counts were measured with `wc -l`; recommendations below are proposed decisions/test gates, not achieved results. The clone is shallow (`reference/opensoldat/.git/shallow:1`: bf43a43bdd7a069e02c906768807f66e621b2888) and identifies its branch as develop (`reference/opensoldat/.git/HEAD:1`). Its source explicitly calls itself unfinished 1.8, not the 1.7.1 release (`reference/opensoldat/README.md:9`; `reference/opensoldat/shared/Version.txt:1`).
 
+> Historical inspection of original OpenSoldat, not a description of the current browser core. Use [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md) for requirements, implementation/qualification and delivery. The maintained core is Pascal WASM in `sim/opensoldat/{sim,shared}`, not the proposed TS rewrite; original server-only AI findings below do not describe current AI, which runs in authority, confirmed and predicted instances. Proposed exclusions and port order are not current feature gaps.
+
 ## 1. Verified facts
 
 ### 1.1 Loop and module dependency sketch
@@ -162,7 +164,7 @@ Later OpenSoldat history does show post-classic mechanics changes: global-gravit
 * https://github.com/opensoldat/opensoldat/commit/18c0249f2b68af2f6711946f1e3feb054f4d6c07
 Their messages/dates were observed in https://github.com/opensoldat/opensoldat/commits/develop/shared/mechanics/Sprites.pas . I did not diff/reproduce each commit; resulting classic-vs-current quantitative trajectory differences remain **unknown**. GitHub API history returned HTTP403; HTML history succeeded. Official classic downloads remain separately offered at https://www.soldat.pl/en/downloads . A complete 1.7.1→1.8 behavioral diff is not established by these sources or by the shallow checkout.
 
-## 2. Chat assumptions
+## 2. Research assumptions
 
 | Claim | Verdict | Evidence / consequence |
 |---|---|---|
@@ -208,6 +210,8 @@ Their messages/dates were observed in https://github.com/opensoldat/opensoldat/c
 
 ## 5. Concrete recommendations / decisions for spec
 
+These architecture options, scope suggestions and gates were recorded on 2026-10-15, before the current implementation. They are retained as research recommendations, not active instructions to defer bots/modes or replace the implemented core.
+
 ### Baseline and architecture decisions
 
 1. **Normal-play simulation 60Hz, integer tick, TimeStep=1.** Keep real-time accumulator and render interpolation outside simulation. Start with bullet time disabled (matches 1.7.1 default), but record this as an intentional ruleset choice.
@@ -217,7 +221,7 @@ Their messages/dates were observed in https://github.com/opensoldat/opensoldat/c
 5. Bundle/hash PMS, raw gameplay normals, weapon rules, POA animations, PO skeletons and sim/rules version together. Their compatibility is gameplay-critical, not just downloads.
 6. For the first weapon, choose a conventional automatic hitscan-looking-but-actually-projectile firearm (e.g. MP5) rather than simultaneously implementing shotgun/Eagles special seeding, LAW posture gates or grenade charging. This is milestone scoping only; full weapon support remains end-to-end work if requested.
 7. Vanilla-only initially is viable. Explicitly exclude PascalScript/custom scripted-server compatibility, bot fidelity, realistic/survival/bonus game modes unless desired; do not confuse those exclusions with original asset/PMS compatibility. Original AI should operate later against the same command interface.
-8. Prior-art worker reports an existing Pascal/WASM browser port at https://github.com/humanova/soldat-web . **Not independently audited in this slice.** Consider reusing/extracting original WASM mechanics or using it as an oracle before committing to a manual TS rewrite; that is an architecture decision for the combined research, not a proven drop-in library.
+8. The [prior-art report](PriorArtPortPaths.md) identifies an existing Pascal/WASM browser port at https://github.com/humanova/soldat-web . **Not independently audited in this simulation inspection.** The research recommended considering reuse/extraction of original WASM mechanics or using it as an oracle before committing to a manual TS rewrite; it did not establish a proven drop-in library.
 
 ### Recommended port order
 
@@ -243,7 +247,7 @@ F. Original AI/waypoint following and any selected extended modes; custom script
 * Compare deterministic replay under 30/60/120/144Hz presentation and render disabled; outputs at tick N must match. Run identical command fixtures in Node and real browser engines; preserve no-render gameplay RNG stream. Add online correction/replay tests separately so old networking behavior doesn't obscure sim differences.
 * Classic 1.7.1.1 does not expose the source-level harness here. Use timed replay/video and skilled-player comparison for its feel; do not label those measurements bit-exact golden state traces. Keep the current-source oracle and classic acceptance benchmark distinct.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 1. Which experience defines "original": classic 1.7.1.1, a specific earlier competitive-era release/weapon mod, or current OpenSoldat behavior with classic presentation?
 2. Should known movement/weapon quirks and bugs be reproduced when players rely on them, or intentionally repaired with documented deviations?

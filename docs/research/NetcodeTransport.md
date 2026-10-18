@@ -2,6 +2,8 @@
 
 Research date: 2026-10-15. Scope: inspected OpenSoldat checkout plus current primary browser/library documentation; no code or dependencies installed, no repository files changed, and no runtime/network benchmarks performed. Proposed numbers below are design starting points, not measured results. This source checkout is evidence for OpenSoldat, not proof that Soldat 1.7.1.1 or earlier releases used identical algorithms.
 
+> Historical research, not the current transport contract or release plan. [SPEC](../../SPEC.md) defines requirements, [porting status](../porting-status.md) records implementation/qualification, and [PLAN](../../PLAN.md) sequences delivery. Current Node 24 workers use a custom WSS confirmed command/input relay, not the snapshot transport proposed below. Colyseus selection and WebTransport/WebRTC fallback paths remain dated alternatives, not adopted commitments; research-time capacity unknowns do not qualify the current artifact.
+
 ## 1. Verified facts
 
 ### 1.1 Original transport: GNS over UDP, not WebSocket
@@ -109,7 +111,7 @@ Practical first deployment: a regional Linux VM/container with dedicated public 
 
 Fly.io is a possible alternative but has unusually specific UDP constraints: dedicated IPv4 (not shared IPv4 or public IPv6), bind UDP to `fly-global-services`, same internal/external port, and reduced effective MTU. https://docs.fly.io/networking/udp-and-tcp . Verify the chosen native transport's bind/mux capability; a copy-pasted generic Node web app deployment is insufficient. WebRTC's public server does not inherently need TURN for every client; budget and test TURN for blocked UDP/restricted networks rather than assuming universal direct reachability. TURN over TCP/TLS preserves reachability, not loss-independent UDP behavior.
 
-## 2. Chat assumptions
+## 2. Research assumptions
 
 | Claim | Verdict | Evidence / consequence |
 |---|---|---|
@@ -158,6 +160,8 @@ Fly.io is a possible alternative but has unusually specific UDP constraints: ded
 | Low | Port uses original packed protocol's layout/endianness accidentally | New explicit versioned binary encoding; preserve content hashes and gameplay rules, not original wire protocol |
 
 ## 5. Concrete recommendations / decisions for the spec
+
+These are recommendations recorded on 2026-10-15, not current implementation instructions. Proposed snapshots, ACKs, rates, transport comparisons and framework spikes below must not be read as shipped protocol behavior.
 
 ### 5.1 Authority and timing
 
@@ -214,7 +218,7 @@ This is a proposed acceptance plan, **not tests already run**.
 - 250 ms RTT / 5% bursty loss: degraded feel allowed, but game time/ammo/security invariants still hold, no memory leak or permanent desync, explicit recover/resync/disconnect behavior. Recovery from a 500 ms outage must not apply stale held actions as an instantaneous burst.
 - Promote transport/runtime only when median responsiveness is not worse and p99 snapshot/input age under 1–3% loss improves materially, with acceptable connection success and hosting complexity. No universal percentage target can be defended before traces exist.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 1. Which release/configuration is the feel reference: classic 1.7.1.1, current OpenSoldat, or a named competitive server weapon balance?
 2. Does 'like original' mean locally familiar movement/weapons with fairer modern authority, or preserving latency-dependent quirks (client-position trust, delayed hit disagreement, old knockback timing)? Recommend the former.

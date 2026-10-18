@@ -1,6 +1,8 @@
 # RenderingPhaser — rendering assumptions audit
 
-Research date: 2026-10-15. Read-only investigation of OpenSoldat; isolated package/API probe under `/tmp/soldat-research/RenderingPhaser/`. No project/reference files changed.
+Research date: 2026-10-15. Investigation of OpenSoldat; isolated package/API probe under `/tmp/soldat-research/RenderingPhaser/`. No project/reference files changed.
+
+> Historical renderer evidence and API probe. [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md) govern current requirements, implementation/qualification and delivery. OpenSoldat draw rules and exact-version API observations below are not browser fidelity/performance qualification. Phaser is the current client renderer; Pixi/raw-GL alternatives and pre-lock spikes below are dated recommendations, not a pending renderer selection.
 
 ## 1. Verified facts (with citations)
 
@@ -92,7 +94,7 @@ Thus ordinary terrain can occlude soldiers, and scenery has **three** layers, no
 
 **Exact alpha fidelity requires more than per-vertex tint availability.** Phaser's default Multi vertex shader passes tint straight through; its fragment tint code multiplies RGB by interpolated alpha later. The OpenSoldat shader premultiplies at vertices. Use a Soldat-specific map shader, or explicitly accept the visual difference (not recommended). Exact source: https://github.com/phaserjs/phaser/blob/v4.2.1/src/renderer/webgl/shaders/Multi-vert.js and https://github.com/phaserjs/phaser/blob/v4.2.1/src/renderer/webgl/shaders/ApplyTint-glsl.js .
 
-**Texture repeat:** `TextureSource.setWrap(REPEAT,REPEAT)` exists, but `WebGLRenderer.setTextureWrap` **silently refuses NPOT repeat**. The check is unconditional, even if a WebGL2 context is supplied. TileSprite has manual wrapping for NPOT/atlas frames, but it is a rectangle-specific shader, not automatic repeating arbitrary PMS geometry. Sources: https://github.com/phaserjs/phaser/blob/v4.2.1/src/textures/TextureSource.js#L329-L358 ; https://github.com/phaserjs/phaser/blob/v4.2.1/src/renderer/webgl/WebGLRenderer.js#L2550-L2581 ; migration guide TileSprite section. This is a real asset-compatibility issue, not a hypothetical: FileFormats peer measured `mtex_desert.png` as **1536×512**, referenced as `.bmp` by Aero/DesertWind.
+**Texture repeat:** `TextureSource.setWrap(REPEAT,REPEAT)` exists, but `WebGLRenderer.setTextureWrap` **silently refuses NPOT repeat**. The check is unconditional, even if a WebGL2 context is supplied. TileSprite has manual wrapping for NPOT/atlas frames, but it is a rectangle-specific shader, not automatic repeating arbitrary PMS geometry. Sources: https://github.com/phaserjs/phaser/blob/v4.2.1/src/textures/TextureSource.js#L329-L358 ; https://github.com/phaserjs/phaser/blob/v4.2.1/src/renderer/webgl/WebGLRenderer.js#L2550-L2581 ; migration guide TileSprite section. This is a real asset-compatibility issue, not a hypothetical: the FileFormats audit measured `mtex_desert.png` as **1536×512**, referenced as `.bmp` by Aero/DesertWind.
 
 **Blending/tint:** native NORMAL, ADD, MULTIPLY, SCREEN; further blends through filters/offscreen composition. Per-corner sprite tint and multiply mode support normal gostek part coloration. Multiplicative tint is distinct from an ADD framebuffer blend. All required baseline sprite behavior is available; special lighting is not needed. Migration guide sections 2/4/8.
 
@@ -128,7 +130,7 @@ First compile failed because **`Mesh2D.setTint` exists at runtime in Mesh2D.js b
 
 Final exit success with no diagnostics. **This is a type/API probe only, not a browser render, pixel comparison or benchmark.** No application build/tests were run.
 
-## 2. Chat assumptions
+## 2. Research assumptions
 
 | Claim | Verdict | Evidence |
 |---|---|---|
@@ -148,15 +150,15 @@ Final exit success with no diagnostics. **This is a type/API probe only, not a b
 
 ## 3. Hidden assumptions and whether they hold
 
-1. **All map triangles have a uniform vertex tint. Does not hold.** FileFormats peer's independent corpus audit: 27,825 of32,806 polygons across99 maps have distinct vertex RGBA; `Airpirates.pms` polygon index1 alpha `[255,0,255]`, index591 `[26,26,128]`. This is core compatibility, not exotic mod support. Measurements supplied by FileFormats; see its report for parser artifacts.
-2. **Terrain UVs stay inside0..1 / all terrain textures are POT. Does not hold.** Peer measured U±26.30078125, V±17.93359375 and1536×512 desert terrain. Clamping silently produces obvious stretched edges.
+1. **All map triangles have a uniform vertex tint. Does not hold.** The FileFormats independent corpus audit found 27,825 of32,806 polygons across99 maps have distinct vertex RGBA; `Airpirates.pms` polygon index1 alpha `[255,0,255]`, index591 `[26,26,128]`. This is core compatibility, not exotic mod support. Measurements supplied by FileFormats; see its report for parser artifacts.
+2. **Terrain UVs stay inside0..1 / all terrain textures are POT. Does not hold.** The FileFormats audit measured U±26.30078125, V±17.93359375 and1536×512 desert terrain. Clamping silently produces obvious stretched edges.
 3. **Ordering can be optimized freely. Does not hold.** PMA transparency and scenery layers are painter-order semantics. Global triangle pairing or sorting by texture may change the image.
 4. **Untouched assets means browser image loading alone. Does not hold.** Original resolves case-insensitive paths and PNG overrides for BMP references (`GameRendering.pas:337-354`), applies exact green color-key only to single-frame images (`Gfx.pas:2329-2374`), and decodes animated images with frame delays. Preserve original bytes/source truth, derive renderer resources at import/load time.
 5. **Atlas packing can treat terrain like sprites. Does not hold directly.** Terrain repeats its entire image; atlas edges/mipmaps need repeat-aware sampling/gutters. Keep terrain separate initially.
 6. **The frame rate controls animation/physics. Does not hold.** Fixed simulation goal60Hz plus fractional render pose. Do not drive skeleton gameplay pose from browser refresh.
 7. **Simple camera follow is visually/competitively equivalent. Does not hold.** Aim offsets, aspect cap, scope/zoom and mouse world conversion matter.
 8. **Static maps need expensive geometry optimization to hit performance. Not established.** FileFormats measured median299 triangles, max903, median135 props, max500; this is small geometry. Texture memory/overdraw, per-part sprites and loading may matter more. Stress tests should include many players/sparks, not only10,000 terrain triangles.
-9. **All assets should be uploaded at boot. Does not hold.** Peer measured1066 images, aggregate decoded RGBA393,248,724 bytes (~375MiB), before atlases/mipmaps/browser copies. Lazy-load active-map scenery and shared gameplay assets, not entire repository.
+9. **All assets should be uploaded at boot. Does not hold.** The FileFormats audit measured1066 images, aggregate decoded RGBA393,248,724 bytes (~375MiB), before atlases/mipmaps/browser copies. Lazy-load active-map scenery and shared gameplay assets, not entire repository.
 10. **Original OpenSoldat source proves classic1.7 pixel fidelity. Does not hold.** Need a selected reference build and screenshots; source line parity is not screenshot parity.
 
 ## 4. Risks and mitigations
@@ -177,9 +179,11 @@ Final exit success with no diagnostics. **This is a type/API probe only, not a b
 
 ## 5. Concrete recommendations / decisions for the spec
 
+This section preserves recommendations from 2026-10-15. Its conditional renderer choice and proposed experiments describe the research decision space, not today's roadmap or evidence that those experiments passed.
+
 ### Renderer decision
 
-Keep the user's Phaser preference **conditional**, with an explicit custom-map-rendering task in the plan. The defensible commitment is **“Phaser4.2.1 shell + custom SoldatMap renderer + normal part sprites”**, not “Phaser can already render PMS with Mesh2D”. A Phaser engine fork, patches to texture internals, or a full raw-GL renderer hidden inside a Phaser scene are reasons to reconsider **PixiJS v8/WebGL**.
+The research recommended keeping the Phaser preference **conditional**, with an explicit custom-map-rendering task in the plan. The defensible research commitment was **“Phaser4.2.1 shell + custom SoldatMap renderer + normal part sprites”**, not “Phaser can already render PMS with Mesh2D”. A Phaser engine fork, patches to texture internals, or a full raw-GL renderer hidden inside a Phaser scene were reasons to reconsider **PixiJS v8/WebGL**.
 
 The minimal extension should expose only map vertices `(x,y,u,v,RGBA8)`, ordered texture runs/layers, a camera matrix and texture sampler settings. Preserve the original **20-byte interleaved format** if implementing a static VBO path. A903-triangle map uses **54,180 bytes** of original-layout terrain vertices, so geometry storage itself is negligible. [INFERENCE estimate] custom Phaser adapter/shader **200–500LOC**, render-only map/scenery/gostek integration **1,000–2,000LOC** plus importing/assets/tests; not a fixed-price estimate. The reviewed seven rendering files total **9,509 source lines**, but include font rendering, image packing and extensive old HUD code that should not be mechanically ported if React replaces menus.
 
@@ -209,7 +213,7 @@ NPOT alternatives must be explicit: resampling entire image to POT preserves nor
 - Use Phaser Web Audio first if Phaser survives the rendering spike. Keep game sound events and voice policy independent so renderer choice does not affect simulation.
 - Terrain textures separate from sprite atlases initially; explicit nearest/linear, mipmaps and dither settings, no universal pixel-art or additive effects.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 1. Which visual/behavior baseline is authoritative: **classic Soldat1.7.1.1** or this **OpenSoldat** checkout, and which filtering/interface settings should golden screenshots use?
 2. Does “modern” deliberately change field of view, camera aim offset, HUD and default filtering, or should all remain original by default?

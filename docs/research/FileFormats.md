@@ -1,10 +1,12 @@
 # FileFormats research: original Soldat content compatibility
 
+> Historical source/corpus research from 2026-10-15. Current requirements, implementation/qualification and delivery sequencing are maintained in [SPEC](../../SPEC.md), [porting status](../porting-status.md) and [PLAN](../../PLAN.md). Original PNG/PCM inventory and proposed conversion paths below are not measurements of today's shipped WebP/Opus derivatives. Original OpenSoldat loader behavior is evidence, not an assertion that the browser reproduces it.
+
 ## 1. Verified facts (with citations)
 
 ### Scope and reproducibility
 
-This is a read-only source/corpus investigation, not a game implementation. No project/reference files were changed. Executed throwaway Bun/TypeScript audits:
+This source/corpus investigation did not implement the game or change project/reference files. Executed temporary Bun/TypeScript audits:
 
 - `/tmp/soldat-research/FileFormats/audit.ts` — strict PMS/POA field parser, extension inventory, signature-based image metadata, WAV chunks, dependency resolver.
 - `/tmp/soldat-research/FileFormats/details.ts` — active-versus-unused scenery references, PO constraints, ZIP central directory, BMP green pixels, PNG tRNS chunks.
@@ -153,7 +155,7 @@ Spawnpoint type values: 0 general;1 Alpha;2 Bravo;3 Charlie;4 Delta;5 Alpha flag
 
 Full per-map names, texture strings, counts, and missing-reference details are in `results.json`. Missing active dependencies: `ctf_Aftermath.pms` → `textures/grunge9.png`; `ctf_Amnesia.pms` → `textures/porzeczkasc6.png`. Their other missing scenery declarations, and missing declarations in ctf_Death/ctf_Division, are **unused** by active props. Do not misreport all38 as visible map defects. Stock loader silently falls back to `textures/default.bmp`/PNG, then to a generated32×32 image if loading fails (`MapGraphics.pas:79-116`); a compatibility importer should report the original missing asset and fallback explicitly, not claim original visuals matched.
 
-Legacy evidence: official release listing https://www.soldat.pl/en/downloads links Soldat1.7.1.1 and dedicated server2.8.2. Actual mirror https://static.soldat.pl/downloads/soldatserver2.8.2_1.7.1.1.zip . The server ZIP central directory contains97 PMS (directly inspected here). Peer LicensingProvenance compared every map in both the official classic client installer and server archive against this base checkout: **97/97 byte-identical**, only Aftermath and Amnesia are additional base maps. See `local://research-LicensingProvenance.md`; classic client ZIP SHA256 reported there: `affbd397a6498e678c6974db3326a9639f414708a53fabec34ffb6db96ae6bc5`. Therefore our99/99 parser pass includes the exact97 classic map bytes; no format-version migration is needed for that fixture set. I did not separately rerun the parser on identical classic files.
+Legacy evidence: official release listing https://www.soldat.pl/en/downloads links Soldat1.7.1.1 and dedicated server2.8.2. Actual mirror https://static.soldat.pl/downloads/soldatserver2.8.2_1.7.1.1.zip . The server ZIP central directory contains97 PMS (directly inspected here). The LicensingProvenance investigation compared every map in both the official classic client installer and server archive against this base checkout: **97/97 byte-identical**, only Aftermath and Amnesia are additional base maps. See [LicensingProvenance](LicensingProvenance.md) (original research artifact: `local://research-LicensingProvenance.md`); classic client ZIP SHA256 reported there: `affbd397a6498e678c6974db3326a9639f414708a53fabec34ffb6db96ae6bc5`. Therefore the99/99 parser pass includes the exact97 classic map bytes; no format-version migration is needed for that fixture set. The parser was not separately rerun on identical classic files.
 
 **Version nuance:** current `LoadMapFile` reads `Version` but neither rejects it nor branches on it (`MapFile.pas:317-482`). That does **not** prove all historical/future PMS versions have the same layout. Verified support is v11/classic1.7.1.1 files. Pre-v11/PMP support is unknown; community wiki says1.05b and earlier used `.PMP`. Do not promise that compatibility without fixtures.
 
@@ -304,9 +306,9 @@ Current browser codec references (retrieved2026-10-15):
 - MP3 is broadly suitable as a fallback; AAC support can depend on platform codecs, especiallyFirefox. General codec tradeoffs: https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Audio_codecs .
 - `decodeAudioData` consumes a complete encoded file and resamples to the AudioContext rate: https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/decodeAudioData . Do not assume sample rate equals simulation rate or that an audio extension guarantees a decoder.
 
-No browser audio decode/playback matrix was executed in this assignment; current docs establish support policy, not actual decode success for every asset. Recommended acceptance: decode all164 transformed SFX on each supported browser and compare durations/start offsets against originals, especiallyjump.wav and looping sounds.
+No browser audio decode/playback matrix was executed in this research; the cited docs established support policy, not actual decode success for every asset. Research recommendation: decode all164 transformed SFX on each supported browser and compare durations/start offsets against originals, especiallyjump.wav and looping sounds.
 
-## 2. Chat assumptions: claim / verdict / evidence
+## 2. Research assumptions: claim / verdict / evidence
 
 | Claim | Verdict | Evidence |
 |---|---|---|
@@ -324,7 +326,7 @@ No browser audio decode/playback matrix was executed in this assignment; current
 | Supporting maps/assets implies old-server compatibility | **Refuted** | Old HTTP requires a proprietary User-Agent + SMAP/SMOD + SHA1; protocol compatibility is intentionally not a goal. |
 | React menus cover original custom interfaces | **Refuted** | 240-byte SIF HUD layouts, image naming, anchors and scales are separate. |
 
-## 3. Hidden assumptions the chat did not state, and whether they hold
+## 3. Hidden assumptions and whether they hold
 
 1. **A file extension tells the real codec. Does not hold.** There are 16 image suffix/signature mismatches plus ADPCM inside WAV.
 2. **Case-sensitive CDN requests can use map strings verbatim. Does not hold.** PNG overrides and 12 case-only resolutions are needed; normalize backslashes too.
@@ -356,6 +358,8 @@ No browser audio decode/playback matrix was executed in this assignment; current
 
 ## 5. Concrete recommendations / decisions for the spec
 
+These are recommendations from 2026-10-15, not the current importer/asset roadmap. In particular, the initial PCM strategy and unmeasured derivative-size statements describe the original research boundary, not today's WebP/Opus delivery.
+
 1. **Set the compatibility target precisely:** untouched v11 PMS from classic 1.7.1.1/base; PNG/BMP/GIF by actual signatures; POA 20-point, ≤40-frame poses; all 6 PO types; ZIP SMOD import; root mod.ini SCALE/GOSTEK. Give custom HUD SIF, tracker playback, ancient weapon mods, pre-v11/PMP and arbitrary server scripts their own acceptance categories, not an implied promise.
 2. **Keep original files immutable; emit a deterministic derived manifest.** Canonical ID = lowercase plus `/`; preserve actual output URL separately. Include PNG override precedence, per-asset-class color key, source hash, converter version and simulation-config hash. Browser/server share parsed map/simulation content; server need not decode images.
 3. **Keep the v11 reader simple:** DataView little-endian; strict count/bounds/finite checks; 121-byte polygons, 44-byte props, 55-byte scenery, 16-byte colliders/spawns, 112-byte waypoints. Retain all raw source bytes/trailers. An internal typed model suffices for the first viewer; a new on-disk serialization is not necessary.
@@ -367,7 +371,7 @@ No browser audio decode/playback matrix was executed in this assignment; current
 9. **Avoid all-assets preload.** Known loose images are approximately 375 MiB decoded; separate the small global soldier/weapon/SFX core from per-map scenery/terrain. Measure on target devices; this investigation does not establish final atlas memory.
 10. **[INFERENCE: planning estimates, not measured effort]** Production PMS/POA/PO readers plus typed models, path resolution and manifests: approximately 800–1,500 TS LOC including validation, excluding tests/rendering. Image/ZIP/scaling/audio preparation could add 500–1,000 LOC using established decoders. Faithful Gostek rendering/posing could add 500–1,000 LOC plus shared simulation rules. These are scope estimates, not a claim that a small importer reproduces gameplay.
 
-## 6. Open questions only the user can answer
+## 6. Product questions recorded at research time
 
 - Does “original look” mean classic 1.7.1.1 low-resolution art, current base HD art (default scale 4.5), or both selectable? Visual acceptance must name the reference.
 - Does initial compatibility include custom HUDs/SIF/SINT, external weapon mods and tracker music, or only stock maps/gostek/weapons/SFX? These are distinct delivered capabilities.

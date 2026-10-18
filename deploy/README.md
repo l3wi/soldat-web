@@ -108,7 +108,7 @@ sudo install -d -o root -g root -m 0755 "/opt/soldat/$release"
 sudo tar --no-same-owner -xf /path/to/soldat-release.tar -C "/opt/soldat/$release"
 sudo chown -R root:root "/opt/soldat/$release"
 sudo chmod -R go-w "/opt/soldat/$release"
-echo "210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1  /opt/soldat/$release/build-out/sim/sim.wasm" | sha256sum -c -
+echo "13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c  /opt/soldat/$release/build-out/sim/sim.wasm" | sha256sum -c -
 sudo ln -s "$release" /opt/soldat/current.new
 sudo mv -Tf /opt/soldat/current.new /opt/soldat/current
 # Return to the copied deploy/ directory for the remaining relative filenames.
@@ -223,4 +223,4 @@ For an upgrade:
 4. Atomically select the new release: `sudo ln -s NEW_RELEASE /opt/soldat/current.new && sudo mv -Tf /opt/soldat/current.new /opt/soldat/current`. Run `sudo systemctl daemon-reload` after any unit changes, then `sudo systemctl start soldat-server` and the checklist above. Use `sudo systemctl reset-failed soldat-server` first only if a previous crash loop hit the start limit.
 5. If startup, TLS, WSS, or play verification fails, stop the service, atomically repoint `current` to the retained old release, restore its config snapshot and prior Node link if changed, and start/verify again. Rollback does **not** restore in-memory matches. Do not erase the prior release until the replacement is accepted.
 
-No deployment step changes the frozen simulation hash `210bcdbed42db537676e97a24b32510337ddde4a9d6c146aa2d14c2c213feaa1`.
+No deployment step changes the frozen simulation hash `13b1d078ce0556fc7e8c4d0a53bbbb7da56f37bad6d19eb9f6803e9559ff745c`. Historical gate reports retain the hashes of the artifacts they actually measured.

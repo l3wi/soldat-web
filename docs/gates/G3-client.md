@@ -1,5 +1,7 @@
 # G3 — client combat presentation
 
+> **Historical combat-presentation evidence:** results and reproduction commands are bound to each section's named artifact, ABI, source and content. “Current” or “final” within the record means that experiment, not today's product. No receipt here qualifies a later artifact. Use [development](../development.md) and [porting status](../porting-status.md) for current workflows and qualification.
+
 ## Final frozen artifact requalification — 2026-10-16
 
 **PASS in installed Chrome 155 (private headless profile): 33/33 rows**, comprising four native-reference comparisons and 29 real local-simulation combat scenarios, in fresh run **`combat-1792135842972`**. Exact WASM SHA-256: **`a5b832818991caca7208abc0302ed53dfebf71c7b0c400581c97a20193b5cd88`**, ABI `0x00010003`, state v3. The local and served binary identities matched; the WASM remained unchanged throughout capture. There were **zero failed rows and zero reported runtime exceptions**.
@@ -34,18 +36,18 @@ bun packages/client/scripts/combat-capture.mjs \
   --url http://127.0.0.1:5198
 ```
 
-Typecheck and production build passed. Vite's ordinary large-chunk warning remains (2,034.76 kB JavaScript before gzip). This requalification did not rerun the historical unit/invariant suites or native compilation. The harness now uses an owned private headless Chrome instance, retaining its user agent in the receipt and closing only that instance in `finally`; no user's browser window or process is touched. `memory_pressure` was checked before the heavy step (71% system-wide memory free). All browser/Node matrices were strictly serial.
+Typecheck and production build passed. Vite's ordinary large-chunk warning remains (2,034.76 kB JavaScript before gzip). This requalification did not rerun the historical unit/invariant suites or native compilation. The harness used a private headless Chrome instance, retaining its user agent in the receipt and closing that instance in `finally`. `memory_pressure` was checked before the heavy step (71% system-wide memory free). All browser/Node matrices were strictly serial.
 
-Current receipts: `build-out/client-g3/combat-results.json`, `combat-browser.json` and individual `*.state.json`; current screenshots: `tests/fixtures/render/combat-browser-*.png` and `combat-sim-*.png`. The scratch `combat-frames.jsonl` trace was deleted after recording results. Earlier client G2/G3 receipts were archived in `build-out/client-pre-a5b8.tar.gz`.
+Receipts for this requalification: `build-out/client-g3/combat-results.json`, `combat-browser.json` and individual `*.state.json`; screenshots: `tests/fixtures/render/combat-browser-*.png` and `combat-sim-*.png`. The scratch `combat-frames.jsonl` trace was deleted after recording results. Earlier client G2/G3 receipts were archived in `build-out/client-pre-a5b8.tar.gz`.
 
-Online client and server qualification admission pins now reference a5b8; this pin migration is not itself a fresh G4 qualification.
+Online client and server qualification admission pins were migrated to a5b8 for this experiment; that pin migration was not itself a fresh G4 qualification.
 
 ## Historical results — not final-artifact qualification
 
 **Everything below is the retained 2026-10-15 record for older binaries. Its PASS statements, commands and unexercised boundaries are historical only, not current a5b8 evidence.**
 
 Date: 2026-10-15.
-**Client presentation acceptance PASS on the corrected frozen artifact.** Run `combat-1792101421387` passed **33/33 rows** (4 native comparisons and 29 real local-simulation scenarios), with no reported runtime exceptions, on WASM `b66f…fb00`; the binary remained unchanged. Earlier run `combat-1792100004735` on withdrawn `7282…f857` is historical only. The replacement contains the simulation owner's demonstrated periodic CTF lifecycle correction; this client result does not substitute for its independent T1/T2/T3 gate.
+**Client presentation acceptance PASS on the corrected frozen artifact.** Run `combat-1792101421387` passed **33/33 rows** (4 native comparisons and 29 real local-simulation scenarios), with no reported runtime exceptions, on WASM `b66f…fb00`; the binary remained unchanged. Earlier run `combat-1792100004735` on withdrawn `7282…f857` is historical only. The replacement contains the demonstrated simulation periodic CTF lifecycle correction; this client result does not substitute for its independent T1/T2/T3 gate.
 
 
 ## Scope and implementation
@@ -60,13 +62,13 @@ Source contracts:
 - `GostekGraphics.pas:212–483`: source visibility, primary/secondary gun parts, clips, muzzle flashes, bows, minigun, grenades, armor, jets, hair/headgear and colors.
 - `InterfaceGraphics.pas`: original default layout, imported graphics, physical pixel alignment, anchor-relative placement and cropped bars.
 
-The coordinator explicitly authorized presentation-only ABI `0x00010003`, superseding the earlier frozen `181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393` module. The new render fields publish native data rather than inventing loadouts/damage/history. Dropped-weapon creation-facing is serialized so snapshot-loaded clients retain native texture selection. Parachute tint follows the original network-client owner-shirt assignment. Genuine gameplay events `0x1001…0x1007` are separate from presentation events; local kills use live native death events, while online kills use confirmed deduplicated reliable events. No old-binary qualification is relabeled as ABI3 evidence.
+Presentation-only ABI `0x00010003` superseded the earlier frozen `181b959c27fab6e6bcba973ce3c5dd708554b73e79530a20bab3427dfc5a0393` module in this experiment. The new render fields publish native data rather than inventing loadouts/damage/history. Dropped-weapon creation-facing is serialized so snapshot-loaded clients retain native texture selection. Parachute tint follows the original network-client owner-shirt assignment. Genuine gameplay events `0x1001…0x1007` are separate from presentation events; local kills use live native death events, while online kills use confirmed deduplicated reliable events. No old-binary qualification is relabeled as ABI3 evidence.
 
-Current tested module: **`b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00`**, ABI/state version 3. The integrated session was rerun on this exact identity after the simulation owner withdrew `7282…f857`. Pre-requalification working captures, states and logs are archived in `build-out/client-g3-pre-b66f.tar.gz`; they are not current-artifact receipts.
+Tested module for this section: **`b66fccdc125fa1df58a86fc4b506a1dbadd5f7762d468bc842fe7bb92d06fb00`**, ABI/state version 3. The integrated session was rerun on this exact identity after `7282…f857` was withdrawn. Pre-requalification working captures, states and logs are archived in `build-out/client-g3-pre-b66f.tar.gz`; they are not receipts for this tested artifact.
 
 ## Verification exercised
 
-- Client TypeScript check passed after the networking owner replaced protocol `String.isWellFormed` with equivalent ES2022-compatible surrogate validation. The initial check failed specifically on that external library-target mismatch; it was not hidden with a target bump.
+- Client TypeScript check passed after protocol `String.isWellFormed` was replaced with equivalent ES2022-compatible surrogate validation. The initial check failed specifically on that external library-target mismatch; it was not hidden with a target bump.
 - Vite production build passed; its normal large-chunk warning remains (approximately 2.03 MB JavaScript before gzip).
 - Existing client invariant harness passed: fixed-step rates/catch-up, camera, native audio/event framing, bindings, map pivots and FX layering.
 - New rendering suites passed **16 tests across 4 files**, covering all 14 bullet styles, all 27 Thing styles, interpolation/alpha/pivots/cloth UVs/constraints, pooled outputs, HUD crop/alignment/font/ping/team-score formulas, gun/clip/muzzle/bow/minigun visibility, genuine death-event parsing and refresh of borrowed render views after non-tick WASM memory growth.
@@ -124,7 +126,7 @@ Receipts: `build-out/client-g3/combat-results.json` (final combined verdict/metr
 
 ## Explicitly unexercised
 
-No Firefox/Safari combat matrix, physical-refresh/performance/soak, DOM chat transmission, native gostek pose-gallery comparison, or live parachute/stationary-mount interaction is claimed by this run. Chat is a local-only shell as assigned; all 27 Thing render branches are covered by invariants. The browser engine was ego-browser's Chromium runtime; its user-agent version was not retained in this receipt.
+No Firefox/Safari combat matrix, physical-refresh/performance/soak, DOM chat transmission, native gostek pose-gallery comparison, or live parachute/stationary-mount interaction is claimed by this run. Chat was a local-only shell in this experiment; all 27 Thing render branches are covered by invariants. The browser engine was ego-browser's Chromium runtime; its user-agent version was not retained in this receipt.
 
 
-No human movement/feel verdict or physical-refresh performance measurement is claimed here. Those are distinct acceptance boundaries from this combat presentation assignment.
+No human movement/feel verdict or physical-refresh performance measurement is claimed here. Those are distinct acceptance boundaries from this combat presentation experiment.
