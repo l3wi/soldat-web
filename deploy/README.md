@@ -332,3 +332,17 @@ Deployed **2026-10-19**, source commit `1443e5cb07b76e1c374a8f26ce60003abc27aa24
 - Live logs contained all fourteen reason keys, reconciling with aggregate rejection/fallback counters, no logger drops/write errors, and no probe nicknames or operator credentials. A representative active window measured simulation/encoding p99 7.21 ms and tick-lateness p99 1.34 ms with zero overloads/discarded steps; this short sample is not a capacity qualification. The combined nominal log budget remains 931,457,280 bytes.
 
 Ignored receipts: `build-out/movement-network-live-results.json`, `build-out/deploy/smoothing-public-assets.json`, `smoothing-html-representations.json` and `smoothing-live-logs.json`. Browser/visual verification remains excluded by the user's explicit network/API-only choice.
+
+### Playback, worker processing and prediction bootstrap rollout
+
+Deployed **2026-10-19**, application source commit `4847c60`:
+
+- Both containers use the immutable release `/opt/soldat/releases/4847c60`. The rollout began with zero established game-port connections. The preceding `1443e5cb07b7-web` release remains available for rollback; the shared proxy was not restarted.
+- Remote playback keeps a monotonic interpolation reserve; the client primes cold prediction timing without relaxing server input admission. Worker processing reuses safe pre-wake render state and publishes full-window schema-two diagnostics. The frozen WASM, ABI 6, wire 7 and default 12-player population are unchanged.
+- The public production build, server typecheck, 73 server unit tests and five native worker-processing regressions passed before activation. Earlier client/bootstrap/integration verification is recorded in the client and server references.
+- Public identity, gzip and Brotli HTML all reference `/assets/index-CVSeB4Ah.js`. The served entry matches the tested build SHA-256 `f903a9811cdbcbc7f707cb231328e0a160926dc549c240e062ebdd391cda9fdd`. Cloudflare adds its existing beacon to public HTML, so verification checks the release entry and metadata rather than demanding byte identity with origin HTML.
+- Three public CA-verified WSS clients joined the same Aero match in distinct slots at requested 60/120/144 Hz Node update cadences. Each retained 12 active soldiers and completed 32 matching confirmed-state hash checkpoints, with zero mismatches, resyncs, backward playback-clock samples or client errors. Scheduled inputs were consumed and soldiers moved; all probe connections closed afterward.
+- Live schema-two match and runtime summaries use full-window histograms. The retained four match windows show no overloads or discarded steps; seven runtime windows show no logger drops, invalid metadata/reports or write errors. Transport queueing, playback underruns and startup held/neutral input still occurred: this is deployment interoperability evidence, not proof of jitter-free play or sustained capacity.
+- Both production containers were running with zero restarts. The private server configuration checksum and Node image are unchanged. Server `30000000`/`30` and client `10m`/`3` log rotation remain unchanged, retaining the combined nominal 931,457,280-byte budget.
+
+Ignored receipts: `build-out/deploy/optimizations-live-verification.json`, `optimizations-live-telemetry.json` and `optimizations-deployment.json`. Verification remains network/API-only; no browser/display smoothness claim is made.
