@@ -754,6 +754,12 @@ export class OnlineSession {
     this.world.ceaseFireTime = this.confirmedWorld.ceaseFireTime;
     return this.world;
   }
+  /** Borrowed local-projectile presentation only. Authoritative restore/replay
+   * already reconciles this replica; never merge it into confirmed gameplay. */
+  predictedProjectileView(): RenderView | undefined {
+    if (this.disposed || this.waiting || this.paused) return undefined;
+    return this.predictionWorld.renderView;
+  }
   /** Latest authoritative (not predicted) bullets/Things, borrowed until the
    * next confirmed step. Consume synchronously and never write these arrays. */
   authoritativeRenderView(): RenderView {

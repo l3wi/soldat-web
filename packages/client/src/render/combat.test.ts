@@ -24,7 +24,7 @@ function fixture() {
     if(typeof value==='number')throw new Error(`Fixture render view ${value}`);
     return value;
   };
-  return {d,renderer,id,view};
+  return {memory,d,renderer,id,view};
 }
 
 test('native combat math invariants',assertCombatInvariants);
@@ -127,4 +127,55 @@ test('native cloth corner order, triangulation, flag half-handle, palettes and k
     assert.equal(renderer.polygons(.5,view(),regions).runs[0].vertices.length,6,`polygon style ${style}`);
   }
   d.setUint32(b+f.style,7,true);assert.equal(renderer.polygons(.5,view(),regions).runs.length,0,'guns have no polygon texture');
+});
+
+function projectile(target: ReturnType<typeof fixture>, index: number, owner: number, x: number, slot = index + 1): void {
+  const base = RENDER_LAYOUT.bulletsOffset + 8 + index * RENDER_LAYOUT.bulletBytes;
+  const f = { ...RENDER_LAYOUT.movingEntity, ...RENDER_LAYOUT.bullet };
+  target.d.setUint32(RENDER_LAYOUT.bulletsOffset, index + 1, true);
+  for (const [field, value] of [[f.slot, slot], [f.style, 9], [f.owner, owner], [f.active, 1]] as const) target.d.setUint32(base + field, value, true);
+  target.d.setFloat32(base + f.posX, x, true); target.d.setFloat32(base + f.oldPosX, x, true);
+  target.d.setInt32(base + f.timeout, 100, true); target.d.setInt32(base + f.timeoutPrev, 100, true);
+}
+
+test('online projectiles render one source per owner even when native bullet slots disagree or are reused', () => {
+  const authority = fixture(), prediction = fixture(), renderer = authority.renderer;
+  projectile(authority, 0, 1, 10, 7); projectile(authority, 1, 2, 70, 8); projectile(authority, 2, 0, 90, 9);
+  projectile(prediction, 0, 2, 700, 7); projectile(prediction, 1, 1, 200, 8); projectile(prediction, 2, 1, 210, 9);
+  assert.deepEqual(renderer.bullets(1, authority.view(), prediction.view(), 1, 1).map(quad => quad.x), [70, 90, 200, 210]);
+  prediction.d.setUint32(RENDER_LAYOUT.bulletsOffset, 1, true);
+  assert.deepEqual(renderer.bullets(1, authority.view(), prediction.view(), 1, 1).map(quad => quad.x), [70, 90],
+    'a locally ended shot must not reappear from the older confirmed view');
+  assert.deepEqual(renderer.bullets(1, authority.view()).map(quad => quad.x), [10, 70, 90], 'offline/confirmed rendering is unchanged');
+});
+
+test('local projectiles use the soldier prediction phase without changing remote interpolation', () => {
+  const authority = fixture(), prediction = fixture();
+  projectile(authority, 0, 2, 60); projectile(prediction, 0, 1, 50);
+  const old = RENDER_LAYOUT.bulletsOffset + 8 + RENDER_LAYOUT.movingEntity.oldPosX;
+  authority.d.setFloat32(old, 20, true); prediction.d.setFloat32(old, 10, true);
+  assert.deepEqual(authority.renderer.bullets(.5, authority.view(), prediction.view(), 1, .25).map(quad => quad.x), [40, 20]);
+});
+
+test('paused, old-epoch, behind-authority and invalid-owner prediction cannot hide confirmed shots', () => {
+  const authority = fixture(), prediction = fixture();
+  projectile(authority, 0, 1, 10); projectile(prediction, 0, 1, 200);
+  for (const slot of [0, 33, 1.5]) assert.deepEqual(authority.renderer.bullets(1, authority.view(), prediction.view(), slot).map(quad => quad.x), [10]);
+  prediction.d.setUint32(RENDER_LAYOUT.globalsOffset + RENDER_LAYOUT.globals.roundEpoch, 1, true);
+  assert.deepEqual(authority.renderer.bullets(1, authority.view(), prediction.view(), 1).map(quad => quad.x), [10]);
+  prediction.d.setUint32(RENDER_LAYOUT.globalsOffset + RENDER_LAYOUT.globals.roundEpoch, 0, true);
+  authority.d.setUint32(RENDER_LAYOUT.header.tick, 10, true);
+  assert.deepEqual(authority.renderer.bullets(1, authority.view(), prediction.view(), 1).map(quad => quad.x), [10]);
+  prediction.d.setUint32(RENDER_LAYOUT.header.tick, 10, true); authority.renderer.paused = true;
+  assert.deepEqual(authority.renderer.bullets(0, authority.view(), prediction.view(), 1, 0).map(quad => quad.x), [10]);
+});
+
+test('projectile presentation refreshes borrowed prediction bytes after native memory growth', () => {
+  const authority = fixture(), prediction = fixture();
+  projectile(authority, 0, 2, 70); projectile(prediction, 0, 1, 200);
+  authority.renderer.bullets(1, authority.view(), prediction.view(), 1);
+  prediction.memory.grow(1);
+  const grown = new DataView(prediction.memory.buffer, 8, RENDER_LAYOUT.totalBytes);
+  grown.setFloat32(RENDER_LAYOUT.bulletsOffset + 8 + RENDER_LAYOUT.movingEntity.posX, 400, true);
+  assert.deepEqual(authority.renderer.bullets(1, authority.view(), prediction.view(), 1).map(quad => quad.x), [70, 400]);
 });

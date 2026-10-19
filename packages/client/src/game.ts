@@ -551,7 +551,9 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             const view = gallery?.view ?? (online ? online.session.authoritativeRenderView() : world?.renderView);
             if (!gallery) { render!.draw(geometry.edges[0]); render!.draw(geometry.polys[0]); drawProps(0); }
             combat.paused = combatPaused; combat.timeElapsed = combatCapture ? 0 : presentationTick / 60;
-            if (view) render!.drawDynamic(projectiles.update(combat.bullets(fraction, view), bank.regions));
+            if (view) render!.drawDynamic(projectiles.update(combat.bullets(fraction, view,
+              gallery ? undefined : online?.session.predictedProjectileView(), online?.session.metrics.slot,
+              online?.session.presentationFraction), bank.regions));
             if (world && !gallery) render!.drawDynamic(actors.update(gostek.quads(fraction, online ? online.session.present() : world,
               attract ? 0 : observerSlot(), view?.globals.realistic === true && world.sprites[(online?.session.metrics.slot ?? 1) - 1]?.team !== 5), bank.regions));
             if (view) render!.drawDynamic(objects.update(combat.things(fraction, view), bank.regions));

@@ -81,6 +81,7 @@ export class CombatRenderer {
   private readonly points=new Float64Array(32);
   private readonly constraints: Constraint[];
   private data?: DataView;
+  private predictionData?: DataView;
   constructor(graphics: readonly CombatGraphic[],kit: SkeletonAsset) {
     this.constraints=kitConstraints(kit);
     for(const entry of graphics) if(entry.asset) {
@@ -100,12 +101,13 @@ export class CombatRenderer {
     if(id===undefined)throw new Error(`Missing native combat graphic ${symbol}`);
     return id;
   }
-  private bind(view: RenderView): DataView {
-    if(!this.data||this.data.buffer!==view.bytes.buffer||this.data.byteOffset!==view.bytes.byteOffset||this.data.byteLength!==view.bytes.byteLength) {
-      this.data=new DataView(view.bytes.buffer,view.bytes.byteOffset,view.bytes.byteLength);
-    }
+  private bind(view: RenderView,prediction=false): DataView {
     if(this.realistic&&!this.visibility)throw new Error('Native realistic combat visibility/raycast data unavailable');
-    return this.data;
+    const cached=prediction?this.predictionData:this.data;
+    if(cached&&cached.buffer===view.bytes.buffer&&cached.byteOffset===view.bytes.byteOffset&&cached.byteLength===view.bytes.byteLength)return cached;
+    const data=new DataView(view.bytes.buffer,view.bytes.byteOffset,view.bytes.byteLength);
+    if(prediction)this.predictionData=data;else this.data=data;
+    return data;
   }
   private hidden(owner: number): boolean { return this.realistic && owner>0 && owner<=RENDER_LAYOUT.slots && this.visibility!.ownerHidden(owner); }
   private emit(output: Quad[],cache: Quad[],image: number,x: number,y: number,sx=1,sy=1,rotation=0,tint=0xffffff,alpha=255,cx=0,cy=0): void {
@@ -122,13 +124,23 @@ export class CombatRenderer {
     q.color[0]=(tint>>>16)&255;q.color[1]=(tint>>>8)&255;q.color[2]=tint&255;q.color[3]=Math.max(0,Math.min(255,Math.trunc(alpha)));
     output.push(q);
   }
-  bullets(fraction: number,view: RenderView): Quad[] {
-    const d=this.bind(view),f=bulletFields,p=this.paused?1:fraction,out=this.bulletOutput,cache=this.bulletCache;
+  /** One native source per owner: local shots follow the reconciled prediction
+   * replica, everyone else's remain confirmed. Native slots are not shot IDs.
+   * No speculative projectile is copied back into gameplay or the HUD. */
+  bullets(fraction: number,view: RenderView,prediction?: RenderView,localSlot=0,localFraction=fraction): Quad[] {
+    const local=!this.paused&&prediction&&Number.isInteger(localSlot)&&localSlot>0&&localSlot<=view.slots&&
+      prediction.globals.roundEpoch===view.globals.roundEpoch&&prediction.tick>=view.tick?prediction:undefined;
+    const authoritativeData=this.bind(view),localData=local?this.bind(local,true):undefined;
+    const authoritativeCount=view.bulletCount,total=authoritativeCount+(local?.bulletCount??0);
+    const f=bulletFields,out=this.bulletOutput,cache=this.bulletCache;
     out.length=0;
     const bullet=this.id('GFX_WEAPONS_BULLET');
-    for(let i=0;i<view.bulletCount;i++) {
-      const base=view.bulletsOffset+RENDER_LAYOUT.sectionHeaderBytes+i*RENDER_LAYOUT.bulletBytes;
+    for(let i=0;i<total;i++) {
+      const predicted=i>=authoritativeCount,source=predicted?local!:view,d=predicted?localData!:authoritativeData;
+      const p=this.paused?1:predicted?localFraction:fraction,index=predicted?i-authoritativeCount:i;
+      const base=source.bulletsOffset+RENDER_LAYOUT.sectionHeaderBytes+index*RENDER_LAYOUT.bulletBytes;
       const style=d.getUint32(base+f.style,true),owner=d.getUint32(base+f.owner,true);
+      if(local&&((owner===localSlot)!==predicted))continue;
       const x=lerp(d.getFloat32(base+f.oldPosX,true),d.getFloat32(base+f.posX,true),p),y=lerp(d.getFloat32(base+f.oldPosY,true),d.getFloat32(base+f.posY,true),p);
       if(this.hidden(owner)&&this.visibility!.bulletOccluded(x,y))continue;
       const vx=lerp(d.getFloat32(base+f.velocityPrevX,true),d.getFloat32(base+f.velocityX,true),p),vy=lerp(d.getFloat32(base+f.velocityPrevY,true),d.getFloat32(base+f.velocityY,true),p);

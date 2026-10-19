@@ -6,6 +6,7 @@ import { type ChatDelivery, type Message, type TickRecord } from "@soldat-web/pr
 import { heldInput, OnlineSession, INPUT_HISTORY } from "./session.ts";
 import { SpectatorController } from "../spectator";
 import { CameraPresentation, createCamera, updateCamera } from "../camera";
+import { CombatRenderer } from "../render/combat";
 
 const root = new URL("../../../../", import.meta.url);
 async function realHost(rules: Record<string, unknown> = {}): Promise<SimHost> {
@@ -661,4 +662,59 @@ test("real WASM respawn, spectator team, slot reuse and round snapshots do not b
     }
     assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
   } finally { session.dispose(); authoritative.dispose(); }
+});
+
+for (const accepted of [true, false]) test(`local projectile visuals reconcile an ${accepted ? "accepted" : "authority-filtered"} shot using real native replay`, async () => {
+  const authoritative = await realHost({ world: "original" }), prediction = await realHost({ world: "original" }), confirmed = await realHost({ world: "original" });
+  const manifest = JSON.parse(await readFile(new URL("dist/content-next/manifest.json", root), "utf8"));
+  const skeletons = JSON.parse(await readFile(new URL("dist/content-next/skeletons.json", root), "utf8"));
+  const graphics = manifest.core.graphics;
+  const renderer = new CombatRenderer([...graphics.weapons, ...graphics.objects, ...graphics.sparks, ...graphics.gostek], skeletons["objects/kit.po"]);
+  const sent: Message[] = []; let now = 0;
+  const session = new OnlineSession({ prediction, confirmed, slot: 1, now: () => now, send: message => sent.push(message) });
+  try {
+    const shotTick = 120, boundary = shotTick + 4;
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative", team: 0, weapon: 4 }), "shooter join");
+    // Let original spawn protection expire on actual map collision geometry.
+    for (let tick = 0; tick < shotTick; tick++) {
+      requireStatus(authoritative.setInput(1, tick, {}), "warm input");
+      requireStatus(authoritative.step(), "warm step"); authoritative.events();
+    }
+    assert.equal(session.predictedProjectileView(), undefined);
+    session.receive(state(authoritative, shotTick));
+    const ammo = session.authoritativeRenderView().sprite(0).ammo;
+    for (let frame = 1; frame <= 8; frame++) {
+      now = frame * 1000 / 60;
+      session.advance(() => encodeInput({ Fire: session.predictionWorld.tick === shotTick, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 }));
+    }
+    const local = session.predictedProjectileView()!;
+    assert.equal(session.authoritativeRenderView().bulletCount, 0);
+    assert.equal(session.authoritativeRenderView().sprite(0).ammo, ammo, "prediction cannot spend confirmed ammo");
+    assert.equal(local.bulletCount, 1); assert.equal(local.sprite(0).ammo, ammo - 1);
+    assert.equal(renderer.bullets(1, session.authoritativeRenderView()).length, 0);
+    assert.equal(renderer.bullets(1, session.authoritativeRenderView(), local, 1, session.presentationFraction).length, 2, "one real shot plus its native trail before confirmation");
+    const beforeRender = confirmed.hash();
+    renderer.bullets(1, session.authoritativeRenderView(), local, 1, session.presentationFraction);
+    assert.equal(confirmed.hash(), beforeRender, "presentation cannot mutate confirmed gameplay");
+    const records: TickRecord[] = [];
+    for (let tick = shotTick; tick < boundary; tick++) {
+      const input = { Fire: accepted && tick === shotTick, MouseAimX: 300, MouseAimY: -100, MouseDist: 500 };
+      requireStatus(authoritative.setInput(1, tick, input), "authority input");
+      requireStatus(authoritative.step(), "authority step"); authoritative.events();
+      records.push({ type: "step", tick, commands: [], inputs: [{ slot: 1, input: encodeInput(input) }] });
+    }
+    records.push({ type: "hash", tick: boundary, hash: BigInt(`0x${authoritative.hash()}`) });
+    const consumed = sent.filter(message => message.type === "input").flatMap(message => message.frames)
+      .filter(frame => frame.tick < boundary).reduce((highest, frame) => Math.max(highest, frame.seq), 0);
+    session.receive({ type: "ticks", records, lastConsumedInputSeq: consumed });
+    const output = renderer.bullets(1, session.authoritativeRenderView(), session.predictedProjectileView(), 1, session.presentationFraction);
+    assert.equal(output.length, accepted ? 2 : 0, "confirmation never doubles the shot; removed Fire eliminates its visual");
+    assert.equal(session.authoritativeRenderView().sprite(0).ammo, ammo - Number(accepted));
+    assert.equal(confirmed.hash(), authoritative.hash()); assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
+    session.receive({ type: "control-state", state: { ...session.control, paused: true } });
+    assert.equal(session.predictedProjectileView(), undefined);
+    session.receive({ type: "control-state", state: { ...session.control, paused: false } });
+    session.resetRound(); assert.equal(session.predictedProjectileView(), undefined);
+  } finally { session.dispose(); authoritative.dispose(); }
+  assert.equal(session.predictedProjectileView(), undefined);
 });
