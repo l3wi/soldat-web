@@ -2,7 +2,11 @@ import type { InputFrame } from "@soldat-web/protocol";
 import { validateInput } from "@soldat-web/protocol";
 
 export type InputRejection = "rate" | "sequence" | "jump" | "stale" | "lead" | "occupied" | "invalid";
-export interface BufferedInput { input: Uint8Array; seq: number; repeated: boolean }
+export interface BufferedInput {
+  input: Uint8Array; seq: number; repeated: boolean;
+  consumption: "scheduled" | "repeatedHeld" | "timeoutNeutral";
+  missingRunTicks: number;
+}
 export type FireAdmission = "rewound" | "present" | "reject";
 const MAX_SEQUENCE_JUMP = 128;
 export const INPUT_PACKETS_PER_SECOND = 90;
@@ -20,6 +24,7 @@ export class PlayerInputBuffer {
   private tokens = INPUT_PACKET_BURST;
   private lastArrival: bigint;
   private lastConsumedTick = -1;
+  private missingRunTicks = 0;
   private rebasing = false;
   readonly rejected: Record<InputRejection, number> = { rate: 0, sequence: 0, jump: 0, stale: 0, lead: 0, occupied: 0, invalid: 0 };
 
@@ -90,18 +95,22 @@ export class PlayerInputBuffer {
       this.frames.delete(tick);
       this.consumedSequence = Math.max(this.consumedSequence, frame.seq);
       this.lastConsumedTick = tick;
+      this.missingRunTicks = 0;
       this.held.set(frame.input);
-      return { input: frame.input, seq: this.consumedSequence, repeated: false };
+      return { input: frame.input, seq: this.consumedSequence, repeated: false, consumption: "scheduled", missingRunTicks: 0 };
     }
     const view = new DataView(this.held.buffer);
     view.setUint16(0, view.getUint16(0, true) & HELD_CONTROL_BITS, true);
-    if (tick - this.lastConsumedTick > STALE_HELD_TICKS) this.held.fill(0);
-    return { input: this.held, seq: this.consumedSequence, repeated: true };
+    const timedOut = tick - this.lastConsumedTick > STALE_HELD_TICKS;
+    if (timedOut) this.held.fill(0);
+    this.missingRunTicks++;
+    return { input: this.held, seq: this.consumedSequence, repeated: true, consumption: timedOut ? "timeoutNeutral" : "repeatedHeld", missingRunTicks: this.missingRunTicks };
   }
 
   /** Explicit state resync discards unsimulated intent, never grants game time. */
   resync(currentTick: number): void {
     this.frames.clear(); this.held.fill(0);
+    this.missingRunTicks = 0;
     this.highestTick = currentTick - 1;
     this.rebasing = true;
   }

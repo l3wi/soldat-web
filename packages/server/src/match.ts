@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import { encodeTickRecords, validateChat, validateWeaponChoice, validateWeaponSelection, validateAppearance, validateTeam, teamCount, type GameMode, type TickRecord, type InputFrame, type ReliableEvent } from "@soldat-web/protocol";
 import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@soldat-web/sim-host";
-import type { SimHost, SimManifest } from "@soldat-web/sim-host";
+import type { SimHost, SimManifest, RenderView } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
-import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
+import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile, InputConsumption } from "./worker-messages.ts";
 import { FIRE_ADMISSION_REASONS, type FireAdmissionReason, type FireAdmissionReasons } from "./worker-messages.ts";
 import { BOT_PROFILES, configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
 import { hardeningLimits, TokenBucket } from "./hardening.ts";
+import type { FixedStepAccumulator, FixedStepTiming } from "./clock.ts";
 
 interface Player {
   inputs: PlayerInputBuffer;
@@ -37,6 +38,7 @@ const HISTORY_TICKS = 30;
 const REWIND_TICKS = 12;
 const emptyProfile = (): TickWorkProfile => ({ tick: 0, stepMs: 0, saveMs: 0, hashMs: 0, recordsMs: 0, postMs: 0, recordEncodes: 0, recipients: 0, ...(process.env.NET_G4_INPUT_DIAGNOSTICS === "1" ? { controls: [] } : {}) });
 const emptyFireAdmissionReasons = (): FireAdmissionReasons => Object.fromEntries(FIRE_ADMISSION_REASONS.map(reason => [reason, 0])) as FireAdmissionReasons;
+const emptyInputConsumption = (): InputConsumption => ({ scheduled: 0, repeatedHeld: 0, timeoutNeutral: 0, maxMissingRunTicks: 0 });
 
 /** One worker, one instance. History and all uncommitted effects share its timeline. */
 export class AuthoritativeMatch {
@@ -59,6 +61,7 @@ export class AuthoritativeMatch {
   private readonly afkMs: number;
   private inputBufferOccupancy: number[] = [];
   private inputBufferLeadTicks: number[] = [];
+  private inputConsumption = emptyInputConsumption();
   private profile = process.env.NET_G4_PROFILE === "1" ? emptyProfile() : undefined;
   private readonly host: SimHost;
   private readonly bots: number[];
@@ -73,10 +76,27 @@ export class AuthoritativeMatch {
   tick = 0;
   paused = false;
 
-  get tickScale(): number {
-    const view = this.host.renderView();
-    if (typeof view === "number") throw new Error(`sim_render_view failed: ${view}`);
-    return view.globals.tickScale;
+  get tickScale(): number { return this.renderView().globals.tickScale; }
+
+  private renderView(): RenderView {
+    const render = this.host.renderView();
+    if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+    return render;
+  }
+
+  /** Borrow the scheduling pre-state only inside this synchronous advance. */
+  advance(clock: FixedStepAccumulator, timing: FixedStepTiming, onStep: (latenessMs: number, workMs: number) => void): number {
+    if (this.paused) { clock.reset(timing.now()); return 0; }
+    let firstRender: RenderView | undefined = this.renderView();
+    const tickScale = firstRender.globals.tickScale;
+    // Native observation cost belongs before the wake's scheduling sample.
+    return clock.advance(timing.now(), latenessMs => {
+      const start = performance.now();
+      const render = firstRender ?? this.renderView();
+      firstRender = undefined;
+      this.stepObserved(start, render);
+      onStep(latenessMs, performance.now() - start);
+    }, tickScale, timing);
   }
 
   private constructor(host: SimHost, config: MatchConfiguration & { botCount: number }, emit: (response: WorkerResponse) => void) {
@@ -342,14 +362,15 @@ export class AuthoritativeMatch {
 
   step(nowMs = performance.now()): void {
     if (this.paused) return;
+    this.stepObserved(nowMs, this.renderView());
+  }
+
+  private stepObserved(nowMs: number, render: RenderView): void {
     if (this.tick === 0xffffffff) throw new Error("Network tick space exhausted; restart match");
-    let render = this.host.renderView();
-    if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
     if (render.globals.roundPhase === 2) {
       this.advanceRound();
       // Map loading can grow memory and replaces the borrowed view's contents.
-      render = this.host.renderView();
-      if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+      render = this.renderView();
     }
     if (!this.players.size) {
       this.tick = requireStatus(this.host.step(), "sim_step"); this.events();
@@ -361,6 +382,8 @@ export class AuthoritativeMatch {
       this.inputBufferOccupancy.push(player.inputs.size);
       this.inputBufferLeadTicks.push(player.inputs.leadTicks(this.tick));
       const consumed = player.inputs.consume(this.tick), input = consumed.input.slice();
+      this.inputConsumption[consumed.consumption]++;
+      this.inputConsumption.maxMissingRunTicks = Math.max(this.inputConsumption.maxMissingRunTicks, consumed.missingRunTicks);
       let changed = false;
       for (let index = 0; index < input.length; index++) if (input[index] !== player.lastInput[index]) { changed = true; break; }
       if (changed) {
@@ -584,11 +607,12 @@ export class AuthoritativeMatch {
     if (profile) { profile.tick = this.tick; this.profile = emptyProfile(); }
     return profile;
   }
-  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
-    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, replayBudgetFallbacks: this.replayBudgetFallbacks, fireAdmissionReasons: this.fireAdmissionReasons, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
+  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; inputConsumption: InputConsumption } {
+    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, replayBudgetFallbacks: this.replayBudgetFallbacks, fireAdmissionReasons: this.fireAdmissionReasons, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks, inputConsumption: this.inputConsumption };
     this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0; this.replayBudgetFallbacks = 0;
     this.fireAdmissionReasons = emptyFireAdmissionReasons();
     this.inputBufferOccupancy = []; this.inputBufferLeadTicks = [];
+    this.inputConsumption = emptyInputConsumption();
     return result;
   }
   dispose(): void {

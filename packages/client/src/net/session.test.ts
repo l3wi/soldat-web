@@ -8,18 +8,75 @@ import { SpectatorController } from "../spectator";
 import { CameraPresentation, createCamera, updateCamera } from "../camera";
 
 const root = new URL("../../../../", import.meta.url);
-async function realHost(): Promise<SimHost> {
+async function realHost(rules: Record<string, unknown> = {}): Promise<SimHost> {
   const host = await loadSim(new Uint8Array(await readFile(new URL("build-out/sim/sim.wasm", root))));
   const manifest: SimManifest = JSON.parse(await readFile(new URL("dist/content-next/sim/manifest.json", root), "utf8"));
   try {
     await loadSimContent(host, manifest, path => readFile(new URL(`dist/content-next/${path}`, root)));
-    requireStatus(host.init({ world: "fixture", ai: true }, 1), "init"); requireStatus(host.loadMap("Arena"), "map");
+    requireStatus(host.init({ world: "fixture", ai: true, ...rules }, 1), "init"); requireStatus(host.loadMap("Arena"), "map");
     return host;
   } catch (error) { host.dispose(); throw error; }
 }
 function state(host: SimHost, tick: number): Extract<Message, {type: "state"}> {
   const bytes = host.saveState(); if (typeof bytes === "number") throw new Error(`save ${bytes}`);
   return { type: "state", tick, hash: BigInt(`0x${host.hash()}`), lastConsumedInputSeq: 0, bytes };
+}
+
+interface PlayoutPacket { at: number; tick: number; records: TickRecord[] }
+/** Real native authority and ordered two-tick relays with a controllable receipt clock. */
+async function playoutFixture(rttMs = 0, rules: Record<string, unknown> = {}) {
+  const authoritative = await realHost(rules), prediction = await realHost(rules), confirmed = await realHost(rules);
+  const sent: Message[] = [], input = encodeInput({ Right: true });
+  let now = rttMs / 2, tick = 0, elapsedMs = 0;
+  // A positive epoch lets public timing probes warm up before the fixture's
+  // logical receipt time without fabricating RTT metrics or negative wire timestamps.
+  const session = new OnlineSession({ prediction, confirmed, slot: 1, now: () => now + 10_000, send: message => sent.push(message) });
+  now = -(2 * rttMs + 1002);
+  for (let probe = 0; probe < 2; probe++) {
+    session.advance(() => input);
+    const ping = sent.at(-1)!;
+    assert.ok(ping.type === "ping");
+    now += rttMs;
+    session.receive({ type: "pong", timestamp: ping.timestamp });
+    if (!probe) now += 1001;
+  }
+  now = rttMs / 2;
+  for (const slot of [1, 2]) requireStatus(authoritative.command(0, {
+    kind: "join", slot, control: "authoritative", team: 0, x: slot * 20, y: -100,
+  }), "playout join");
+  for (; tick < 30; tick++) {
+    for (const slot of [1, 2]) requireStatus(authoritative.setInput(slot, tick, { Right: true }), "playout warm input");
+    requireStatus(authoritative.step(), "playout warm step"); authoritative.events();
+  }
+  const initial = state(authoritative, tick);
+  session.receive(initial);
+  return {
+    session, authoritative, confirmed, sent, input, initial,
+    get now() { return now; }, set now(value: number) { now = value; },
+    get tick() { return tick; },
+    batch(commands: SimCommand[] = []): PlayoutPacket {
+      const records: TickRecord[] = [];
+      for (let count = 0; count < 2; count++) {
+        const view = authoritative.renderView();
+        if (typeof view === "number") throw new Error(`playout render ${view}`);
+        elapsedMs += 1000 / 60 / view.globals.tickScale;
+        const applied = count ? [] : commands;
+        for (const command of applied) requireStatus(authoritative.command(tick, command), "playout command");
+        for (const slot of [1, 2]) requireStatus(authoritative.setInput(slot, tick, { Right: true }), "playout input");
+        requireStatus(authoritative.step(), "playout step"); authoritative.events();
+        records.push({ type: "step", tick: tick++, commands: applied.map(command => new TextEncoder().encode(JSON.stringify(command))),
+          inputs: [{ slot: 1, input }, { slot: 2, input }] });
+      }
+      records.push({ type: "hash", tick, hash: BigInt(`0x${authoritative.hash()}`) });
+      return { at: elapsedMs + rttMs / 2, tick, records };
+    },
+    deliver(packet: PlayoutPacket) {
+      const consumed = sent.filter(message => message.type === "input").flatMap(message => message.frames)
+        .filter(frame => frame.tick < packet.tick).reduce((seq, frame) => Math.max(seq, frame.seq), 0);
+      session.receive({ type: "ticks", records: packet.records, lastConsumedInputSeq: consumed });
+    },
+    dispose() { session.dispose(); authoritative.dispose(); },
+  };
 }
 
 test("held controls own bytes, preserve movement and aim, clear only one-shot bits", () => {
@@ -69,6 +126,199 @@ test("real confirmed timeline, sparse correction rollback, hash verification and
   } finally { session.dispose(); authoritative.dispose(); }
 });
 
+test("reliable event batches acknowledge only their handled high watermark, including retries after callbacks or sends throw", async () => {
+  const sent: Message[] = [], handled: number[] = [];
+  const prediction = await realHost(), confirmed = await realHost();
+  let failEvent = true, failSend = false;
+  const events = new OnlineSession({ prediction, confirmed, slot: 1,
+    send(message) { if (failSend) { failSend = false; throw new Error("send failed"); } sent.push(message); },
+    onEvent(event) {
+      if (event.id === 16 && failEvent) { failEvent = false; throw new Error("handler failed"); }
+      handled.push(event.id);
+    } });
+  const batch = (...ids: number[]): Extract<Message, { type: "events" }> => ({ type: "events",
+    events: ids.map(id => ({ id, tick: 0, header: new Uint8Array(20), payload: new Uint8Array() })) });
+  const acknowledgements = () => sent.filter(message => message.type === "eventAck").map(message => message.eventId);
+  try {
+    events.receive(batch(10, 11, 11, 12));
+    assert.deepEqual(handled, [10, 11, 12]); assert.deepEqual(acknowledgements(), [12]);
+    events.receive(batch(12, 10)); events.receive(batch());
+    assert.deepEqual(acknowledgements(), [12, 12], "Duplicate-only batches ACK their highest handled ID once; empty batches do not ACK");
+    events.receive(batch(14));
+    assert.throws(() => events.receive(batch(15, 16, 17)), /handler failed/);
+    assert.deepEqual(handled, [10, 11, 12, 14, 15]);
+    assert.deepEqual(acknowledgements(), [12, 12, 14], "An unprocessed suffix must not be cumulatively retired");
+    events.receive(batch(15, 16, 17));
+    assert.deepEqual(handled, [10, 11, 12, 14, 15, 16, 17]);
+    assert.deepEqual(acknowledgements(), [12, 12, 14, 17]);
+    const pending = new Set([10, 11, 12, 14, 15, 16, 17]);
+    for (const id of acknowledgements()) for (const eventId of pending) if (eventId <= id) pending.delete(eventId);
+    assert.equal(pending.size, 0, "One cumulative batch ACK retires the complete handled prefix");
+    assert.equal(events.metrics.eventGaps, 1);
+    failSend = true; assert.throws(() => events.receive(batch(18)), /send failed/);
+    events.receive(batch(18));
+    assert.equal(handled.filter(id => id === 18).length, 1, "An ACK send failure cannot replay a successful effect");
+    assert.equal(acknowledgements().at(-1), 18);
+  } finally { events.dispose(); }
+});
+
+test("matching pong RTT reductions and same-boundary correction replay cannot reverse the remote playout phase", async () => {
+  const fixture = await playoutFixture(60), { session } = fixture;
+  try {
+    let packet = fixture.batch();
+    for (let elapsed = 0; elapsed <= 973; elapsed++) {
+      fixture.now = 30 + elapsed;
+      while (packet.at <= fixture.now + 1e-7) { fixture.deliver(packet); packet = fixture.batch(); }
+      session.present();
+    }
+    fixture.now = 1003; session.advance(() => fixture.input);
+    const sampledViewTick = session.metrics.viewTick;
+    const inputs = fixture.sent.filter(message => message.type === "input").flatMap(message => message.frames);
+    assert.ok(inputs.length > 0);
+    for (const frame of inputs) {
+      assert.equal(frame.viewTick, sampledViewTick, "Input viewTick must report the actual presented history phase");
+      assert.ok(Number.isInteger(frame.viewTick) && frame.viewTick <= frame.tick && frame.viewTick <= session.metrics.confirmedTick);
+    }
+    const ping = fixture.sent.filter(message => message.type === "ping").at(-1)!;
+    assert.ok(ping.type === "ping");
+    fixture.now = 1004;
+    const before = session.present().sprites[1]!.x, phase = session.metrics.playoutPhase;
+    session.receive({ type: "pong", timestamp: ping.timestamp });
+    const after = session.present().sprites[1]!.x;
+    assert.ok(Math.abs(session.metrics.rttMs - 48.2) < 1e-9);
+    assert.equal(session.metrics.playoutPhase, phase); assert.equal(after, before);
+    const boundary = session.metrics.confirmedTick, reserve = session.metrics.playoutReserveMs;
+    session.receive({ type: "ticks", lastConsumedInputSeq: 0, records: [
+      { type: "correct", tick: boundary - 1, slot: 2, input: fixture.input },
+      { type: "hash", tick: boundary, hash: BigInt(`0x${fixture.confirmed.hash()}`) },
+    ] });
+    session.present();
+    assert.equal(session.metrics.playoutPhase, phase); assert.equal(session.metrics.playoutReserveMs, reserve);
+    assert.equal(session.metrics.rollbacks, 1); assert.equal(session.metrics.hashMismatches, 0);
+  } finally { fixture.dispose(); }
+});
+
+test("two-tick remote playout retains actual history reserve independently of RTT", async () => {
+  const minima: number[] = [];
+  for (const rtt of [0, 30, 60, 120]) {
+    const fixture = await playoutFixture(rtt), { session } = fixture;
+    try {
+      let packet = fixture.batch(), previous = session.metrics.playoutPhase, minimum = Infinity;
+      for (let elapsed = 0; elapsed <= 2000; elapsed++) {
+        fixture.now = rtt / 2 + elapsed;
+        while (packet.at <= fixture.now + 1e-7) { fixture.deliver(packet); packet = fixture.batch(); }
+        session.present();
+        assert.ok(session.metrics.playoutPhase >= previous - 1e-9); previous = session.metrics.playoutPhase;
+        if (elapsed >= 1000) {
+          minimum = Math.min(minimum, session.metrics.playoutReserveMs);
+          assert.ok(session.metrics.playoutPhase < session.metrics.confirmedTick, `RTT ${rtt} must not consume the interpolation reserve`);
+          assert.ok(session.metrics.playoutRate >= 0.9 && session.metrics.playoutRate <= 1.1);
+        }
+      }
+      minima.push(minimum);
+      assert.ok(minimum > 8, `RTT ${rtt} must retain at least half a native tick before the next receipt`);
+      assert.equal(session.metrics.playoutUnderruns, 0); assert.equal(session.metrics.hashMismatches, 0);
+      assert.equal(session.metrics.playoutRebases, 0, "Steady receipt timing must slew, never seek");
+    } finally { fixture.dispose(); }
+  }
+  assert.ok(Math.max(...minima) - Math.min(...minima) < 1e-6, "RTT cannot steer received-history occupancy");
+});
+
+for (const stallMs of [100, 250, 500]) test(`a ${stallMs} ms ordered remote stall re-buffers once and sheds backlog at the first resumed presentation`, async () => {
+  const fixture = await playoutFixture(), { session } = fixture;
+  const queued: PlayoutPacket[] = [];
+  try {
+    let packet = fixture.batch(), previous = session.metrics.playoutPhase, previousRebases = 0;
+    let underrunsAtRecovery = 0;
+    for (let elapsed = 0; elapsed <= 7000; elapsed += 5) {
+      fixture.now = elapsed;
+      while (packet.at <= elapsed + 1e-7) { queued.push(packet); packet = fixture.batch(); }
+      if (elapsed < 500 || elapsed >= 500 + stallMs) while (queued.length) fixture.deliver(queued.shift()!);
+      session.present();
+      const phase = session.metrics.playoutPhase;
+      assert.ok(phase >= previous - 1e-9);
+      if (session.metrics.playoutRebases === previousRebases) {
+        assert.ok(phase - previous <= 5 / (1000 / 60) * 1.1 + 1e-7, "Ordinary recovery must obey the elapsed-time rate bound");
+      } else {
+        assert.equal(elapsed, 500 + stallMs, "A forward rebase belongs only to the first resumed render, after the complete receive burst");
+        assert.equal(session.metrics.playoutRebases, previousRebases + 1);
+        assert.ok(session.metrics.playoutReserveMs <= session.metrics.interpolationMs + 1e-7);
+      }
+      previousRebases = session.metrics.playoutRebases;
+      previous = phase;
+      if (elapsed === 500 + stallMs - 5) {
+        assert.equal(session.metrics.playoutBuffering, true); assert.equal(session.metrics.playoutReserveMs, 0);
+        assert.equal(session.metrics.playoutRate, 0); assert.equal(session.metrics.playoutUnderruns, 1);
+      }
+      if (elapsed === 500 + stallMs) {
+        underrunsAtRecovery = session.metrics.playoutUnderruns;
+        assert.equal(session.metrics.playoutRebases, 1);
+        assert.ok(session.metrics.playoutReserveMs < 60, "Outage backlog must not linger for seconds at a 1.1x catch-up rate");
+      }
+    }
+    assert.equal(underrunsAtRecovery, 1); assert.equal(session.metrics.playoutUnderruns, 1);
+    assert.equal(session.metrics.playoutRebases, 1);
+    assert.equal(session.metrics.playoutBuffering, false);
+    assert.ok(session.metrics.playoutReserveMs < 90, "Buffered stall debt must converge back to the normal reserve");
+    assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
+  } finally { fixture.dispose(); }
+});
+
+test("native 60/20/60 scheduling preserves phase and reserves the actual slow two-tick relay duration", async () => {
+  const fixture = await playoutFixture(120, { bulletTime: true }), { session } = fixture;
+  try {
+    const packets: PlayoutPacket[] = [];
+    for (let batch = 0; batch < 100; batch++) packets.push(fixture.batch(batch === 15 ? [{ kind: "kill", slot: 2 }] : []));
+    let index = 0, previous = session.metrics.playoutPhase, slowSamples = 0, normalAfterSlow = 0;
+    const last = Math.ceil(packets.at(-1)!.at);
+    for (let at = 60; at <= last; at++) {
+      fixture.now = at;
+      while (packets[index] && packets[index]!.at <= at + 1e-7) fixture.deliver(packets[index++]!);
+      session.present();
+      assert.ok(session.metrics.playoutPhase >= previous - 1e-9); previous = session.metrics.playoutPhase;
+      assert.ok(session.metrics.playoutPhase <= session.metrics.confirmedTick);
+      const scale = session.authoritativeRenderView().globals.tickScale;
+      if (scale < 1) {
+        slowSamples++;
+        assert.ok(session.metrics.interpolationMs >= 149.99, "Two 20 Hz ticks need 100 ms plus a native-step reserve");
+        if (at > packets[18]!.at) assert.ok(session.metrics.playoutReserveMs > 0, "Slow relay playback must not endpoint-clamp");
+      } else if (slowSamples) normalAfterSlow++;
+    }
+    assert.ok(slowSamples >= 1000, "Fixture must exercise native bullet time, not an artificial client timer");
+    assert.ok(normalAfterSlow >= 500, "Native timer must actually return scheduling to 60 Hz");
+    assert.ok(session.metrics.interpolationMs < 51);
+    assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
+  } finally { fixture.dispose(); }
+});
+
+test("playout bootstrap, full-state recovery and resync reset phase without retaining old elapsed-time debt", async () => {
+  const fixture = await playoutFixture(), { session } = fixture;
+  try {
+    assert.equal(session.metrics.playoutPhase, 30); assert.equal(session.metrics.playoutBuffering, true);
+    fixture.now = 20; session.present(); assert.equal(session.metrics.playoutPhase, 30);
+    const first = fixture.batch(); fixture.now = first.at; fixture.deliver(first); session.present();
+    assert.equal(session.metrics.playoutPhase, 30); assert.equal(session.metrics.playoutBuffering, true);
+    const second = fixture.batch(); fixture.now = second.at; fixture.deliver(second); session.present();
+    assert.equal(session.metrics.playoutBuffering, false);
+    fixture.now += 10; session.present(); assert.ok(session.metrics.playoutPhase > 30);
+    const snapshot = state(fixture.confirmed, second.tick);
+    session.receive(snapshot);
+    assert.equal(session.metrics.playoutPhase, second.tick); assert.equal(session.metrics.playoutReserveMs, 0);
+    assert.equal(session.metrics.playoutBuffering, true);
+    fixture.now += 100; session.present(); assert.equal(session.metrics.playoutPhase, second.tick);
+    session.receive({ type: "ticks", lastConsumedInputSeq: 0, records: [
+      { type: "hash", tick: second.tick, hash: snapshot.hash ^ 1n },
+    ] });
+    fixture.now += 100; session.present();
+    assert.equal(session.metrics.status, "resynchronizing"); assert.equal(session.metrics.playoutPhase, second.tick);
+    assert.equal(session.metrics.playoutRate, 0);
+    session.receive(fixture.initial);
+    assert.equal(session.metrics.playoutPhase, 30, "Only an explicit full-state epoch can reset phase backwards");
+    assert.equal(session.metrics.playoutReserveMs, 0); assert.equal(session.metrics.playoutBuffering, true);
+    fixture.now += 10; session.present(); assert.equal(session.metrics.playoutPhase, 30);
+  } finally { fixture.dispose(); }
+});
+
 test("matching confirmed prediction avoids reload; changed controls force reload", async () => {
   const authoritative = await realHost(), prediction = await realHost(), confirmed = await realHost();
   let now = 0; const session = new OnlineSession({prediction, confirmed, slot: 1, now: () => now, send() {}});
@@ -113,6 +363,8 @@ test("round bootstrap clears old timeline while retaining input and reliable-eve
     session.resetRound();
     for (const host of [authoritative, prediction, confirmed]) requireStatus(host.loadMap("Arena"), "next map");
     session.receive(state(authoritative, 12));
+    assert.equal(session.metrics.playoutPhase, 12); assert.equal(session.metrics.playoutReserveMs, 0);
+    assert.equal(session.metrics.playoutBuffering, true);
     const nextHeader = new Uint8Array(20); new DataView(nextHeader.buffer).setUint32(4, 12, true);
     session.receive({ type: "events", events: [{ id: 11, tick: 12, header: nextHeader, payload: new Uint8Array() }] });
     now = 68; session.advance(() => encodeInput({}));
@@ -192,10 +444,13 @@ test("server pause freezes prediction/input debt; resume fullstate resets clock 
     now += 600000; session.advance(() => assert.fail("Paused sessions must not sample input"));
     assert.equal(session.paused, true); assert.equal(session.predictionWorld.tick, tick);
     assert.equal(sent.filter(m => m.type === "input").length, count); assert.equal(session.metrics.pendingInputs, 0);
+    assert.equal(session.metrics.playoutPhase, 0); assert.equal(session.metrics.playoutRate, 0);
+    assert.equal(session.metrics.playoutReserveMs, 0); assert.equal(session.metrics.playoutBuffering, true);
     session.receive(state(authoritative, 0));
     session.receive({ type: "control-state", state: { host: true, admin: false, paused: false, muted: false, vote: null } });
     now += 17; session.advance(() => encodeInput({}));
     assert.ok(session.predictionWorld.tick <= 4); assert.equal(sent.filter(m => m.type === "resync").length, 0);
+    assert.equal(session.metrics.playoutPhase, 0); assert.equal(session.metrics.playoutBuffering, true);
     session.sendFeature({ type: "gesture", gesture: "victory" }); assert.equal(sent.at(-1)!.type, "gesture");
     assert.throws(() => session.receive({ type: "self-kill" }), /Client-originated/);
   } finally { session.dispose(); authoritative.dispose(); }
@@ -371,7 +626,11 @@ test("real WASM respawn, spectator team, slot reuse and round snapshots do not b
       assert.equal(confirmed.hash(), authoritative.hash());
     };
     const oldRemoteX = session.present().sprites[1]!.x;
+    const oldRemotePhase = session.metrics.playoutPhase;
     deliver([{ kind: "spawn", slot: 1, x: 500, y: -100 }, { kind: "spawn", slot: 2, x: 600, y: -100 }]);
+    assert.equal(session.metrics.playoutPhase, oldRemotePhase, "A per-soldier life reset cannot reset the shared remote clock");
+    const newLife = session.present(0).sprites[1]!;
+    assert.equal(newLife.x, session.authoritativeRenderView().sprite(1).posX, "A new remote life starts at its received spawn, even while old history is buffering");
     now += session.metrics.interpolationMs - 1000 / 120;
     const snapped = session.present(0).sprites;
     const authoritativeRemote = confirmed.renderView();

@@ -57,3 +57,41 @@ test("native bullet time schedules twenty fixed ticks per wall-clock second", ()
   for (let ms = 1001; ms <= 2000; ms++) clock.advance(BigInt(ms) * 1_000_000n, () => { steps++; }, 1);
   assert.equal(steps, 80); assert.equal(clock.overloads, 0);
 });
+
+test("catch-up lateness includes earlier callbacks without granting their CPU time as extra due steps", () => {
+  const epoch = 8_000_000_000_000n;
+  const clock = new FixedStepAccumulator(epoch);
+  const sampledAt = epoch + 33_333_334n;
+  let now = sampledAt;
+  const starts: number[] = [], completions: number[] = [];
+  const steps = clock.advance(sampledAt, lateness => {
+    starts.push(lateness);
+    now += starts.length === 1 ? 20_000_000n : 5_000_000n;
+  }, 1, { now: () => now, completed: lateness => { completions.push(lateness); } });
+  assert.equal(steps, 2);
+  assert.ok(Math.abs(starts[0]! - 16.666667333333333) < 1e-9);
+  assert.ok(Math.abs(starts[1]! - 20.000000666666667) < 1e-9);
+  assert.ok(Math.abs(completions[0]! - 36.66666733333333) < 1e-9);
+  assert.ok(Math.abs(completions[1]! - 25.000000666666667) < 1e-9);
+  assert.equal(clock.overloads, 0);
+  assert.equal(clock.discardedSteps, 0n);
+  assert.equal(clock.delayMilliseconds(now), 0);
+  assert.equal(clock.advance(now, () => {}), 1, "only the next wake admits time spent in the earlier callbacks");
+});
+
+test("timing observations preserve fake monotonic epochs and native rate/drop policy", () => {
+  const clock = new FixedStepAccumulator(0n);
+  let now = 225_000_000n;
+  const starts: number[] = [], completions: number[] = [];
+  assert.equal(clock.advance(now, lateness => {
+    starts.push(lateness); now += 10_000_000n;
+  }, 1 / 3, { now: () => now, completed: lateness => { completions.push(lateness); } }), 4);
+  assert.deepEqual(starts, [175, 135, 95, 55]);
+  assert.deepEqual(completions, [185, 145, 105, 65]);
+  assert.equal(clock.overloads, 0);
+  assert.equal(clock.discardedSteps, 0n);
+  assert.equal(clock.delayMilliseconds(now, 1 / 3), 0);
+  clock.reset(now);
+  now += 16_666_667n;
+  assert.equal(clock.advance(now, () => {}, 1), 1);
+});

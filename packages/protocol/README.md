@@ -224,7 +224,7 @@ Per SPEC §4.4, server timeline batches flush every two simulation ticks, with a
 
 The sim header is five u32 fields: kind, tick, source, target, payloadBytes. Its tick must equal the event envelope tick, and payloadBytes must equal P. Presentation-only kinds retain bit 31. The entire events payload, including count/record overhead, is capped at 1 MiB.
 
-`eventAck` contains one nonzero u32 event ID at offset 0. Application consumers must remember handled IDs and ignore duplicate effects; socket reliability alone is not an exactly-once application policy. Acknowledgement/retransmit retention and deduplication are session responsibilities, not side effects of decoding. Reusing an event ID for a different event is invalid application behavior.
+`eventAck` contains one nonzero cumulative high-watermark u32 event ID at offset 0. Application consumers must remember handled IDs and ignore duplicate effects; socket reliability alone is not an exactly-once application policy. The client sends one ACK after each successfully handled batch, including an all-duplicate retransmission, rather than one packet per event. Failed callbacks do not acknowledge unhandled events; successful earlier effects remain deduplicated on retry. Acknowledgement/retransmit retention and deduplication are session responsibilities, not side effects of decoding. Reusing an event ID for a different event is invalid application behavior.
 
 ## Chat, timing and disconnect
 
@@ -283,7 +283,7 @@ Human joins explicitly use `control:"authoritative"` and the admitted loadout. W
 
 The worker uses monotonic integer nanoseconds and an exact 60 Hz scaled accumulator. Each wake advances at most four fixed ticks; simulation never receives variable dt. Protocol encoding, transport enqueue, and successful simulation replay are not evidence of packet delivery or acceptance under real network impairment.
 
-Delayed-input validation and rollback execute between fixed steps. Their measured CPU work is charged to the next tick's `simEncodeMs` (and `workerSimEncodeMs`), in addition to the separate `replayMs` diagnostics. This prevents a costly synchronous rewind from disappearing from the sim budget simply because it ran in a message callback rather than `step()`.
+Delayed-input validation and rollback execute between fixed steps. Their measured CPU work remains charged to the next tick's legacy `simEncodeMs`/`workerSimEncodeMs`, overlapping `replayMs` and the interval's all-request `messageWorkMs`. Complete worker-cycle work, actual tick-start/completion deadline lateness, worker publication delay and application queue age are reported separately; these nested work totals are not end-to-end latency. The worker borrows its pre-wake render observation only for the first synchronous step, with fresh views after subsequent mutations and map transitions. Fixed-step/catch-up/native slow-motion semantics and the wire layout remain unchanged.
 `onDisconnect(slot,code,reason)` observes the listener's actual policy close before socket teardown. Qualification records it separately from the client's WebSocket close code: TCP failure can prevent the close frame from reaching the client, which then sees 1006 rather than the originating policy reason.
 
 The server relays consumed human inputs and commands as confirmed timeline records rather than serializing state every two ticks. Full save-state bytes are reserved for join/resync. There are no baseline caches or snapshot acknowledgements. Initial and recovery state plus every following tick record must retain WSS send order; transport backlog exhaustion is an explicit connection failure.
@@ -295,7 +295,7 @@ View age selects **lag compensation**, not permission to move. All classes retai
 | Input class | View/target policy | Authoritative application |
 |---|---|---|
 | Current movement, jets and other ordinary controls | Old genuine views allowed; target must be current or at most eight ticks ahead | Queued until its ordinary fixed tick; elapsed movement is never rewritten |
-| Delayed Fire/grenade eligible for compensation | Existing trusted-RTT shot window, at most 12 ticks/200 ms; existing RTT/interpolation view bounds; original historical weapon and rewind budgets | Coherent original historical projectile replay; only action bits and aim inserted |
+| Delayed Fire/grenade eligible for compensation | Existing trusted-RTT shot window, at most 12 simulation ticks (200 ms at 60 Hz; 600 ms at sustained 20 Hz); existing RTT/interpolation view bounds; original historical weapon and rewind budgets | Coherent original historical projectile replay; only action bits and aim inserted |
 | Fire/grenade older than compensation/view bounds, or with no retained membership-safe anchor | Still validates genuine/nonfuture view and all sequence/rate/lead/control fields | **Present-time, uncompensated** native action, not silently dropped. For stale target ticks, merge only Fire/grenade and aim onto current movement; never retroactively replay stale movement/reload/switch |
 | Duplicate, malformed, future view, excessive lead or sequence/rate abuse | Rejected before application | No authority/time/ammo granted |
 

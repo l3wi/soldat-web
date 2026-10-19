@@ -1,12 +1,12 @@
 import { Worker } from "node:worker_threads";
-import type { MatchConfiguration, WorkerRequest, WorkerResponse } from "./worker-messages.ts";
+import type { MatchConfiguration, WorkerRequest, WorkerResponse, WorkerPublication } from "./worker-messages.ts";
 
 /** Exactly one worker and one WASM instance per controller/match. */
 export class MatchController {
   private readonly worker: Worker;
   private stopping = false;
   private ready = false;
-  onMessage: ((message: WorkerResponse) => void) | undefined;
+  onMessage: ((message: WorkerResponse, publicationDelayMs: number) => void) | undefined;
   onFailure: ((error: Error) => void) | undefined;
 
   private constructor(config: MatchConfiguration) {
@@ -29,7 +29,11 @@ export class MatchController {
       controller.worker.on("exit", code => {
         if (!controller.stopping) failure(new Error(`Match worker exited unexpectedly (${code})`));
       });
-      controller.worker.on("message", (message: WorkerResponse) => {
+      controller.worker.on("message", ({ message, publishedAtNs }: WorkerPublication) => {
+        // Same-host monotonic time spans synchronous structured clone, IPC
+        // transit and the main-thread receive queue; it is not pure IPC time.
+        const receivedAtNs = process.hrtime.bigint();
+        const publicationDelayMs = Math.max(0, Number(receivedAtNs - publishedAtNs) / 1_000_000);
         if (message.type === "ready") {
           clearTimeout(timeout);
           controller.ready = true;
@@ -37,7 +41,7 @@ export class MatchController {
         } else if (message.type === "failure") {
           failure(new Error(message.reason));
           void controller.stop();
-        } else controller.onMessage?.(message);
+        } else controller.onMessage?.(message, publicationDelayMs);
       });
     });
     return controller;

@@ -2,53 +2,26 @@ import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { isGameMode } from "@soldat-web/protocol";
 import type { GameServerOptions } from "./server.ts";
 import { FIRE_ADMISSION_REASONS, type FireAdmissionReasons } from "./worker-messages.ts";
+import { MAX_METRIC_REPORT_SAMPLES, MetricHistogram } from "./metric-histogram.ts";
+import { TRANSPORT_METRICS, type TransportMetricName, type TransportQueueMetrics } from "./transport-metrics.ts";
 
 type Metrics = Parameters<NonNullable<GameServerOptions["onMetrics"]>>[0];
 interface MatchInfo { id: string; map: string; mode: string; targetPlayers: number; humans: number }
-const MAX_SAMPLES = 2048;
 const MAX_MATCHES = 64;
 const MAX_RECORD_BYTES = 16 * 1024;
 const MAX_QUEUED_BYTES = 64 * 1024;
-const metricNames = ["simEncodeMs", "workerSimEncodeMs", "wireEncodeMs", "tickLatenessMs", "replayMs", "inputBufferOccupancy", "inputBufferLeadTicks", "rttMs"] as const;
+const metricNames = ["simEncodeMs", "workerSimEncodeMs", "wireEncodeMs", "workerCycleMs", "tickLatenessMs", "tickCompletionLatenessMs", "workerPublicationDelayMs", "replayMs", "inputBufferOccupancy", "inputBufferLeadTicks", "rttMs"] as const;
 const counterNames = ["inboundBytes", "outboundBytes", "resyncRequests", "disconnects", "replayTicks", "rejectedShots", "uncompensatedShots", "replayBudgetFallbacks"] as const;
 type MetricName = typeof metricNames[number];
 type CounterName = typeof counterNames[number];
 
-interface Summary {
-  count: number; min: number | null; p50: number | null; p95: number | null; p99: number | null; max: number | null;
-  truncatedSamples: number; invalidSamples: number;
-}
-
-class Samples {
-  readonly values: number[] = [];
-  truncatedSamples = 0;
-  invalidSamples = 0;
-
-  add(values: readonly number[]): void {
-    // Bound processing as well as retention. Unexamined values count as truncated,
-    // not valid samples; invalidSamples only describes inspected values.
-    const inspected = Math.min(values.length, MAX_SAMPLES - this.values.length);
-    for (let i = 0; i < inspected; i++) {
-      const value = values[i]!;
-      if (Number.isFinite(value)) this.values.push(value);
-      else this.invalidSamples++;
-    }
-    this.truncatedSamples = sum(this.truncatedSamples, values.length - inspected);
-  }
-
-  summary(): Summary {
-    this.values.sort((a, b) => a - b);
-    const n = this.values.length;
-    const percentile = (fraction: number) => n ? this.values[Math.ceil(n * fraction) - 1]! : null;
-    return { count: n, min: this.values[0] ?? null, p50: percentile(0.5), p95: percentile(0.95), p99: percentile(0.99), max: this.values[n - 1] ?? null, truncatedSamples: this.truncatedSamples, invalidSamples: this.invalidSamples };
-  }
-}
 
 function sum(a: number, b: number): number { return Math.min(Number.MAX_SAFE_INTEGER, a + b); }
 function finite(value: number): number | null { return Number.isFinite(value) ? value : null; }
 function validCounter(value: number): boolean { return Number.isSafeInteger(value) && value >= 0; }
 function validInfo(info: MatchInfo): boolean {
-  return typeof info.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(info.id)
+  return Boolean(info) && typeof info === "object"
+    && typeof info.id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(info.id)
     && typeof info.map === "string" && /^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,95}$/.test(info.map)
     && isGameMode(info.mode)
     && Number.isInteger(info.targetPlayers) && info.targetPlayers >= 1 && info.targetPlayers <= 32
@@ -57,7 +30,12 @@ function validInfo(info: MatchInfo): boolean {
 
 class MatchWindow {
   info: MatchInfo;
-  readonly samples = Object.fromEntries(metricNames.map(name => [name, new Samples()])) as Record<MetricName, Samples>;
+  readonly samples = Object.fromEntries(metricNames.map(name => [name, new MetricHistogram(name === "inputBufferOccupancy" || name === "inputBufferLeadTicks")])) as Record<MetricName, MetricHistogram>;
+  readonly transport = Object.fromEntries(TRANSPORT_METRICS.map(name => [name, new MetricHistogram(name === "queuedPackets")])) as Record<TransportMetricName, MetricHistogram>;
+  queueSampler: Metrics["sampleTransportQueue"] | undefined;
+  readonly inputConsumption = { scheduled: 0, repeatedHeld: 0, timeoutNeutral: 0, maxMissingRunTicks: 0 };
+  readonly serverMetricOverflow = { wireEncodeMs: 0, rttMs: 0, workerPublicationDelayMs: 0 };
+  messageWorkMs = 0;
   readonly counters = Object.fromEntries(counterNames.map(name => [name, 0])) as Record<CounterName, number>;
   readonly fireAdmissionReasons = Object.fromEntries(FIRE_ADMISSION_REASONS.map(reason => [reason, 0])) as FireAdmissionReasons;
   invalidCounterSamples = 0;
@@ -75,7 +53,7 @@ class MatchWindow {
   record(info: MatchInfo, sample: Metrics, now: number): void {
     this.info.map = info.map; this.info.mode = info.mode; this.info.targetPlayers = info.targetPlayers; this.info.humans = info.humans;
     for (const name of metricNames) {
-      this.samples[name].add(sample[name]);
+      this.samples[name].addReport(sample[name]);
     }
     for (const name of counterNames) {
       if (validCounter(sample[name])) this.counters[name] = sum(this.counters[name], sample[name]);
@@ -86,6 +64,22 @@ class MatchWindow {
       if (validCounter(value)) this.fireAdmissionReasons[reason] = sum(this.fireAdmissionReasons[reason], value);
       else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
     }
+    for (const name of ["scheduled", "repeatedHeld", "timeoutNeutral", "maxMissingRunTicks"] as const) {
+      const value = sample.inputConsumption?.[name];
+      if (validCounter(value)) this.inputConsumption[name] = name === "maxMissingRunTicks" ? Math.max(this.inputConsumption[name], value) : sum(this.inputConsumption[name], value);
+      else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
+    }
+    for (const name of ["wireEncodeMs", "rttMs", "workerPublicationDelayMs"] as const) {
+      const value = sample.serverMetricOverflow?.[name];
+      if (validCounter(value)) this.serverMetricOverflow[name] = sum(this.serverMetricOverflow[name], value);
+      else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
+      this.samples[name].merge(sample.serverMetricOverflowHistograms?.[name]);
+    }
+    if (Number.isFinite(sample.messageWorkMs) && sample.messageWorkMs >= 0) this.messageWorkMs = sum(this.messageWorkMs, sample.messageWorkMs);
+    else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
+    this.mergeTransport(sample.transportQueue);
+    if (typeof sample.sampleTransportQueue === "function") this.queueSampler = sample.sampleTransportQueue;
+    else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
     if (validCounter(sample.overloads)) this.overloads = sample.overloads;
     else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
     if (typeof sample.discardedSteps === "string" && sample.discardedSteps.length <= 128 && /^\d+$/.test(sample.discardedSteps)) this.discardedSteps = sample.discardedSteps;
@@ -104,14 +98,29 @@ class MatchWindow {
     } else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
   }
 
+  private mergeTransport(metrics: TransportQueueMetrics): void {
+    for (const name of TRANSPORT_METRICS) this.transport[name].merge(metrics?.[name]);
+  }
+
   recordObject(): object {
+    if (this.queueSampler) {
+      try {
+        const metrics = this.queueSampler();
+        if (metrics) this.mergeTransport(metrics);
+        else this.queueSampler = undefined;
+      } catch { this.invalidCounterSamples = sum(this.invalidCounterSamples, 1); this.queueSampler = undefined; }
+    }
     const { outboundBytes, ...interval } = this.counters;
     return {
       match: this.info,
       ticks: { first: this.firstTick, last: this.lastTick, progressed: this.progressed, observedMs: this.observedMs, progressionPerSecond: this.observedMs > 0 ? this.progressed * 1000 / this.observedMs : null, resets: this.resets },
-      samplePolicy: "first_2048_per_metric_per_window",
+      samplePolicy: "full_window_fixed_histograms",
+      accounting: { simEncodeMs: "legacy_nested_worker_work_plus_main_wire_encode_not_end_to_end_latency", workerSimEncodeMs: "legacy_nested_worker_work_not_end_to_end_latency" },
+      quantilePolicy: { nonnegative: "upper_bound_8_buckets_per_octave_2^-10_to_2^40_clamped_to_extrema", integer: "upper_bound_integer_-128_to_128_clamped_to_extrema", maxSamplesPerMetricReport: MAX_METRIC_REPORT_SAMPLES, oversized: "reject_whole_metric_report" },
       summaries: Object.fromEntries(metricNames.map(name => [name, this.samples[name].summary()])),
-      interval: { ...interval, outboundOfferedBytes: outboundBytes, fireAdmissionReasons: { ...this.fireAdmissionReasons } },
+      transportQueue: Object.fromEntries(TRANSPORT_METRICS.map(name => [name, this.transport[name].summary()])),
+      interval: { ...interval, outboundOfferedBytes: outboundBytes, messageWorkMs: this.messageWorkMs,
+        inputConsumption: { ...this.inputConsumption }, serverMetricOverflow: { ...this.serverMetricOverflow }, fireAdmissionReasons: { ...this.fireAdmissionReasons } },
       cumulative: { overloads: this.overloads, discardedSteps: this.discardedSteps },
       invalidCounterSamples: this.invalidCounterSamples,
     };
@@ -145,7 +154,7 @@ export function createPerformanceLogging(environment: PerformanceEnvironment): P
   const matches = new Map<string, MatchWindow>();
   let startedAt = environment.nowMs();
   let closed = false;
-  let droppedMatches = 0, droppedRecords = 0, invalidMetadata = 0, writeErrors = 0;
+  let droppedMatches = 0, droppedRecords = 0, invalidMetadata = 0, invalidReports = 0, writeErrors = 0;
 
   function emit(record: object): boolean {
     // No private queue or drain listeners: when stdout is backed up, discard
@@ -174,9 +183,17 @@ export function createPerformanceLogging(environment: PerformanceEnvironment): P
   function flush(): void {
     if (closed) return;
     const now = environment.nowMs();
-    const common = { schemaVersion: 1, timestamp: environment.timestamp(), windowMs: Math.max(0, now - startedAt) };
-    for (const match of matches.values()) emit({ ...common, type: "match_performance", ...match.recordObject() });
-    matches.clear();
+    const common = { schemaVersion: 2, timestamp: environment.timestamp(), windowMs: Math.max(0, now - startedAt) };
+    for (const [id, match] of matches) {
+      emit({ ...common, type: "match_performance", ...match.recordObject() });
+      // Keep only live samplers, not raw metrics, so a queue stalled across
+      // multiple windows remains visible even if its worker publishes nothing.
+      if (match.queueSampler) {
+        const next = new MatchWindow(match.info);
+        next.queueSampler = match.queueSampler;
+        matches.set(id, next);
+      } else matches.delete(id);
+    }
     const runtime = environment.runtime();
     // Copy the runtime schema explicitly too: no future diagnostics fields
     // can accidentally turn production logs into a raw profiling dump.
@@ -190,10 +207,10 @@ export function createPerformanceLogging(environment: PerformanceEnvironment): P
         eventLoop: { activeMs: finite(loop.activeMs), idleMs: finite(loop.idleMs), utilization: finite(loop.utilization) },
         uptimeSeconds: finite(runtime.uptimeSeconds),
       },
-      logging: { droppedMatches, droppedRecords, invalidMetadata, writeErrors },
-      ...(droppedMatches || droppedRecords || invalidMetadata || writeErrors ? { warning: "performance_logging_dropped_data" } : {}),
+      logging: { droppedMatches, droppedRecords, invalidMetadata, invalidReports, writeErrors },
+      ...(droppedMatches || droppedRecords || invalidMetadata || invalidReports || writeErrors ? { warning: "performance_logging_dropped_data" } : {}),
     });
-    if (written) droppedMatches = droppedRecords = invalidMetadata = writeErrors = 0;
+    if (written) droppedMatches = droppedRecords = invalidMetadata = invalidReports = writeErrors = 0;
     startedAt = now;
   }
 
@@ -202,6 +219,7 @@ export function createPerformanceLogging(environment: PerformanceEnvironment): P
     recordMatch(info, sample) {
       if (closed) return;
       if (!validInfo(info)) { invalidMetadata = sum(invalidMetadata, 1); return; }
+      if (!sample || typeof sample !== "object" || sample.type !== "metrics") { invalidReports = sum(invalidReports, 1); return; }
       let match = matches.get(info.id);
       if (!match) {
         if (matches.size >= MAX_MATCHES) { droppedMatches = sum(droppedMatches, 1); return; }
@@ -213,7 +231,7 @@ export function createPerformanceLogging(environment: PerformanceEnvironment): P
       if (closed) return;
       stopTimer();
       try { flush(); }
-      finally { closed = true; environment.stopObservation(); }
+      finally { closed = true; matches.clear(); environment.stopObservation(); }
     },
   };
 }

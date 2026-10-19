@@ -113,3 +113,33 @@ test("expired fire applies only present action/aim while preserving held movemen
   assert.equal(new DataView(present.input.buffer, present.input.byteOffset, 12).getInt16(2, true), 321);
   assert.deepEqual(buffer.offer([old], 111, 2_000_000n, () => "present"), ["sequence"]);
 });
+
+test("fresh neutral, missing-held and timeout-neutral remain distinct with the unchanged fifteen-tick cutoff", () => {
+  const buffer = new PlayerInputBuffer(0n);
+  const neutral = encodeInput({});
+  assert.deepEqual(buffer.offer([frame(1, 100, neutral)], 100, 0n), []);
+  const fresh = buffer.consume(100);
+  assert.equal(fresh.consumption, "scheduled");
+  assert.equal(fresh.repeated, false);
+  assert.equal(fresh.missingRunTicks, 0);
+  assert.deepEqual(fresh.input, neutral);
+  for (let missing = 1; missing <= 15; missing++) {
+    const held = buffer.consume(100 + missing);
+    assert.equal(held.consumption, "repeatedHeld", "neutral bytes are not evidence of a timeout");
+    assert.equal(held.repeated, true);
+    assert.equal(held.missingRunTicks, missing);
+    assert.equal(held.seq, 1);
+  }
+  const timedOut = buffer.consume(116);
+  assert.equal(timedOut.consumption, "timeoutNeutral");
+  assert.equal(timedOut.missingRunTicks, 16);
+  assert.deepEqual(timedOut.input, neutral);
+  assert.deepEqual(buffer.offer([frame(2, 117)], 117, 1_000_000n), []);
+  const recovered = buffer.consume(117);
+  assert.equal(recovered.consumption, "scheduled");
+  assert.equal(recovered.missingRunTicks, 0);
+  assert.equal(recovered.seq, 2);
+  assert.equal(buffer.consume(118).missingRunTicks, 1);
+  buffer.resync(119);
+  assert.equal(buffer.consume(119).missingRunTicks, 1, "resync ends the old intent/run without changing timeout policy");
+});

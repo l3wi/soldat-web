@@ -51,6 +51,14 @@ export const FIRE_ADMISSION_REASONS = [
 ] as const;
 export type FireAdmissionReason = typeof FIRE_ADMISSION_REASONS[number];
 export type FireAdmissionReasons = Record<FireAdmissionReason, number>;
+/** Live player-consume outcomes; fresh neutral is scheduled, never a missing frame. */
+export interface InputConsumption {
+  scheduled: number;
+  repeatedHeld: number;
+  timeoutNeutral: number;
+  /** Largest contiguous missing-frame run observed, including runs spanning reports. */
+  maxMissingRunTicks: number;
+}
 export type WorkerResponse =
   | { type: "roster"; players: { slot: number; team: number }[] }
   | { type: "paused"; paused: boolean }
@@ -61,5 +69,25 @@ export type WorkerResponse =
   | { type: "ticks"; serverTick: number; records: Uint8Array; recipients: { slot: number; lastConsumedInputSeq: number }[] }
   | { type: "reject"; slot: number; reason: string }
   | { type: "left"; slot: number }
-  | { type: "metrics"; serverTick: number; overloads: number; discardedSteps: string; simEncodeMs: number[]; tickLatenessMs: number[]; replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[] }
+  | {
+    type: "metrics"; serverTick: number; overloads: number; discardedSteps: string;
+    /** Legacy per-step sim/encode CPU plus input-request work attributed to the next step. Nested in cycle/message work. */
+    simEncodeMs: number[];
+    /** Complete prior wakes, from callback entry through observations, report publication and timer setup. */
+    workerCycleMs: number[];
+    /** Actual callback start and completion relative to that tick's fixed-step deadline. */
+    tickLatenessMs: number[]; tickCompletionLatenessMs: number[];
+    /** Sum of synchronous elapsed handler durations for every handled request; overlaps legacy input attribution. */
+    messageWorkMs: number;
+    inputConsumption: InputConsumption;
+    replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number;
+    fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[];
+    workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[];
+  }
   | { type: "failure"; reason: string };
+
+/** Worker-thread publication boundary, immediately before postMessage's synchronous clone. */
+export interface WorkerPublication {
+  message: WorkerResponse;
+  publishedAtNs: bigint;
+}

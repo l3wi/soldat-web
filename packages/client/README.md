@@ -264,15 +264,23 @@ Protocol v7 retains ordered input relay, seven-mode rounds and authenticated cha
 
 `src/net/session.ts` is DOM-free and accepts initialized `prediction` and `confirmed` hosts, a typed sender, a monotonic clock and optional event/`onTicks` callbacks. Confirmed saves an anchor every eight ticks and retains at least 32 ticks of rollback coverage. Prediction holds remote human movement/fire/jet/aim/order while clearing one-shot bits 6–11. Bots use original AI. Newly confirmed input/command differences or corrections trigger a confirmed-state load and local-ring replay; matching prediction skips that expensive reload.
 
+Cold admission starts conservatively while timing is unknown. A matching RTT sample within the existing six-normal-tick clock-error reserve (100 ms) can initialize prediction immediately; a slower first sample needs a corroborating probe. Initial calibration retains the lower valid RTT so a delayed admission response cannot over-prime the clock. Only one probe is outstanding, and corroboration waits beyond the listener's existing 250 ms reply gate after the preceding reply; normal probing remains once per second. Unmatched/replayed pongs never qualify timing. After priming, the ordinary RTT/deviation filtering, lead slew and 0.9–1.1× prediction-rate correction remain in use.
+
+The cold clock and lead are primed once from current authoritative time and native tick scale rather than taking seconds to walk up at one lead tick/second. Both RTT/2 terms remain intentional: one estimates how old the received boundary is, the other allows outbound input transit. Every prediction tick still samples real intent, native catch-up stays capped at four steps per frame, and input `viewTick` remains the actual remote playback phase. Neither server time/admission limits nor remote playback buffering change.
+
 The 128-frame local input ring resynchronizes rather than overwriting pending inputs; relay outages beyond 128 ticks also request full state. Only one resync request is outstanding; old queued relay messages are ignored until fresh state arrives. There are no snapshot ACKs, baselines or state deltas. Reliable event IDs retain independent exactly-once deduplication, and server pings receive identical pongs. Only ordinary prediction emits immediate local presentation; confirmed steps and replay never emit UI sound/FX or speculative authoritative gameplay.
 
-Confirmed gameplay notifications are deliberately deferred by the server for 12 simulation ticks (200 ms) before reliable delivery, plus transport latency. Killfeed/score confirmations must use `window.__soldatOnline.onGameplayEvent(event)` (or the core session's `onEvent`) on arrival, not speculative prediction events. The callback receives each confirmed event ID once; local audio and cosmetic effects remain immediate on ordinary predicted steps. This visible confirmation delay is a bounded lag-compensation policy, not a client timer or an assertion of instant confirmed hits.
+Final gameplay notifications are deliberately deferred by the server for 12 simulation ticks before reliable delivery, plus transport latency: 200 ms at normal 60 Hz, or 600 ms during sustained 20 Hz bullet time. Final notifications such as kill-feed entries use `window.__soldatOnline.onGameplayEvent(event)` (or the core session's `onEvent`), not speculative prediction events. Mutable authoritative HUD/world state can arrive earlier; this is not a universal delay on every score display or a generic hit acknowledgement. Each event ID reaches the callback once; one cumulative high-watermark ACK follows each successfully handled batch. Local audio and cosmetic effects remain immediate on ordinary predicted steps. Commitment stays coupled to historical replay safety.
 
-Remote soldiers render from confirmed-instance poses copied at each message end into a 16-pose ring. Interpolation starts at 50 ms and adapts within 33–100 ms, clamping to received history. The local soldier uses prediction with the actual native pre-step root and previous/current skeletons on one render phase (`session.presentationFraction`), published after prediction advances. Reconciliation preserves the fractional displayed root and individual pose points with an 80 ms presentation-only decay based on elapsed time, not render-call count. Spawn, life/team/occupant and round boundaries reset unrelated interpolation. `authoritativeRenderView()` borrows the confirmed instance's latest bullets and Things; no opaque Pascal state offsets are parsed.
+Remote soldiers render from confirmed-instance poses retained in a bounded 32-pose ring. A persistent monotonic playback clock uses received-history occupancy, not RTT, with ordinary speed adjustment bounded to 0.9–1.1×. Its target reserve is the observed relay cadence plus one native step, with bounded arrival-jitter margin: nominally 50 ms at 60 Hz and 150 ms at 20 Hz. The reserve deliberately trades some remote-view age for continuous interpolation; it does not reduce network RTT. Native scheduling time is estimated from replicated tick scale, not a synchronized server wall clock, and correction replay does not add elapsed time.
+
+Bootstrap, full-state recovery, round and pause boundaries explicitly reset playback. An underrun holds at received history until sufficient reserve returns; a large ordered recovery burst may then seek forward once at the resumed render/input-view boundary instead of retaining seconds of excess delay. Ordinary jitter and RTT updates never seek backwards. `playoutRebases` also counts necessary retained-history forward seeks. Per-soldier life/team/occupant boundaries prevent blending unrelated lives independently of the global clock.
+
+The local soldier still uses prediction with the actual native pre-step root and previous/current skeletons on one render phase (`session.presentationFraction`), published after prediction advances. Reconciliation preserves the fractional displayed root and individual pose points with an 80 ms presentation-only decay based on elapsed time, not render-call count. `authoritativeRenderView()` borrows the confirmed instance's latest bullets and Things; no opaque Pascal state offsets are parsed.
 
 The online map and HUD use a reusable render-only interpolation of the fixed-step camera, sharing the soldier's presentation fraction. Native camera follow, input sampling and the 60 Hz simulation are unchanged. `presentationEpoch` signals discontinuities so the rendered camera does not interpolate across unrelated views. Predicted cosmetics, scenery and diagnostic phase use the online clock rather than the inactive offline accumulator.
 
-The overlay and `window.__soldatOnline.metrics` expose `confirmedTick`, `ticks`, `records`, `bytes`, `hashTick`, `confirmedHash`, `loadedHash`, `hashMatches`, `hashMismatches`, `rollbacks`, `reloads`, `skippedReloads`, `anchorBytes`, `confirmedMs`, `reconcileMs`, consumed input sequence and correction/interpolation metrics. `stateAgeMs` is time since the latest relay receipt; receipt age plus RTT/2 is only a symmetric-path estimate, not a synchronized clock. `window.__soldatOnline.onTicks(metrics)` borrows the live metrics object; copy it when persisting samples. The optional 12-byte `input` override drives qualification controls; clear it to restore DOM controls.
+The overlay and `window.__soldatOnline.metrics` expose confirmed/predicted ticks, boundary hashes, reload/replay/correction counts and timings, consumed input sequence and presentation diagnostics. `playoutPhase` is the fractional remote history tick; `playoutReserveMs` is actual available native-time history; `interpolationMs` is the target receipt-time reserve; `playoutRate`, `playoutBuffering`, `playoutUnderruns` and `playoutRebases` distinguish normal slewing from undersupply and explicit recovery. Packet loss is unavailable, not a constant measured zero: the unused `loss` field has been removed. `stateAgeMs` is time since the latest relay receipt; receipt age plus RTT/2 remains only a symmetric-path prediction estimate. `window.__soldatOnline.onTicks(metrics)` borrows the live object; copy it when persisting samples. The optional 12-byte `input` override drives qualification controls; clear it to restore DOM controls.
 
 Real-WASM invariants (including rollback/replay and authoritative remote rendering) are in `src/net/session.test.ts`. With the already-built frozen WASM and imported content available, the qualification owner can run:
 
@@ -297,6 +305,39 @@ A separate real TLS/WSS smoke used the original world with the default 12-human/
 | 144 Hz | 995 | 16 | 0 | 0 |
 
 This is frame-by-frame numeric and network verification, not a browser-rendering or physical-display smoothness claim. Browser/visual verification was explicitly excluded by the user. The harness's per-frame timings include two proof hashes and are not production FPS measurements. Ignored receipt: `build-out/movement-network-results.json`.
+
+### Remote playback verification
+
+Sixteen real-WASM scenarios exercised stable RTT, same-clock RTT reductions, ordered 100/250 ms outages and native slow-motion transitions, with frame scheduling at 60/120/144 Hz. They used the actual input buffer and confirmed/prediction hosts, with zero backwards playback samples, hash mismatches or resyncs. The previously reproduced same-time RTT-induced movement became zero displacement.
+
+Steady two-tick relay fixtures sampled the second second at one-millisecond intervals:
+
+| RTT | Previous time clamped to newest pose | Monotonic playback |
+| ---: | ---: | ---: |
+| 0 ms | 0% | 0% |
+| 30 ms | 40.6% | 0% |
+| 60 ms | 84.5% | 0% |
+| 120 ms | 100% | 0% |
+
+Clamping means no future pose remains for interpolation, not network packet loss or an indefinitely stationary actor. Ordered outage recovery returned to the target reserve at the first resumed presentation, within 0–5 ms of burst delivery in these synthetic schedules, rather than slowly retaining the outage backlog. These are numeric timing fixtures, not browser throughput, physical-display smoothness or TCP-loss qualification. Ignored local receipts: `build-out/review-playout-reserve.json` and `build-out/release-playback-smoke.json`.
+
+A full TLS/WSS smoke also ran the actual server worker and both AI-enabled client replicas in original Arena at the default twelve-player population. With 30 ms added each direction and ordered 100 ms stalls every hundred packets, each requested 60/120/144 Hz Node frame cadence verified 22 hash checkpoints with zero mismatches, resyncs or duplicated event callbacks. Every received event batch produced exactly one cumulative ACK. All twelve production schema-v2 log records stayed within 16 KiB, with no logging drops, invalid reports or write errors. Expected outage underruns/rebases remain observable; this is not a zero-jitter, zero-input-fallback, browser-FPS or deployment-capacity claim. Ignored local receipt: `build-out/release-network-smoke.json`.
+
+### Prediction bootstrap verification
+
+The native admission regression failed before the fix: at 30 ms each direction, fresh movement was first consumed 1,470 ms after initial state delivery. Nine deterministic cases now cover 0/60/120/250 ms RTT, 60/120/144 Hz scheduling, asymmetric 10+90/90+10 ms links, and a delayed first response with forged/replayed pongs. They use the actual input buffer and three native replicas, model the listener's existing reply gate and retain unchanged lead validation; admitted controls remain genuine, hashes match and catch-up never exceeds four steps.
+
+A separate before/after TLS/WSS comparison used original Arena, twelve total humans/bots, constant 30 ms added each direction and server input diagnostics:
+
+| Requested Node callback cadence | State dispatch → first consumption ACK before (ms) | After (ms) | Maximum missing-input run before (ticks) | After (ticks) |
+| ---: | ---: | ---: | ---: | ---: |
+| 60 Hz | 2,313 | 181 | 136 | 15 |
+| 120 Hz | 1,945 | 179 | 121 | 14 |
+| 144 Hz | 1,978 | 200 | 122 | 16 |
+
+The ACK confirms actual scheduled movement consumption, not socket delivery. Fixed runs had no excessive-lead rejection, hash mismatch or resync; the old 60 Hz run needed a resync. Timeout-neutral fallback fell to zero ticks in two fixed runs and one tick in the third, rather than claiming all initial fallback disappears. Each run verified against its own authority because admitting controls earlier legitimately changes the accepted gameplay timeline.
+
+This measures cold startup after initial state dispatch, excluding TLS/content-loading time; it is not steady-state input latency, browser/display throughput or packet-loss qualification. Ignored local receipt: `build-out/prediction-bootstrap-wss.json`. Permanent coverage: `packages/server/scripts/prediction-bootstrap.test.ts`.
 
 ## Rendering and G2 evidence
 

@@ -152,7 +152,7 @@ export async function connectOnline(options: BrowserOnlineOptions): Promise<Brow
       },
       updateOverlay() {
         const m = admitted.metrics;
-        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.confirmedTick}\nRTT ${m.rttMs.toFixed(1)}ms · relay age ≈${(m.stateAgeMs + m.rttMs / 2).toFixed(1)}ms\ncorrection ${m.correction.toFixed(3)} · interp ${m.interpolationMs.toFixed(1)}ms · replay ${m.replayTicks}\nhash matches ${m.hashMatches} · mismatches ${m.hashMismatches}\nrecords ${m.records} · reloads ${m.reloads} · skipped ${m.skippedReloads}`;
+        overlay!.textContent = `${m.status} · slot ${m.slot} · tick ${m.predictedTick}/${m.confirmedTick}\nRTT ${m.rttMs.toFixed(1)}ms · relay age ≈${(m.stateAgeMs + m.rttMs / 2).toFixed(1)}ms · loss unavailable\nplayout ${m.playoutPhase.toFixed(3)} · reserve ${m.playoutReserveMs.toFixed(1)}/${m.interpolationMs.toFixed(1)}ms · rate ${m.playoutRate.toFixed(3)}${m.playoutBuffering ? " buffering" : ""} · underruns ${m.playoutUnderruns} · rebases ${m.playoutRebases}\ncorrection ${m.correction.toFixed(3)} · replay ${m.replayTicks}\nhash matches ${m.hashMatches} · mismatches ${m.hashMismatches}\nrecords ${m.records} · reloads ${m.reloads} · skipped ${m.skippedReloads}`;
       } };
   } catch (error) { dispose(); throw error; }
 }

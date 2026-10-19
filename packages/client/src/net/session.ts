@@ -10,13 +10,20 @@ const PREDICTION_SAFETY_TICKS = 8;
 // The server queues eight early ticks; reserve two for clock-estimate error.
 const MAX_JITTER_MARGIN_TICKS = 6;
 const RTT_WINDOW = 32;
+const RTT_BOOTSTRAP_SAMPLES = 2;
+// One uncorroborated sample must fit the existing six-tick clock-error reserve.
+const SINGLE_PROBE_BUDGET_MS = MAX_JITTER_MARGIN_TICKS * STEP_MS;
+// Keep a bounded second of nominal two-tick relays, including a stalled burst.
+const POSE_HISTORY = 32;
 /** Holding a remote control must never repeat a grenade/switch/reload/etc edge. */
 export function heldInput(input: Uint8Array): Uint8Array {
   const held = new Uint8Array(input); held[0] = held[0]! & 0x3f; held[1] = 0; return held;
 }
 export interface OnlineMetrics {
   status: string; slot: number; serverTick: number; predictedTick: number; viewTick: number;
-  rttMs: number; loss: number; stateAgeMs: number; interpolationMs: number;
+  rttMs: number; stateAgeMs: number;
+  /** Target reserve at receipt, derived from native cadence and bounded arrival jitter, not RTT. */
+  interpolationMs: number;
   correction: number; corrections: number; replayTicks: number; resyncs: number;
   confirmedTick: number; hashTick: number; confirmedHash: string; loadedHash: string;
   hashMatches: number; hashMismatches: number; ticks: number; records: number; bytes: number; events: number;
@@ -24,6 +31,10 @@ export interface OnlineMetrics {
   rollbacks: number; reloads: number; skippedReloads: number;
   lastConsumedInputSeq: number; replayLength: number; duplicateEvents: number; eventGaps: number;
   predictionLeadTicks: number; targetPredictionLeadTicks: number; rttDeviationMs: number; predictionClockRate: number;
+  /** Received native-time estimate, not a synchronized server wall clock. */
+  playoutPhase: number; playoutReserveMs: number; playoutRate: number;
+  /** Forward seeks after undersupply or retained-history eviction, never RTT corrections. */
+  playoutUnderruns: number; playoutRebases: number; playoutBuffering: boolean;
 }
 export interface CorrectionSprite {
   slot: number; active: boolean; x: number; y: number; health: number; flags: number; fuel: number;
@@ -61,7 +72,7 @@ export interface OnlineOptions {
   /** Complete borrowed live-step batch, once per forward tick; never REPLAY. */
   onLiveStep?: (tick: number, bytes: Uint8Array) => void;
 }
-interface Pose { tick: number; roundEpoch: number; generations: Uint32Array; sprites: WorldSprite[] }
+interface Pose { tick: number; timeMs: number; roundEpoch: number; generations: Uint32Array; sprites: WorldSprite[] }
 interface RootPose {
   x: number; y: number; active: boolean; flags: number; team: number; ceaseFireCounter: number;
   roundEpoch: number; generation: number;
@@ -101,12 +112,14 @@ export class OnlineSession {
   private lastStateAt = 0;
   private correctionAt = 0;
   private lastPingAt = -Infinity;
+  private nextStartupProbeAt = -Infinity;
   private ping: bigint | undefined;
   private readonly rttDeviations = new Float64Array(RTT_WINDOW);
   private readonly sortedDeviations = new Float64Array(RTT_WINDOW);
   private rttSamples = 0;
   private clockPhase = 0;
   private clockAt = 0;
+  private predictionClockPrimed = false;
   private waiting = true;
   private resyncRequested = false;
   private correctionX = 0;
@@ -116,12 +129,19 @@ export class OnlineSession {
   private readonly previousLocal: RootPose;
   private readonly confirmedPreviousLocal: RootPose;
   private readonly generations = new Uint32Array(RENDER_LAYOUT.slots);
+  private readonly remoteLifeTicks = new Uint32Array(RENDER_LAYOUT.slots);
   private confirmedRenderData?: DataView;
   private localGeneration = 0;
   private localRoundEpoch = 0;
   private interpolateLocal = false;
   private presentationGeneration = 0;
-  private jitter = 0;
+  private receivedTimeMs = 0;
+  private playoutTimeMs = 0;
+  private playoutAt = 0;
+  private playoutReceivedAt = 0;
+  private playoutCadenceTicks = 2;
+  private playoutJitterMs = 0;
+  private recoveringPlayout = false;
   private inputPtr: number;
   private eventPtr: number;
   private readonly eventCapacity = 1_048_576;
@@ -154,18 +174,20 @@ export class OnlineSession {
     this.confirmedInputPtr = requireStatus(options.confirmed.exports.sim_alloc(12), "sim_alloc(confirmed input)");
     if (!this.confirmedInputPtr) throw new Error("Confirmed input allocation failed");
     this.metrics = { status: "awaiting state", slot: options.slot, serverTick: 0, predictedTick: 0, viewTick: 0,
-      rttMs: 0, loss: 0, stateAgeMs: 0, interpolationMs: 50, correction: 0, corrections: 0,
+      rttMs: 0, stateAgeMs: 0, interpolationMs: STEP_MS * 3, correction: 0, corrections: 0,
       replayTicks: 0, resyncs: 0, confirmedTick: 0, hashTick: 0, confirmedHash: "", loadedHash: "",
       hashMatches: 0, hashMismatches: 0, ticks: 0, records: 0, bytes: 0, events: 0, pendingInputs: 0, anchorBytes: 0, confirmedMs: 0, reconcileMs: 0,
       rollbacks: 0, reloads: 0, skippedReloads: 0,
       lastConsumedInputSeq: 0, replayLength: 0, duplicateEvents: 0, eventGaps: 0,
-      predictionLeadTicks: 2, targetPredictionLeadTicks: 2, rttDeviationMs: 0, predictionClockRate: 1 };
+      predictionLeadTicks: 2, targetPredictionLeadTicks: 2, rttDeviationMs: 0, predictionClockRate: 1,
+      playoutPhase: 0, playoutReserveMs: 0, playoutRate: 0, playoutUnderruns: 0, playoutRebases: 0, playoutBuffering: true };
   }
   /** Ordered map bootstrap boundary: retain input sequence/event identity, discard the old-map timeline. */
   resetRound(): void {
     this.waiting = true; this.resyncRequested = false; this.metrics.status = "loading next round";
     this.ring.fill(undefined); this.recent.length = 0;
     this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
+    this.receivedTimeMs = 0; this.resetPlayout(this.now());
     this.remote = []; this.clearCorrection(); this.interpolateLocal = false; this.presentationGeneration++;
     this.metrics.pendingInputs = 0; this.metrics.anchorBytes = 0;
     this.resyncSequence = this.seq;
@@ -182,7 +204,21 @@ export class OnlineSession {
     if (this.disposed) throw new Error("Online connection unavailable");
     this.options.send(message);
   }
-  private get stepMilliseconds(): number { return STEP_MS / this.authoritativeRenderView().globals.tickScale; }
+  private get stepMilliseconds(): number {
+    return STEP_MS / this.confirmedRender().getFloat32(RENDER_LAYOUT.globalsOffset + RENDER_LAYOUT.globals.tickScale, true);
+  }
+  private get timingReady(): boolean {
+    return this.predictionClockPrimed || this.rttSamples >= RTT_BOOTSTRAP_SAMPLES ||
+      (this.rttSamples > 0 && this.metrics.rttMs <= SINGLE_PROBE_BUDGET_MS);
+  }
+  /** Startup probes seed the clock before steady-state filtering can retain an admission stall. */
+  private get predictionRttMs(): number {
+    return this.timingReady ? this.metrics.rttMs : 0;
+  }
+  private targetLeadTicks(stepMilliseconds: number): number {
+    return Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, this.predictionRttMs / 2 / stepMilliseconds +
+      Math.min(MAX_JITTER_MARGIN_TICKS, this.metrics.rttDeviationMs / 2 / stepMilliseconds) + 2);
+  }
   receive(message: Message): void {
     if (this.disposed) return;
     if (isClientFeature(message)) throw new Error("Client-originated feature received from server");
@@ -195,6 +231,10 @@ export class OnlineSession {
           this.metrics.pendingInputs = 0; this.resyncSequence = this.seq;
           this.clockAt = this.now(); this.lastStateAt = this.clockAt;
           this.clockPhase = this.metrics.confirmedTick + this.metrics.predictionLeadTicks;
+          // A pause is a presentation boundary, not hours of playback debt.
+          const latest = this.poses[this.poses.length - 1];
+          if (latest) this.poses.splice(0, this.poses.length - 1);
+          this.resetPlayout(this.clockAt);
           if (message.state.paused && this.anchors.size) {
             requireStatus(this.options.prediction.loadState(this.saved()), "prediction pause restore");
             this.predictionWorld.sync(); this.metrics.predictedTick = this.metrics.confirmedTick;
@@ -210,29 +250,39 @@ export class OnlineSession {
     if (message.type === "ping") { this.options.send({ type: "pong", timestamp: message.timestamp }); return; }
     if (message.type === "pong") {
       if (this.ping === message.timestamp) {
-        const rtt = Math.max(0, this.now() - Number(message.timestamp) / 1000);
+        const at = this.now(), rtt = Math.max(0, at - Number(message.timestamp) / 1000);
         const m = this.metrics;
-        this.rttDeviations[this.rttSamples++ % RTT_WINDOW] = m.rttMs ? Math.abs(rtt - m.rttMs) : 0;
-        m.rttMs = m.rttMs ? m.rttMs * 0.8 + rtt * 0.2 : rtt;
+        const calibrating = !this.predictionClockPrimed;
+        this.rttDeviations[this.rttSamples % RTT_WINDOW] = calibrating ? 0 : Math.abs(rtt - m.rttMs);
+        m.rttMs = this.rttSamples === 0 ? rtt : calibrating ? Math.min(m.rttMs, rtt) : m.rttMs * 0.8 + rtt * 0.2;
+        this.rttSamples++;
         const count = Math.min(this.rttSamples, RTT_WINDOW);
         this.sortedDeviations.set(this.rttDeviations);
         this.sortedDeviations.fill(Infinity, count); this.sortedDeviations.sort();
         m.rttDeviationMs = this.sortedDeviations[Math.ceil(count * 0.95) - 1]!;
-        m.targetPredictionLeadTicks = Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS,
-          m.rttMs / 2 / this.stepMilliseconds + Math.min(MAX_JITTER_MARGIN_TICKS, m.rttDeviationMs / 2 / this.stepMilliseconds) + 2);
+        m.targetPredictionLeadTicks = this.targetLeadTicks(this.stepMilliseconds);
         this.ping = undefined;
+        // Replies are limited to one per 250 ms. Waiting after a received
+        // reply also covers asymmetric transit and a delayed first response.
+        this.nextStartupProbeAt = at + 250 + STEP_MS;
       }
       return;
     }
     if (message.type === "disconnect") throw new Error(`Server disconnected (${message.code}): ${message.reason}`);
     if (message.type === "events") {
+      let highestHandled = 0;
       for (const event of message.events) {
         if (event.id > this.lastEvent) {
+          this.options.onEvent?.(event);
           if (this.lastEvent) this.metrics.eventGaps += Math.max(0, event.id - this.lastEvent - 1);
-          this.options.onEvent?.(event); this.lastEvent = event.id; this.metrics.events++;
+          this.lastEvent = event.id; this.metrics.events++;
         } else this.metrics.duplicateEvents++;
-        this.options.send({ type: "eventAck", eventId: event.id });
+        highestHandled = Math.max(highestHandled, event.id);
       }
+      // Only a completely handled batch is acknowledged. If a callback throws,
+      // its event and the unprocessed suffix remain retryable; successful prior
+      // callbacks have already advanced lastEvent and will not run twice.
+      if (highestHandled) this.options.send({ type: "eventAck", eventId: highestHandled });
       return;
     }
     if (message.type === "state") this.state(message);
@@ -246,6 +296,7 @@ export class OnlineSession {
     this.waiting = true; this.metrics.status = "resynchronizing";
     this.resyncSequence = this.seq;
     this.ring.fill(undefined); this.recent.length = 0; this.metrics.pendingInputs = 0;
+    this.metrics.playoutRate = 0; this.metrics.playoutBuffering = true; this.playoutAt = this.now();
   }
   private saved(): Uint8Array {
     const bytes = this.options.confirmed.saveState();
@@ -270,6 +321,7 @@ export class OnlineSession {
     requireStatus(this.options.confirmed.loadState(message.bytes), "confirmed state load");
     this.metrics.confirmedTick = message.tick;
     this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
+    this.receivedTimeMs = 0;
     this.anchors.set(message.tick, message.bytes.slice());
     if (!this.verify(message.tick, message.hash)) return;
     this.options.onStateReset?.();
@@ -279,6 +331,9 @@ export class OnlineSession {
   }
   private stepConfirmed(record: StepRecord, notifyMembership = true, capturePreviousRoot = false): void {
     const host = this.options.confirmed;
+    // Scheduling duration belongs to the forward received timeline. Replaying a
+    // correction cannot add elapsed time or move the remote playout clock.
+    const durationMs = notifyMembership ? this.stepMilliseconds : 0;
     if (record.tick !== this.metrics.confirmedTick) throw new Error(`Out-of-order confirmed step ${record.tick}`);
     for (const bytes of record.commands) {
       // Preserve the exact JSON bytes; negative command status can be the
@@ -305,10 +360,12 @@ export class OnlineSession {
     requireStatus(host.step(REPLAY), "sim_step(confirmed)");
     host.events(); // No confirmed presentation is ever sent to the UI.
     this.metrics.confirmedTick++;
+    this.receivedTimeMs += durationMs;
     if (this.metrics.confirmedTick % 8 === 0) this.anchors.set(this.metrics.confirmedTick, this.saved());
   }
   private ticks(message: Extract<Message, { type: "ticks" }>): void {
     const m = this.metrics, started = this.now();
+    this.viewTime(started);
     let reload = false;
     let lastStep: StepRecord | undefined;
     for (const record of message.records) if (record.type === "step") lastStep = record;
@@ -379,10 +436,30 @@ export class OnlineSession {
     } : undefined;
     this.confirmedWorld.sync();
     if (diagnostic) diagnostic.authoritative = correctionSprites(this.confirmedWorld.sprites);
-    if (this.poses[this.poses.length - 1]?.tick === boundary) this.poses.pop();
-    this.poses.push({ tick: boundary, roundEpoch: this.confirmedWorld.renderView.globals.roundEpoch,
+    const previousPose = this.poses[this.poses.length - 1];
+    if (previousPose) {
+      const roundEpoch = this.confirmedWorld.renderView.globals.roundEpoch;
+      for (let i = 0; i < this.remoteLifeTicks.length; i++) {
+        const before = previousPose.sprites[i]!, after = this.confirmedWorld.sprites[i]!;
+        if (previousPose.roundEpoch !== roundEpoch || previousPose.generations[i] !== this.generations[i] ||
+          ((before.active || after.active) && !sameLife(before, after))) this.remoteLifeTicks[i] = boundary;
+      }
+    }
+    const receivedAt = this.now(), stepMs = this.stepMilliseconds;
+    if (!resetPresentation && previousPose && boundary > previousPose.tick) {
+      const expectedMs = this.receivedTimeMs - previousPose.timeMs;
+      const elapsedMs = Math.max(0, receivedAt - this.playoutReceivedAt);
+      const weight = 1 - Math.exp(-expectedMs / 500);
+      this.playoutJitterMs += (Math.min(stepMs * 2, Math.max(0, elapsedMs - expectedMs)) - this.playoutJitterMs) * weight;
+      this.playoutCadenceTicks = Math.max(1, Math.min(8, boundary - previousPose.tick));
+      this.playoutReceivedAt = receivedAt;
+    }
+    if (previousPose?.tick === boundary) this.poses.pop();
+    this.poses.push({ tick: boundary, timeMs: this.receivedTimeMs, roundEpoch: this.confirmedWorld.renderView.globals.roundEpoch,
       generations: this.generations.slice(), sprites: this.confirmedWorld.sprites.map(copySprite) });
-    if (this.poses.length > 16) this.poses.shift();
+    if (this.poses.length > POSE_HISTORY) this.poses.shift();
+    m.interpolationMs = stepMs * (this.playoutCadenceTicks + 1) + Math.min(stepMs * 2, this.playoutJitterMs * 2);
+    if (resetPresentation) this.resetPlayout(receivedAt);
     for (let i = 0; i < this.ring.length; i++) {
       const frame = this.ring[i];
       if (frame && (frame.seq <= consumed || frame.tick < boundary)) this.ring[i] = undefined;
@@ -433,13 +510,9 @@ export class OnlineSession {
       if (m.correction > 0.001) m.corrections++;
     }
     const at = this.now();
-    if (!this.waiting) {
-      const elapsed = at - this.lastStateAt, expectedMs = (boundary - m.serverTick) * this.stepMilliseconds;
-      this.jitter = this.jitter * 0.9 + Math.abs(elapsed - expectedMs) * 0.1;
-      m.interpolationMs += (Math.max(33, Math.min(100, 33 + this.jitter * 2)) - m.interpolationMs) * 0.1;
-    }
+    this.viewTime(at);
     if (this.waiting) {
-      this.clockPhase = boundary + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, m.rttMs / 2 / this.stepMilliseconds + m.predictionLeadTicks);
+      this.clockPhase = boundary + Math.min(INPUT_HISTORY - PREDICTION_SAFETY_TICKS, this.predictionRttMs / 2 / this.stepMilliseconds + m.predictionLeadTicks);
       this.clockAt = at; m.viewTick = boundary;
     } else this.clockPhase = Math.max(this.clockPhase, this.predictionWorld.tick);
     m.serverTick = boundary;
@@ -457,16 +530,20 @@ export class OnlineSession {
   private clearCorrection(): void {
     this.correctionX = 0; this.correctionY = 0; this.correctionPose.fill(0);
   }
-  /** The render ABI has native previous skeletons but no previous root. Retain
-   * just the real pre-step root/identity, without copying another world or state. */
-  private captureConfirmedRoot(): void {
-    const host = this.options.confirmed, pointer = requireStatus(host.exports.sim_render_view(), "sim_render_view(confirmed root)");
+  /** Refresh the borrowed native render memory without allocating RenderView wrappers per tick. */
+  private confirmedRender(): DataView {
+    const host = this.options.confirmed, pointer = requireStatus(host.exports.sim_render_view(), "sim_render_view(confirmed)");
     const buffer = host.exports.memory.buffer;
-    if (!pointer) throw new Error("Confirmed render root unavailable");
+    if (!pointer) throw new Error("Confirmed render view unavailable");
     if (!this.confirmedRenderData || this.confirmedRenderData.buffer !== buffer || this.confirmedRenderData.byteOffset !== pointer) {
       this.confirmedRenderData = new DataView(buffer, pointer, RENDER_LAYOUT.totalBytes);
     }
-    const data = this.confirmedRenderData, base = RENDER_LAYOUT.headerBytes + (this.options.slot - 1) * RENDER_LAYOUT.spriteBytes;
+    return this.confirmedRenderData;
+  }
+  /** The render ABI has native previous skeletons but no previous root. Retain
+   * just the real pre-step root/identity, without copying another world or state. */
+  private captureConfirmedRoot(): void {
+    const data = this.confirmedRender(), base = RENDER_LAYOUT.headerBytes + (this.options.slot - 1) * RENDER_LAYOUT.spriteBytes;
     const s = RENDER_LAYOUT.sprite, out = this.confirmedPreviousLocal;
     out.flags = data.getUint32(base + s.flags, true); out.active = (out.flags & SPRITE_FLAGS.active) !== 0;
     out.x = data.getFloat32(base + s.posX, true); out.y = data.getFloat32(base + s.posY, true);
@@ -481,11 +558,69 @@ export class OnlineSession {
       this.previousLocal.roundEpoch === this.localRoundEpoch && this.previousLocal.generation === this.localGeneration;
     if (!this.interpolateLocal) { this.clearCorrection(); this.presentationGeneration++; }
   }
-  private viewTime(at: number): number {
-    const latest = this.poses[this.poses.length - 1];
-    if (!latest) return this.metrics.serverTick;
-    return Math.max(this.poses[0]!.tick, Math.min(latest.tick,
-      this.metrics.serverTick + (at - this.lastStateAt + this.metrics.rttMs / 2 - this.metrics.interpolationMs) / this.stepMilliseconds));
+  private resetPlayout(at: number): void {
+    const latest = this.poses[this.poses.length - 1], m = this.metrics;
+    this.playoutTimeMs = latest?.timeMs ?? 0;
+    this.playoutAt = at; this.playoutReceivedAt = at;
+    this.playoutCadenceTicks = 2; this.playoutJitterMs = 0;
+    this.recoveringPlayout = false;
+    m.playoutPhase = latest?.tick ?? m.confirmedTick;
+    this.remoteLifeTicks.fill(latest?.tick ?? m.confirmedTick);
+    m.viewTick = Math.floor(m.playoutPhase);
+    m.playoutReserveMs = 0; m.playoutRate = 0; m.playoutBuffering = true;
+    m.interpolationMs = this.stepMilliseconds * 3;
+  }
+  private viewTime(at: number, publish = false): number {
+    const latest = this.poses[this.poses.length - 1], m = this.metrics;
+    if (!latest) return m.playoutPhase;
+    const elapsed = Math.max(0, at - this.playoutAt);
+    this.playoutAt = Math.max(at, this.playoutAt);
+    // History eviction may force a forward seek, never an extrapolation or a
+    // backwards phase correction. Ordinary arrivals/pongs cannot seek phase.
+    if (this.playoutTimeMs < this.poses[0]!.timeMs) m.playoutRebases++;
+    this.playoutTimeMs = Math.max(this.poses[0]!.timeMs, Math.min(latest.timeMs, this.playoutTimeMs));
+    let reserve = latest.timeMs - this.playoutTimeMs;
+    if (this.waiting || this.paused) m.playoutRate = 0;
+    else if (m.playoutBuffering) {
+      // Initial state and underruns must accumulate a real relay interval plus
+      // one native step before restarting. 20 Hz therefore reserves 150 ms,
+      // rather than pretending a two-tick relay always takes 33 ms.
+      m.playoutRate = 0;
+      if (publish && reserve >= m.interpolationMs) {
+        // Release only at a render/input-view boundary, after queued ordered
+        // receives have drained. A real underrun may return with stale backlog;
+        // do not spend seconds at 1.1x to shed an outage. Seek forward once,
+        // within received history, only when excess exceeds a whole relay.
+        const cadenceMs = this.playoutCadenceTicks * this.stepMilliseconds;
+        if (this.recoveringPlayout && reserve > m.interpolationMs + cadenceMs) {
+          this.playoutTimeMs = latest.timeMs - m.interpolationMs; m.playoutRebases++;
+        }
+        this.recoveringPlayout = false;
+        m.playoutBuffering = false; m.playoutRate = 1;
+      }
+    } else {
+      const cadenceMs = this.playoutCadenceTicks * this.stepMilliseconds;
+      // Normalize the relay sawtooth by receipt age. Only received occupancy
+      // steers playback; RTT/2 remains exclusively in prediction scheduling.
+      const receiptAge = Math.min(cadenceMs, Math.max(0, at - this.playoutReceivedAt));
+      m.playoutRate = Math.max(0.9, Math.min(1.1, 1 + (reserve + receiptAge - m.interpolationMs) / 500));
+      const desired = this.playoutTimeMs + elapsed * m.playoutRate;
+      this.playoutTimeMs = Math.min(latest.timeMs, desired);
+      if (desired > latest.timeMs + 1e-7) {
+        m.playoutUnderruns++; m.playoutBuffering = true; m.playoutRate = 0;
+        this.recoveringPlayout = true;
+      }
+    }
+    reserve = latest.timeMs - this.playoutTimeMs;
+    let left = this.poses[0]!, right = latest;
+    for (const pose of this.poses) {
+      if (pose.timeMs <= this.playoutTimeMs) left = pose;
+      if (pose.timeMs >= this.playoutTimeMs) { right = pose; break; }
+    }
+    const alpha = left.timeMs === right.timeMs ? 1 : (this.playoutTimeMs - left.timeMs) / (right.timeMs - left.timeMs);
+    m.playoutPhase = left.tick + (right.tick - left.tick) * alpha;
+    m.playoutReserveMs = reserve;
+    return m.playoutPhase;
   }
   private controls(tick: number, local?: Uint8Array): void {
     const host = this.options.prediction;
@@ -506,7 +641,7 @@ export class OnlineSession {
   advance(sample: () => Uint8Array, beforeStep?: () => void, afterStep?: () => void): void {
     if (this.disposed) return;
     const at = this.now(), m = this.metrics;
-    if (at - this.lastPingAt >= 1000) {
+    if (this.ping === undefined && (this.timingReady ? at - this.lastPingAt >= 1000 : at >= this.nextStartupProbeAt)) {
       this.lastPingAt = at; this.ping = BigInt(Math.floor(at * 1000)); this.options.send({ type: "ping", timestamp: this.ping });
     }
     if (this.waiting || this.paused) { this.present(); return; }
@@ -516,10 +651,22 @@ export class OnlineSession {
     m.stateAgeMs = at - this.lastStateAt;
     const stepMilliseconds = this.stepMilliseconds;
     if (m.stateAgeMs > INPUT_HISTORY * stepMilliseconds) { this.resync(); return; }
-    m.viewTick = Math.floor(this.viewTime(at));
-    const serverNow = m.serverTick + (m.stateAgeMs + m.rttMs / 2) / stepMilliseconds;
-    const elapsed = Math.max(0, at - this.clockAt);
+    m.viewTick = Math.floor(this.viewTime(at, true));
+    const serverNow = m.serverTick + (m.stateAgeMs + this.predictionRttMs / 2) / stepMilliseconds;
+    let elapsed = Math.max(0, at - this.clockAt);
     this.clockAt = at;
+    if (!this.predictionClockPrimed && this.timingReady) {
+      // Prime once from a bounded sample, or corroborate a slower sample
+      // first. One-tick/second lead slewing otherwise leaves cold inputs
+      // stale for seconds. Native sampling retains its four-step cap.
+      this.predictionClockPrimed = true;
+      // The native scale may have changed since the last probe or full state.
+      m.targetPredictionLeadTicks = this.targetLeadTicks(stepMilliseconds);
+      m.predictionLeadTicks = m.targetPredictionLeadTicks;
+      this.clockPhase = Math.max(this.clockPhase, this.predictionWorld.tick,
+        Math.min(m.serverTick + INPUT_HISTORY - PREDICTION_SAFETY_TICKS, serverNow + m.predictionLeadTicks));
+      elapsed = 0; // serverNow already includes elapsed receipt time.
+    }
     // Increase lead slowly; shed surplus lead faster. Clock corrections change
     // tick rate by at most 10%, never skip a sampled tick or invent view time.
     const leadDelta = m.targetPredictionLeadTicks - m.predictionLeadTicks;
@@ -570,21 +717,30 @@ export class OnlineSession {
     const decay = Math.exp(-Math.max(0, at - this.correctionAt) / 80);
     const latest = this.poses[this.poses.length - 1];
     if (!latest) return this.world;
-    const target = this.viewTime(at);
+    const target = this.viewTime(at, true);
     m.viewTick = Math.floor(target); m.stateAgeMs = at - this.lastStateAt;
     let a = this.poses[0]!, b = latest;
     for (const pose of this.poses) { if (pose.tick <= target) a = pose; if (pose.tick >= target) { b = pose; break; } }
     const alpha = a.tick === b.tick ? 1 : (target - a.tick) / (b.tick - a.tick);
     for (let i = 0; i < this.world.sprites.length; i++) {
       const local = i === this.options.slot - 1;
-      const left = local ? this.predictionWorld.sprites[i]! : a.sprites[i]!;
-      const right = local ? left : b.sprites[i]!;
+      // A new life/occupant starts at its first received pose. Holding that
+      // boundary until the shared phase catches up avoids both cross-life
+      // blending and a later backwards jump into the new life's older pose.
+      const lifeTick = this.remoteLifeTicks[i]!;
+      let lifePose: Pose | undefined;
+      if (!local && lifeTick > target) {
+        for (const pose of this.poses) if (pose.tick >= lifeTick) { lifePose = pose; break; }
+        lifePose ??= latest;
+      }
+      const left = local ? this.predictionWorld.sprites[i]! : (lifePose ?? a).sprites[i]!;
+      const right = local ? left : (lifePose ?? b).sprites[i]!;
       const out = this.world.sprites[i]!;
       const previous = out.previous, current = out.current;
       Object.assign(out, right, { previous, current });
       const continuous = local ? this.interpolateLocal : sameLife(left, right) &&
         a.roundEpoch === b.roundEpoch && a.generations[i] === b.generations[i];
-      const t = continuous ? (local ? Math.max(0, Math.min(1, fraction)) : alpha) : 1;
+      const t = continuous ? (local ? Math.max(0, Math.min(1, fraction)) : lifePose ? 1 : alpha) : 1;
       const dx = local ? this.correctionX * decay : 0, dy = local ? this.correctionY * decay : 0;
       const fromX = local ? this.previousLocal.x : left.x, fromY = local ? this.previousLocal.y : left.y;
       out.x = fromX + (right.x - fromX) * t + dx; out.y = fromY + (right.y - fromY) * t + dy;

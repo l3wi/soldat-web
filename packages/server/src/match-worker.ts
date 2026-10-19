@@ -1,8 +1,8 @@
 import { parentPort, workerData } from "node:worker_threads";
 import { PerformanceObserver } from "node:perf_hooks";
-import { FixedStepAccumulator } from "./clock.ts";
+import { FixedStepAccumulator, type FixedStepTiming } from "./clock.ts";
 import { AuthoritativeMatch } from "./match.ts";
-import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
+import type { MatchConfiguration, WorkerRequest, WorkerResponse, WorkerPublication, TickWorkProfile } from "./worker-messages.ts";
 
 const port = parentPort;
 if (!port) throw new Error("Match entry must run inside a worker_thread");
@@ -23,53 +23,67 @@ function stop(): void {
   observer?.disconnect();
   port!.close();
 }
+function publish(message: WorkerResponse): void {
+  port!.postMessage({ message, publishedAtNs: process.hrtime.bigint() } satisfies WorkerPublication);
+}
 function fail(error: unknown): void {
-  port!.postMessage({ type: "failure", reason: error instanceof Error ? error.message : String(error) } satisfies WorkerResponse);
+  publish({ type: "failure", reason: error instanceof Error ? error.message : String(error) });
   stop();
 }
 try {
-  match = await AuthoritativeMatch.start(workerData as MatchConfiguration, response => port.postMessage(response));
+  match = await AuthoritativeMatch.start(workerData as MatchConfiguration, publish);
   const clock = new FixedStepAccumulator(process.hrtime.bigint());
   let nextMetrics = performance.now() + 1000;
-  let simEncodeMs: number[] = [], tickLatenessMs: number[] = [];
-  let inputWorkMs = 0;
+  let simEncodeMs: number[] = [], tickLatenessMs: number[] = [], tickCompletionLatenessMs: number[] = [], workerCycleMs: number[] = [];
+  let inputWorkMs = 0, messageWorkMs = 0;
   let workProfile: TickWorkProfile[] = [];
+  const timing: FixedStepTiming = {
+    now: process.hrtime.bigint,
+    completed: lateness => { tickCompletionLatenessMs.push(lateness); },
+  };
   const wake = () => {
+    const cycleStart = performance.now();
     try {
-      if (match!.paused) clock.reset(process.hrtime.bigint());
-      else clock.advance(process.hrtime.bigint(), lateness => {
-        const start = performance.now();
+      match!.advance(clock, timing, (lateness, workMs) => {
         tickLatenessMs.push(lateness);
-        match!.step();
-        // Historical replay runs on message receipt, between fixed steps.
-        // Attribute that real work to the next tick rather than hiding it
-        // outside sim+encode accounting.
-        simEncodeMs.push(performance.now() - start + inputWorkMs);
+        // Legacy per-step accounting includes input-request work attributed to
+        // the next tick. It overlaps messageWorkMs and is not elapsed latency.
+        simEncodeMs.push(workMs + inputWorkMs);
         inputWorkMs = 0;
         if (profiling) workProfile.push(match!.takeWorkProfile()!);
-      }, match!.tickScale);
+      });
       const metricsAt = performance.now();
       if (metricsAt >= nextMetrics) {
-        port.postMessage({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, tickLatenessMs, ...match!.takeLagMetrics(), ...(profiling ? { workProfile, gc } : {}) } satisfies WorkerResponse);
-        simEncodeMs = []; tickLatenessMs = [];
-        workProfile = []; gc = [];
+        // The current wake is not complete yet. Its full cost (including this
+        // report's synchronous clone and timer setup) enters the NEXT report.
+        publish({ type: "metrics", serverTick: match!.tick, overloads: clock.overloads, discardedSteps: clock.discardedSteps.toString(), simEncodeMs, workerCycleMs, tickLatenessMs, tickCompletionLatenessMs, messageWorkMs, ...match!.takeLagMetrics(), ...(profiling ? { workProfile, gc } : {}) });
+        simEncodeMs = []; workerCycleMs = []; tickLatenessMs = []; tickCompletionLatenessMs = [];
+        messageWorkMs = 0; workProfile = []; gc = [];
         nextMetrics = metricsAt + 1000;
       }
-      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint(), match!.tickScale)));
+      // Preserve the post-step native observation: entering/leaving bullet
+      // time changes the next sleep. Observe BEFORE sampling scheduling time.
+      const tickScale = match!.tickScale;
+      timer = setTimeout(wake, Math.max(1, clock.delayMilliseconds(process.hrtime.bigint(), tickScale)));
     } catch (error) { fail(error); }
+    finally { workerCycleMs.push(performance.now() - cycleStart); }
   };
   port.on("message", (message: WorkerRequest) => {
     if (stopped) return;
-    if (message.type === "stop") { stop(); return; }
     const start = performance.now();
     try {
+      if (message.type === "stop") { stop(); return; }
       match!.receive(message, process.hrtime.bigint());
       if (message.type === "pause") clock.reset(process.hrtime.bigint());
     }
     catch (error) { fail(error); }
-    finally { if (message.type === "input") inputWorkMs += performance.now() - start; }
+    finally {
+      const workMs = performance.now() - start;
+      messageWorkMs += workMs;
+      if (message.type === "input") inputWorkMs += workMs;
+    }
   });
   port.on("close", stop);
-  port.postMessage({ type: "ready" } satisfies WorkerResponse);
+  publish({ type: "ready" });
   timer = setTimeout(wake, clock.delayMilliseconds(process.hrtime.bigint()));
 } catch (error) { fail(new Error(`Match start failed: ${error instanceof Error ? error.message : String(error)}`)); }

@@ -6,7 +6,7 @@ import { WebSocketServer } from "ws";
 import type { WebSocket } from "ws";
 import { MAX_CLIENT_PACKET_BYTES, PROTOCOL_VERSION, ProtocolError, decodeMessage, encodeMessage, encodeTicksMessage, validateWeaponChoice, validateAppearance, validateTeam } from "@soldat-web/protocol";
 import type { GameMode, Message, ReliableEvent } from "@soldat-web/protocol";
-import type { MessageTransport } from "@soldat-web/protocol/transport";
+import type { NodeMessageTransport } from "./transport/ws-server.ts";
 import { SIM_ABI_VERSION } from "@soldat-web/sim-host";
 import { MatchController } from "./match-controller.ts";
 import { createNodeTransport } from "./transport/ws-server.ts";
@@ -20,6 +20,8 @@ import { isClientFeature } from "@soldat-web/protocol";
 import { MatchAuthority, validateOperatorToken, type AuthorityPlayer } from "./authority.ts";
 import { BanStore } from "./bans.ts";
 import { validateVoiceConfiguration, type VoiceOperatorConfiguration } from "./voice.ts";
+import { MAX_METRIC_REPORT_SAMPLES, MetricHistogram, type MetricHistogramSnapshot } from "./metric-histogram.ts";
+import { TransportMetrics, type TransportQueueMetrics } from "./transport-metrics.ts";
 export interface GameServerOptions {
   match: MatchConfiguration;
   httpsServer?: HttpsServer;
@@ -37,7 +39,15 @@ export interface GameServerOptions {
   controlBurst?: number;
   controlPerSecond?: number;
   onError?: (error: Error) => void;
-  onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & { wireEncodeMs: number[]; workerSimEncodeMs: number[]; rttMs: number[]; inboundBytes: number; outboundBytes: number; resyncRequests: number; disconnects: number }) => void;
+  onMetrics?: (metrics: Extract<WorkerResponse, { type: "metrics" }> & {
+    wireEncodeMs: number[]; workerSimEncodeMs: number[]; rttMs: number[]; workerPublicationDelayMs: number[];
+    transportQueue: TransportQueueMetrics;
+    /** Samples current queues at log flush too, including queues still stalled. */
+    sampleTransportQueue(): TransportQueueMetrics | undefined;
+    serverMetricOverflow: { wireEncodeMs: number; rttMs: number; workerPublicationDelayMs: number };
+    serverMetricOverflowHistograms: { wireEncodeMs: MetricHistogramSnapshot; rttMs: MetricHistogramSnapshot; workerPublicationDelayMs: MetricHistogramSnapshot };
+    inboundBytes: number; outboundBytes: number; resyncRequests: number; disconnects: number;
+  }) => void;
   onReliableEvent?: (slot: number, event: ReliableEvent) => void;
   onDisconnect?: (slot: number, code: number, reason: string) => void;
   onRound?: (round: { map: string; roundEpoch: number; serverTick: number }) => void;
@@ -56,7 +66,7 @@ interface Session {
   signaling: TokenBucket;
   feature: TokenBucket;
   authentication: TokenBucket;
-  transport: MessageTransport;
+  transport: NodeMessageTransport;
   nickname?: string;
   state: "hello" | "joining" | "active" | "closed";
   timer: NodeJS.Timeout;
@@ -123,6 +133,22 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
   let closing = false;
   let wireEncodeMs: number[] = [];
   let rttMs: number[] = [];
+  let workerPublicationDelayMs: number[] = [];
+  let serverMetricOverflow = { wireEncodeMs: 0, rttMs: 0, workerPublicationDelayMs: 0 };
+  const overflowHistograms = { wireEncodeMs: new MetricHistogram(), rttMs: new MetricHistogram(), workerPublicationDelayMs: new MetricHistogram() };
+  const transportMetrics = new TransportMetrics();
+  const sampleTransportQueue = (): TransportQueueMetrics | undefined => {
+    if (closing) return undefined;
+    for (const session of sessions.values()) session.transport.sampleQueue();
+    return transportMetrics.take();
+  };
+  const recordSample = (name: keyof typeof serverMetricOverflow, values: number[], value: number): void => {
+    if (values.length < MAX_METRIC_REPORT_SAMPLES) values.push(value);
+    else {
+      serverMetricOverflow[name] = Math.min(Number.MAX_SAFE_INTEGER, serverMetricOverflow[name] + 1);
+      overflowHistograms[name].add(value);
+    }
+  };
   const wireByTick = new Map<number, number>();
   let inboundBytes = 0, outboundBytes = 0, resyncRequests = 0, disconnects = 0;
   const authority = await MatchAuthority.create({
@@ -199,7 +225,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     report(error);
     void close();
   };
-  controller.onMessage = response => {
+  controller.onMessage = (response, publicationDelayMs) => {
+    recordSample("workerPublicationDelayMs", workerPublicationDelayMs, publicationDelayMs);
     if (response.type === "paused") { authority.pauseChanged(response.paused); return; }
     if (response.type === "roster") {
       for (const player of response.players) { const session = sessions.get(player.slot); if (session) session.identity.team = player.team; }
@@ -207,12 +234,18 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
       return;
     }
     if (response.type === "metrics") {
-      const firstTick = response.serverTick - response.simEncodeMs.length + 1;
-      const simEncodeMs = response.simEncodeMs.map((ms, index) => ms + (wireByTick.get(firstTick + index) ?? 0));
-      options.onMetrics?.({ ...response, workerSimEncodeMs: response.simEncodeMs, simEncodeMs, wireEncodeMs, rttMs, inboundBytes, outboundBytes, resyncRequests, disconnects });
+      const firstTick = response.serverTick - (Array.isArray(response.simEncodeMs) ? response.simEncodeMs.length : 0) + 1;
+      const simEncodeMs = Array.isArray(response.simEncodeMs) && response.simEncodeMs.length <= MAX_METRIC_REPORT_SAMPLES
+        ? response.simEncodeMs.map((ms, index) => ms + (wireByTick.get(firstTick + index) ?? 0)) : response.simEncodeMs;
+      const serverMetricOverflowHistograms = { wireEncodeMs: overflowHistograms.wireEncodeMs.take(), rttMs: overflowHistograms.rttMs.take(), workerPublicationDelayMs: overflowHistograms.workerPublicationDelayMs.take() };
+      options.onMetrics?.({ ...response, workerSimEncodeMs: response.simEncodeMs, simEncodeMs, wireEncodeMs, rttMs,
+        workerPublicationDelayMs, transportQueue: sampleTransportQueue() ?? transportMetrics.take(), sampleTransportQueue, serverMetricOverflow, serverMetricOverflowHistograms,
+        inboundBytes, outboundBytes, resyncRequests, disconnects });
       inboundBytes = 0; outboundBytes = 0; resyncRequests = 0; disconnects = 0;
       wireEncodeMs = [];
       rttMs = [];
+      workerPublicationDelayMs = [];
+      serverMetricOverflow = { wireEncodeMs: 0, rttMs: 0, workerPublicationDelayMs: 0 };
       for (const tick of wireByTick.keys()) if (tick <= response.serverTick) wireByTick.delete(tick);
       return;
     }
@@ -235,8 +268,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
           const start = performance.now();
           const packet = encodeTicksMessage(recipient.lastConsumedInputSeq, response.records);
           const encodingMs = performance.now() - start;
-          wireEncodeMs.push(encodingMs);
-          wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
+          recordSample("wireEncodeMs", wireEncodeMs, encodingMs);
+          if (wireByTick.size < MAX_METRIC_REPORT_SAMPLES || wireByTick.has(response.serverTick)) wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
           session.transport.send("latestState", packet);
         } catch (error) { report(error instanceof Error ? error : new Error(String(error))); disconnect(recipient.slot, 1011, "Server packet failure"); }
       }
@@ -266,8 +299,8 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
         const start = performance.now();
         const packet = encodeMessage(response.message);
         const encodingMs = performance.now() - start;
-        wireEncodeMs.push(encodingMs);
-        wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
+        recordSample("wireEncodeMs", wireEncodeMs, encodingMs);
+        if (wireByTick.size < MAX_METRIC_REPORT_SAMPLES || wireByTick.has(response.serverTick)) wireByTick.set(response.serverTick, (wireByTick.get(response.serverTick) ?? 0) + encodingMs);
         session.transport.send(response.message.type === "state" ? "latestState" : "reliableControl", packet);
         if (response.message.type === "state") stateReady(response.slot, session);
         if (response.message.type === "events") for (const event of response.message.events) options.onReliableEvent?.(response.slot, event);
@@ -281,7 +314,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
     let slot = 1;
     while (occupiedSlots.has(slot)) slot++;
     occupiedSlots.add(slot);
-    const transport = createNodeTransport(socket, limits.outboundQueueBytes);
+    const transport = createNodeTransport(socket, limits.outboundQueueBytes, { observer: transportMetrics });
     const send = transport.send.bind(transport);
     transport.send = (channel, packet) => { outboundBytes += packet.byteLength; send(channel, packet); };
     const now = process.hrtime.bigint();
@@ -352,7 +385,7 @@ export async function createGameServer(options: GameServerOptions): Promise<Game
           case "pong": {
             if (session.probe === undefined || message.timestamp !== session.probe / 1000n) throw new ProtocolError("VALUE", "Unknown timing probe");
             const milliseconds = Number(process.hrtime.bigint() - session.probe) / 1e6;
-            rttMs.push(milliseconds);
+            recordSample("rttMs", rttMs, milliseconds);
             controller.send({ type: "rtt", slot, milliseconds });
             delete session.probe;
             delete session.probeDeadline;
