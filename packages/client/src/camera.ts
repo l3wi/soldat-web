@@ -92,3 +92,30 @@ export function updateSpectatorCamera(
   camera.x += offsetX * speed;
   camera.y += offsetY * speed;
 }
+
+/** Render-only interpolation of the native fixed-step camera. The source is
+ * never modified: input sampling and the next 60 Hz follow update keep using it. */
+export class CameraPresentation {
+  readonly camera: Camera;
+  private x: number;
+  private y: number;
+  private z: number;
+  constructor(private readonly source: Camera) {
+    this.camera = { ...source };
+    this.x = source.x; this.y = source.y; this.z = source.z;
+  }
+  /** Capture immediately before each fixed camera update, including catch-up ticks. */
+  capture(): void {
+    this.x = this.source.x; this.y = this.source.y; this.z = this.source.z;
+  }
+  /** Round/respawn/observer snaps must not interpolate across unrelated views. */
+  reset(): void { this.capture(); this.present(1); }
+  present(fraction: number): Camera {
+    const t = Math.max(0, Math.min(1, fraction)), source = this.source, out = this.camera;
+    out.x = this.x + (source.x - this.x) * t;
+    out.y = this.y + (source.y - this.y) * t;
+    out.z = this.z + (source.z - this.z) * t;
+    out.width = source.width; out.height = source.height;
+    return out;
+  }
+}

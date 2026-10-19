@@ -43,6 +43,14 @@ export interface TickWorkProfile {
   recordsMs: number; postMs: number; recordEncodes: number; recipients: number;
   controls?: { slot: number; seq: number; repeated: boolean; bits: number; rejected: Record<string, number> }[];
 }
+/** First matching admission gate, counted per Fire/grenade input frame, not projectile. */
+export const FIRE_ADMISSION_REASONS = [
+  "fallbackAge", "fallbackView", "fallbackHistory", "fallbackAnchor", "fallbackBudget",
+  "rejectAge", "rejectHistory", "rejectIntent", "rejectAction", "rejectWeapon",
+  "rejectMatchCooldown", "rejectPlayerCooldown", "rejectExistingFire", "rejectView",
+] as const;
+export type FireAdmissionReason = typeof FIRE_ADMISSION_REASONS[number];
+export type FireAdmissionReasons = Record<FireAdmissionReason, number>;
 export type WorkerResponse =
   | { type: "roster"; players: { slot: number; team: number }[] }
   | { type: "paused"; paused: boolean }
@@ -53,5 +61,5 @@ export type WorkerResponse =
   | { type: "ticks"; serverTick: number; records: Uint8Array; recipients: { slot: number; lastConsumedInputSeq: number }[] }
   | { type: "reject"; slot: number; reason: string }
   | { type: "left"; slot: number }
-  | { type: "metrics"; serverTick: number; overloads: number; discardedSteps: string; simEncodeMs: number[]; tickLatenessMs: number[]; replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[] }
+  | { type: "metrics"; serverTick: number; overloads: number; discardedSteps: string; simEncodeMs: number[]; tickLatenessMs: number[]; replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[]; workProfile?: TickWorkProfile[]; gc?: { atMs: number; durationMs: number; kind: number }[] }
   | { type: "failure"; reason: string };

@@ -1,6 +1,7 @@
 import { monitorEventLoopDelay, performance } from "node:perf_hooks";
 import { isGameMode } from "@soldat-web/protocol";
 import type { GameServerOptions } from "./server.ts";
+import { FIRE_ADMISSION_REASONS, type FireAdmissionReasons } from "./worker-messages.ts";
 
 type Metrics = Parameters<NonNullable<GameServerOptions["onMetrics"]>>[0];
 interface MatchInfo { id: string; map: string; mode: string; targetPlayers: number; humans: number }
@@ -58,6 +59,7 @@ class MatchWindow {
   info: MatchInfo;
   readonly samples = Object.fromEntries(metricNames.map(name => [name, new Samples()])) as Record<MetricName, Samples>;
   readonly counters = Object.fromEntries(counterNames.map(name => [name, 0])) as Record<CounterName, number>;
+  readonly fireAdmissionReasons = Object.fromEntries(FIRE_ADMISSION_REASONS.map(reason => [reason, 0])) as FireAdmissionReasons;
   invalidCounterSamples = 0;
   firstTick: number | null = null;
   lastTick: number | null = null;
@@ -77,6 +79,11 @@ class MatchWindow {
     }
     for (const name of counterNames) {
       if (validCounter(sample[name])) this.counters[name] = sum(this.counters[name], sample[name]);
+      else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
+    }
+    for (const reason of FIRE_ADMISSION_REASONS) {
+      const value = sample.fireAdmissionReasons?.[reason];
+      if (validCounter(value)) this.fireAdmissionReasons[reason] = sum(this.fireAdmissionReasons[reason], value);
       else this.invalidCounterSamples = sum(this.invalidCounterSamples, 1);
     }
     if (validCounter(sample.overloads)) this.overloads = sample.overloads;
@@ -104,7 +111,7 @@ class MatchWindow {
       ticks: { first: this.firstTick, last: this.lastTick, progressed: this.progressed, observedMs: this.observedMs, progressionPerSecond: this.observedMs > 0 ? this.progressed * 1000 / this.observedMs : null, resets: this.resets },
       samplePolicy: "first_2048_per_metric_per_window",
       summaries: Object.fromEntries(metricNames.map(name => [name, this.samples[name].summary()])),
-      interval: { ...interval, outboundOfferedBytes: outboundBytes },
+      interval: { ...interval, outboundOfferedBytes: outboundBytes, fireAdmissionReasons: { ...this.fireAdmissionReasons } },
       cumulative: { overloads: this.overloads, discardedSteps: this.discardedSteps },
       invalidCounterSamples: this.invalidCounterSamples,
     };

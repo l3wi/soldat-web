@@ -268,19 +268,35 @@ The 128-frame local input ring resynchronizes rather than overwriting pending in
 
 Confirmed gameplay notifications are deliberately deferred by the server for 12 simulation ticks (200 ms) before reliable delivery, plus transport latency. Killfeed/score confirmations must use `window.__soldatOnline.onGameplayEvent(event)` (or the core session's `onEvent`) on arrival, not speculative prediction events. The callback receives each confirmed event ID once; local audio and cosmetic effects remain immediate on ordinary predicted steps. This visible confirmation delay is a bounded lag-compensation policy, not a client timer or an assertion of instant confirmed hits.
 
-Remote soldiers render from confirmed-instance poses copied at each message end into a 16-pose ring. Interpolation starts at 50 ms and adapts within 33–100 ms, clamping to received history. The local soldier uses prediction and an 80 ms presentation-only correction decay. `authoritativeRenderView()` borrows the confirmed instance's latest bullets and Things; no opaque Pascal state offsets are parsed.
+Remote soldiers render from confirmed-instance poses copied at each message end into a 16-pose ring. Interpolation starts at 50 ms and adapts within 33–100 ms, clamping to received history. The local soldier uses prediction with the actual native pre-step root and previous/current skeletons on one render phase (`session.presentationFraction`), published after prediction advances. Reconciliation preserves the fractional displayed root and individual pose points with an 80 ms presentation-only decay based on elapsed time, not render-call count. Spawn, life/team/occupant and round boundaries reset unrelated interpolation. `authoritativeRenderView()` borrows the confirmed instance's latest bullets and Things; no opaque Pascal state offsets are parsed.
+
+The online map and HUD use a reusable render-only interpolation of the fixed-step camera, sharing the soldier's presentation fraction. Native camera follow, input sampling and the 60 Hz simulation are unchanged. `presentationEpoch` signals discontinuities so the rendered camera does not interpolate across unrelated views. Predicted cosmetics, scenery and diagnostic phase use the online clock rather than the inactive offline accumulator.
 
 The overlay and `window.__soldatOnline.metrics` expose `confirmedTick`, `ticks`, `records`, `bytes`, `hashTick`, `confirmedHash`, `loadedHash`, `hashMatches`, `hashMismatches`, `rollbacks`, `reloads`, `skippedReloads`, `anchorBytes`, `confirmedMs`, `reconcileMs`, consumed input sequence and correction/interpolation metrics. `stateAgeMs` is time since the latest relay receipt; receipt age plus RTT/2 is only a symmetric-path estimate, not a synchronized clock. `window.__soldatOnline.onTicks(metrics)` borrows the live metrics object; copy it when persisting samples. The optional 12-byte `input` override drives qualification controls; clear it to restore DOM controls.
 
 Real-WASM invariants (including rollback/replay and authoritative remote rendering) are in `src/net/session.test.ts`. With the already-built frozen WASM and imported content available, the qualification owner can run:
 
 ```sh
-node --experimental-transform-types --test packages/client/src/net/session.test.ts
+bun test --isolate packages/client/src/net/session.test.ts packages/client/src/camera.test.ts
 bun run --cwd packages/client check
 bun run --cwd packages/client build
 ```
 
 These commands are qualification instructions, not a claim that this change has already passed them.
+
+### Movement smoothing verification — 2026-10-19
+
+Four real-WASM regressions failed before the fix: inconsistent local-root/skeleton interpolation at 60/120/144 Hz, and a fractional skeleton jump on reconciliation. Afterward, deterministic fixture movement with four-tick authoritative bursts produced zero root/camera phase error at all three rates; the maximum skeleton phase error was 0.00001526 world units (Float32 rounding). Regression coverage also checks repeated render calls, elapsed-time correction decay, repeated corrections, respawn/team/occupant/round boundaries, native hashes and consumed input sequences.
+
+A separate real TLS/WSS smoke used the original world with the default 12-human/bot population, 30 ms added delay each direction and ordered 100 ms stalls every 100 packets. Each requested display cadence completed without hash mismatches or resyncs:
+
+| Requested display cadence | Frames sampled | Matching hash checkpoints | Mismatches | Resyncs |
+| --- | ---: | ---: | ---: | ---: |
+| 60 Hz | 423 | 15 | 0 | 0 |
+| 120 Hz | 819 | 15 | 0 | 0 |
+| 144 Hz | 995 | 16 | 0 | 0 |
+
+This is frame-by-frame numeric and network verification, not a browser-rendering or physical-display smoothness claim. Browser/visual verification was explicitly excluded by the user. The harness's per-frame timings include two proof hashes and are not production FPS measurements. Ignored receipt: `build-out/movement-network-results.json`.
 
 ## Rendering and G2 evidence
 

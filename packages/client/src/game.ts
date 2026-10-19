@@ -2,7 +2,7 @@ import Phaser from "phaser";
 import { SimStatus, SPRITE_FLAGS, requireStatus, readTraceState, encodeInput, type SimHost, type SimCommand, type Control } from "@soldat-web/sim-host";
 import { validateAppearance, validateTeam, type PlayerAppearance, type FeatureClientMessage, type FeatureServerMessage } from "@soldat-web/protocol";
 import { Audio, SOUND_MAPPING_STATUS } from "./audio";
-import { createCamera, resizeCamera, updateCamera, updateSpectatorCamera, setZoom } from "./camera";
+import { CameraPresentation, createCamera, resizeCamera, updateCamera, updateSpectatorCamera, setZoom } from "./camera";
 import { ClientClock } from "./clock";
 import { InputSampler } from "./input";
 import { loadSandbox } from "./sandbox";
@@ -166,6 +166,8 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       const serverUrl = !attract && !capture && !qualification ? options.serverUrl ?? new URLSearchParams(location.search).get("server") : null;
       let width = Math.max(1, container.clientWidth), height = Math.max(1, container.clientHeight);
       const camera = createCamera(width, height), clock = new ClientClock(), actors = new QuadBatch(), particles = new QuadBatch();
+      const cameraPresentation = new CameraPresentation(camera);
+      let cameraPresentationEpoch = -1;
       const projectiles = new QuadBatch(), objects = new QuadBatch();
       let roundLoading = false;
       let roundMapGeneration = 0, roundPresentationEpoch = -1;
@@ -224,7 +226,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
       if (!attract && !capture) hud = await CombatHud.create(container, content.core, {
         startJet: 0, weapons, pointer: !qualification && !combatCapture ? input : undefined, weaponsMenu: !qualification && !combatCapture,
         onInputCapture: captured => { input?.reset(); if (captured) voice?.suspend(); },
-        camera, sniperLine: settings.sniperLine, playerNames: settings.playerNames,
+        camera: cameraPresentation.camera, sniperLine: settings.sniperLine, playerNames: settings.playerNames,
         maps: compatibleSandboxMaps(content, sandbox.mode, !!serverUrl || sandbox.bots > 0),
         observerSlot,
         onTeamChange: team => changeTeam(team),
@@ -542,7 +544,8 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             }
             framebufferState.bindings.framebuffer = context.framebuffer;
             external.glWrapper.updateBindingsFramebuffer(framebufferState, true);
-            render!.begin(camera, width, height, camera.y < 0 ? map.backgroundTop : map.backgroundBottom);
+            const renderCamera = cameraPresentation.present(online ? online.session.presentationFraction : 1);
+            render!.begin(renderCamera, width, height, renderCamera.y < 0 ? map.backgroundTop : map.backgroundBottom);
             render!.draw(geometry.background, true);
             const fraction = combatCapture || (attract && paused) ? 1 : online ? 1 : clock.fraction;
             const view = gallery?.view ?? (online ? online.session.authoritativeRenderView() : world?.renderView);
@@ -554,7 +557,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
             if (view) render!.drawDynamic(objects.update(combat.things(fraction, view), bank.regions));
             if (host && fx && fxAvailable && !gallery) {
               fx.sync();
-              render!.drawDynamic(particles.update(effects.quads(fraction, fx), bank.regions));
+              render!.drawDynamic(particles.update(effects.quads(online ? online.session.presentationFraction : fraction, fx), bank.regions));
               diagnostics.sparks = fx.count;
             }
             if (!gallery) drawProps(1);
@@ -821,6 +824,7 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                   return paused || roundLoading || local.team === 5 ? neutral : online!.hook.input ?? input!.sample(camera, width, height, local.x, local.y, hud?.gameplayCaptured);
                 },
                 () => {
+                  cameraPresentation.capture();
                   if (fxAvailable) {
                     const zoom = Math.exp(camera.z);
                     requireStatus(host!.fxSetView(camera.x, camera.y, camera.width * zoom, camera.height * zoom, local.slot), "fx_set_view");
@@ -840,6 +844,10 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                   audio?.setListener(spectator.observing ? camera.x : local.x, spectator.observing ? camera.y : local.y);
                 },
               );
+              if (cameraPresentationEpoch !== online.session.presentationEpoch) {
+                cameraPresentationEpoch = online.session.presentationEpoch;
+                cameraPresentation.reset();
+              }
               diagnostics.tick = world.tick;
               presentationTick = world.tick; online.updateOverlay();
             } else if (!combatPaused) {
@@ -850,8 +858,9 @@ export function mountGame(container: HTMLElement, mapName: string, settings: Set
                 clock.advance(scaledTime, step);
               }
             }
-            diagnostics.fraction = clock.fraction; diagnostics.droppedTicks = clock.droppedTicks;
-            scenery.update(capture ? 0 : (presentationTick + clock.fraction) / 60);
+            const fraction = online ? online.session.presentationFraction : clock.fraction;
+            diagnostics.fraction = fraction; diagnostics.droppedTicks = clock.droppedTicks;
+            scenery.update(capture ? 0 : (presentationTick + fraction) / 60);
           } catch (error) { stopped = true; diagnostics.simulation = `Simulation stopped: ${String(error)}`; onStatus(diagnostics.simulation); }
         }
       }

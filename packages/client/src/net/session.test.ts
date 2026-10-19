@@ -1,10 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { loadSim, loadSimContent, requireStatus, encodeInput, type SimHost, type SimManifest } from "@soldat-web/sim-host";
+import { loadSim, loadSimContent, requireStatus, encodeInput, type SimCommand, type SimHost, type SimManifest } from "@soldat-web/sim-host";
 import { type ChatDelivery, type Message, type TickRecord } from "@soldat-web/protocol";
 import { heldInput, OnlineSession, INPUT_HISTORY } from "./session.ts";
 import { SpectatorController } from "../spectator";
+import { CameraPresentation, createCamera, updateCamera } from "../camera";
 
 const root = new URL("../../../../", import.meta.url);
 async function realHost(): Promise<SimHost> {
@@ -197,5 +198,208 @@ test("server pause freezes prediction/input debt; resume fullstate resets clock 
     assert.ok(session.predictionWorld.tick <= 4); assert.equal(sent.filter(m => m.type === "resync").length, 0);
     session.sendFeature({ type: "gesture", gesture: "victory" }); assert.equal(sent.at(-1)!.type, "gesture");
     assert.throws(() => session.receive({ type: "self-kill" }), /Client-originated/);
+  } finally { session.dispose(); authoritative.dispose(); }
+});
+
+for (const hz of [60, 120, 144]) test(`real WASM local presentation keeps root and skeleton on one render phase at ${hz} Hz with delayed burst delivery`, async () => {
+    const authoritative = await realHost(), prediction = await realHost(), confirmed = await realHost();
+    const sent: Extract<Message, { type: "input" }>[] = []; let now = 0;
+    const session = new OnlineSession({ prediction, confirmed, slot: 1, now: () => now,
+      send(message) { if (message.type === "input") sent.push(message); } });
+    try {
+      requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative", team: 0 }), "join");
+      for (let tick = 0; tick < 30; tick++) {
+        requireStatus(authoritative.setInput(1, tick, { Right: true }), "warm input");
+        requireStatus(authoritative.step(), "warm step"); authoritative.events();
+      }
+      session.receive(state(authoritative, 30));
+      const input = encodeInput({ Right: true });
+      const camera = createCamera(1280, 720), referenceCamera = createCamera(1280, 720);
+      const cameraPresentation = new CameraPresentation(camera);
+      const pending: TickRecord[] = [];
+      let serverTick = 30, previousX = session.predictionWorld.sprites[0]!.x, previousY = session.predictionWorld.sprites[0]!.y;
+      let movingFrames = 0, fixedSteps = 0;
+      let maxRootPhaseError = 0, maxPosePhaseError = 0, maxCameraPhaseError = 0, maxFrameRootDelta = 0;
+      let lastDisplayX: number | undefined, lastDisplayY = 0;
+      for (let frame = 0; frame <= hz / 2; frame++) {
+        now = frame * 1000 / hz;
+        while (serverTick < 30 + Math.floor(now * 60 / 1000)) {
+          requireStatus(authoritative.setInput(1, serverTick, { Right: true }), "server input");
+          requireStatus(authoritative.step(), "server step"); authoritative.events();
+          pending.push({ type: "step", tick: serverTick++, commands: [], inputs: [{ slot: 1, input }] });
+        }
+        // Keep authoritative simulation steady while delivering 4-tick bursts.
+        if (pending.length >= 4) {
+          const boundary = serverTick;
+          const consumed = sent.flatMap(message => message.frames).filter(frame => frame.tick < boundary).reduce((seq, frame) => Math.max(seq, frame.seq), 0);
+          session.receive({ type: "ticks", records: pending.splice(0), lastConsumedInputSeq: consumed });
+          assert.equal(confirmed.hash(), authoritative.hash());
+        }
+        session.advance(() => input, () => {
+          cameraPresentation.capture();
+          const local = session.predictionWorld.sprites[0]!;
+          previousX = local.x; previousY = local.y;
+        }, () => {
+          const local = session.predictionWorld.sprites[0]!;
+          updateCamera(camera, local.x, local.y, camera.x, camera.y);
+          updateCamera(referenceCamera, local.x, local.y, referenceCamera.x, referenceCamera.y);
+          fixedSteps++;
+        });
+        const local = session.predictionWorld.sprites[0]!, hash = prediction.hash();
+        const readyX = session.world.sprites[0]!.x, readyY = session.world.sprites[0]!.y;
+        const displayFraction = session.presentationFraction, ready = session.world.sprites[0]!;
+        for (let point = 0; point < local.current.length; point++) {
+          const expected = local.previous[point]! + (local.current[point]! - local.previous[point]!) * displayFraction;
+          maxPosePhaseError = Math.max(maxPosePhaseError, Math.abs(ready.current[point]! - expected));
+          assert.ok(Math.abs(ready.current[point]! - expected) < 0.0001, "Native skeleton must publish the current display phase before rendering");
+        }
+        if (lastDisplayX !== undefined) maxFrameRootDelta = Math.max(maxFrameRootDelta, Math.hypot(readyX - lastDisplayX, readyY - lastDisplayY));
+        lastDisplayX = readyX; lastDisplayY = readyY;
+        const presented = session.present(0.5).sprites[0]!;
+        if (Math.hypot(local.x - previousX, local.y - previousY) > 0.001) {
+          movingFrames++;
+          maxRootPhaseError = Math.max(maxRootPhaseError, Math.abs(presented.x - (previousX + local.x) / 2), Math.abs(presented.y - (previousY + local.y) / 2));
+          assert.ok(Math.abs(presented.x - (previousX + local.x) / 2) < 0.0001, "Root must interpolate between the same native ticks as the skeleton");
+          assert.ok(Math.abs(presented.y - (previousY + local.y) / 2) < 0.0001);
+          for (let point = 0; point < local.current.length; point++) {
+            maxPosePhaseError = Math.max(maxPosePhaseError, Math.abs(presented.current[point]! - (local.previous[point]! + local.current[point]!) / 2));
+            assert.ok(Math.abs(presented.current[point]! - (local.previous[point]! + local.current[point]!) / 2) < 0.0001);
+          }
+        }
+        maxRootPhaseError = Math.max(maxRootPhaseError, Math.abs(readyX - (previousX + (local.x - previousX) * displayFraction)),
+          Math.abs(readyY - (previousY + (local.y - previousY) * displayFraction)));
+        assert.ok(Math.abs(readyX - (previousX + (local.x - previousX) * displayFraction)) < 0.0001, "advance must publish the completed prediction at this frame's clock phase");
+        assert.ok(Math.abs(readyY - (previousY + (local.y - previousY) * displayFraction)) < 0.0001);
+        const halfCamera = { ...cameraPresentation.present(0.5) };
+        const leftCamera = { ...cameraPresentation.present(0) };
+        const displayCamera = { ...cameraPresentation.present(displayFraction) };
+        maxCameraPhaseError = Math.max(maxCameraPhaseError, Math.abs(displayCamera.x - (leftCamera.x + (camera.x - leftCamera.x) * displayFraction)),
+          Math.abs(displayCamera.y - (leftCamera.y + (camera.y - leftCamera.y) * displayFraction)));
+        assert.ok(Math.abs(halfCamera.x - (leftCamera.x + camera.x) / 2) < 1e-9);
+        assert.ok(Math.abs(halfCamera.y - (leftCamera.y + camera.y) / 2) < 1e-9);
+        assert.equal(prediction.hash(), hash, "Presentation cannot mutate native gameplay");
+        assert.equal(session.metrics.hashMismatches, 0);
+        assert.deepEqual(camera, referenceCamera, "Camera must advance only at native fixed steps");
+      }
+      assert.ok(movingFrames >= 5, "Fixture must exercise actual native movement");
+      assert.ok(fixedSteps >= 25);
+      assert.ok(maxCameraPhaseError < 1e-9, "Rendered camera must share the local native pose's display phase");
+      assert.equal(session.metrics.resyncs, 0);
+      assert.equal(session.metrics.lastConsumedInputSeq > 0, true);
+      console.info("online-presentation", JSON.stringify({ hz, frames: Math.floor(hz / 2) + 1, movingFrames, fixedSteps,
+        maxRootPhaseError, maxPosePhaseError, maxCameraPhaseError, maxFrameRootDelta }));
+    } finally { session.dispose(); authoritative.dispose(); }
+});
+
+test("real WASM reconciliation preserves the displayed fractional root and complete pose", async () => {
+  const authoritative = await realHost(), prediction = await realHost(), confirmed = await realHost();
+  let now = 0;
+  const session = new OnlineSession({ prediction, confirmed, slot: 1, now: () => now, send() {} });
+  try {
+    requireStatus(authoritative.command(0, { kind: "join", slot: 1, control: "authoritative", team: 0 }), "join");
+    for (let tick = 0; tick < 30; tick++) {
+      requireStatus(authoritative.setInput(1, tick, { Right: true }), "warm input");
+      requireStatus(authoritative.step(), "warm step"); authoritative.events();
+    }
+    session.receive(state(authoritative, 30));
+    now = 10;
+    session.advance(() => encodeInput({ Right: true }));
+    const rendered = session.present().sprites[0]!;
+    const before = { x: rendered.x, y: rendered.y, pose: rendered.current.slice() };
+    requireStatus(authoritative.setInput(1, 30, { Left: true }), "changed authoritative input");
+    requireStatus(authoritative.step(), "authoritative correction"); authoritative.events();
+    session.receive({ type: "ticks", lastConsumedInputSeq: 1, records: [
+      { type: "step", tick: 30, commands: [], inputs: [{ slot: 1, input: encodeInput({ Left: true }) }] },
+      { type: "hash", tick: 31, hash: BigInt(`0x${authoritative.hash()}`) },
+    ] });
+    assert.ok(session.metrics.correction > 0.001, "Fixture must actually reconcile native movement");
+    const hash = prediction.hash(), corrected = session.present().sprites[0]!;
+    assert.ok(Math.abs(corrected.x - before.x) < 0.0001, "A packet must not move the visible root backwards");
+    assert.ok(Math.abs(corrected.y - before.y) < 0.0001);
+    for (let point = 0; point < before.pose.length; point++) {
+      assert.ok(Math.abs(corrected.current[point]! - before.pose[point]!) < 0.0001, `Pose point ${point} must remain continuous through rollback`);
+    }
+    const sameFrame = corrected.current.slice();
+    session.present(); session.present();
+    assert.deepEqual(session.world.sprites[0]!.current, sameFrame, "Multiple render consumers must not decay a correction twice");
+    assert.equal(prediction.hash(), hash); assert.equal(confirmed.hash(), authoritative.hash());
+    assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.lastConsumedInputSeq, 1);
+    assert.equal(session.metrics.resyncs, 0);
+    now += 40;
+    const fraction = session.presentationFraction, decay = Math.exp(-40 / 80), native = session.predictionWorld.sprites[0]!;
+    const eased = session.present().sprites[0]!;
+    for (let point = 0; point < before.pose.length; point++) {
+      const raw = native.previous[point]! + (native.current[point]! - native.previous[point]!) * fraction;
+      assert.ok(Math.abs(eased.current[point]! - (raw + (before.pose[point]! - raw) * decay)) < 0.0001, "Correction easing must use elapsed time, not render-call count");
+    }
+    assert.equal(prediction.hash(), hash);
+    const nextBefore = { x: eased.x, y: eased.y, pose: eased.current.slice() };
+    requireStatus(authoritative.setInput(1, 31, { Left: true }), "second changed input");
+    requireStatus(authoritative.step(), "second authoritative correction"); authoritative.events();
+    session.receive({ type: "ticks", lastConsumedInputSeq: 2, records: [
+      { type: "step", tick: 31, commands: [], inputs: [{ slot: 1, input: encodeInput({ Left: true }) }] },
+      { type: "hash", tick: 32, hash: BigInt(`0x${authoritative.hash()}`) },
+    ] });
+    const second = session.present().sprites[0]!;
+    assert.ok(Math.abs(second.x - nextBefore.x) < 0.0001); assert.ok(Math.abs(second.y - nextBefore.y) < 0.0001);
+    for (let point = 0; point < nextBefore.pose.length; point++) assert.ok(Math.abs(second.current[point]! - nextBefore.pose[point]!) < 0.0001);
+    assert.notEqual(prediction.hash(), hash, "Second authoritative movement actually changes native prediction");
+    assert.equal(confirmed.hash(), authoritative.hash()); assert.equal(session.metrics.lastConsumedInputSeq, 2);
+    assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
+  } finally { session.dispose(); authoritative.dispose(); }
+});
+
+test("real WASM respawn, spectator team, slot reuse and round snapshots do not blend unrelated lives", async () => {
+  const authoritative = await realHost(), prediction = await realHost(), confirmed = await realHost();
+  let now = 0;
+  const session = new OnlineSession({ prediction, confirmed, slot: 1, now: () => now, send() {} });
+  try {
+    for (const slot of [1, 2]) requireStatus(authoritative.command(0, { kind: "join", slot, control: "authoritative", team: 0 }), "join");
+    session.receive(state(authoritative, 0));
+    now = 10; session.advance(() => encodeInput({ Right: true }));
+    let tick = 0;
+    const deliver = (commands: SimCommand[]) => {
+      for (const command of commands) requireStatus(authoritative.command(tick, command), "boundary command");
+      const input = encodeInput({});
+      for (const slot of [1, 2]) requireStatus(authoritative.setInput(slot, tick, {}), "boundary input");
+      requireStatus(authoritative.step(), "boundary step"); authoritative.events();
+      const stepTick = tick++;
+      session.receive({ type: "ticks", lastConsumedInputSeq: 0, records: [
+        { type: "step", tick: stepTick, commands: commands.map(command => new TextEncoder().encode(JSON.stringify(command))), inputs: [{ slot: 1, input }, { slot: 2, input }] },
+        { type: "hash", tick, hash: BigInt(`0x${authoritative.hash()}`) },
+      ] });
+      assert.equal(confirmed.hash(), authoritative.hash());
+    };
+    const oldRemoteX = session.present().sprites[1]!.x;
+    deliver([{ kind: "spawn", slot: 1, x: 500, y: -100 }, { kind: "spawn", slot: 2, x: 600, y: -100 }]);
+    now += session.metrics.interpolationMs - 1000 / 120;
+    const snapped = session.present(0).sprites;
+    const authoritativeRemote = confirmed.renderView();
+    if (typeof authoritativeRemote === "number") throw new Error(`render ${authoritativeRemote}`);
+    assert.notEqual(authoritativeRemote.sprite(1).posX, oldRemoteX, "Fixture must relocate the remote soldier");
+    assert.equal(snapped[1]!.x, authoritativeRemote.sprite(1).posX, "Remote interpolation cannot cross a spawn command");
+    assert.deepEqual(snapped[1]!.current, authoritativeRemote.sprite(1).currentSkeleton);
+    assert.equal(snapped[0]!.x, authoritativeRemote.sprite(0).posX, "Local interpolation starts at the new life's native root");
+    deliver([{ kind: "kill", slot: 1 }]);
+    assert.equal((session.present(0).sprites[0]!.flags & 2) !== 0, true);
+    deliver([{ kind: "spawn", slot: 1, x: -500, y: -100 }]);
+    assert.equal(session.present(0).sprites[0]!.x, -500, "Dead-to-live correction must start at the new spawn");
+    deliver([{ kind: "team", slot: 1, team: 5 }]);
+    assert.equal(session.present(0).sprites[0]!.team, 5);
+    deliver([{ kind: "leave", slot: 2 }, { kind: "join", slot: 2, control: "authoritative", team: 0, x: -700, y: -100 }]);
+    now += session.metrics.interpolationMs - 1000 / 120;
+    const reused = confirmed.renderView();
+    if (typeof reused === "number") throw new Error(`render ${reused}`);
+    assert.equal(session.present().sprites[1]!.x, reused.sprite(1).posX, "A reused slot cannot inherit the old occupant's interpolation");
+    session.resetRound();
+    for (const host of [authoritative, prediction, confirmed]) requireStatus(host.loadMap("Arena"), "round map");
+    session.receive(state(authoritative, tick));
+    const boundary = session.present(0);
+    for (const sprite of boundary.sprites) if (sprite.active) {
+      const native = session.predictionWorld.sprites[sprite.slot - 1]!;
+      assert.equal(sprite.x, native.x); assert.equal(sprite.y, native.y);
+      assert.deepEqual(sprite.current, native.current);
+    }
+    assert.equal(session.metrics.hashMismatches, 0); assert.equal(session.metrics.resyncs, 0);
   } finally { session.dispose(); authoritative.dispose(); }
 });

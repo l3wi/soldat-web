@@ -5,6 +5,7 @@ import { loadSim, loadSimContent, requireStatus, SIM_GAMEPLAY_EVENTS } from "@so
 import type { SimHost, SimManifest } from "@soldat-web/sim-host";
 import { PlayerInputBuffer, type FireAdmission } from "./input-buffer.ts";
 import type { MatchConfiguration, WorkerRequest, WorkerResponse, TickWorkProfile } from "./worker-messages.ts";
+import { FIRE_ADMISSION_REASONS, type FireAdmissionReason, type FireAdmissionReasons } from "./worker-messages.ts";
 import { BOT_PROFILES, configureMatch, reservedBotSlots, WEAPON_CHOICE_BURST, WEAPON_CHOICES_PER_SECOND } from "./bots.ts";
 import { hardeningLimits, TokenBucket } from "./hardening.ts";
 
@@ -35,6 +36,7 @@ interface History {
 const HISTORY_TICKS = 30;
 const REWIND_TICKS = 12;
 const emptyProfile = (): TickWorkProfile => ({ tick: 0, stepMs: 0, saveMs: 0, hashMs: 0, recordsMs: 0, postMs: 0, recordEncodes: 0, recipients: 0, ...(process.env.NET_G4_INPUT_DIAGNOSTICS === "1" ? { controls: [] } : {}) });
+const emptyFireAdmissionReasons = (): FireAdmissionReasons => Object.fromEntries(FIRE_ADMISSION_REASONS.map(reason => [reason, 0])) as FireAdmissionReasons;
 
 /** One worker, one instance. History and all uncommitted effects share its timeline. */
 export class AuthoritativeMatch {
@@ -51,6 +53,7 @@ export class AuthoritativeMatch {
   private rejectedShots = 0;
   private uncompensatedShots = 0;
   private replayBudgetFallbacks = 0;
+  private fireAdmissionReasons = emptyFireAdmissionReasons();
   private readonly replayBudget: TokenBucket;
   private replayNow = 0;
   private readonly afkMs: number;
@@ -340,17 +343,20 @@ export class AuthoritativeMatch {
   step(nowMs = performance.now()): void {
     if (this.paused) return;
     if (this.tick === 0xffffffff) throw new Error("Network tick space exhausted; restart match");
-    const phase = this.host.renderView();
-    if (typeof phase === "number") throw new Error(`sim_render_view failed: ${phase}`);
-    if (phase.globals.roundPhase === 2) this.advanceRound();
+    let render = this.host.renderView();
+    if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+    if (render.globals.roundPhase === 2) {
+      this.advanceRound();
+      // Map loading can grow memory and replaces the borrowed view's contents.
+      render = this.host.renderView();
+      if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
+    }
     if (!this.players.size) {
       this.tick = requireStatus(this.host.step(), "sim_step"); this.events();
       this.commands = []; this.records = [];
       return;
     }
     const inputs = new Map<number, Uint8Array>(), weapons = new Map<number, number>();
-    const render = this.host.renderView();
-    if (typeof render === "number") throw new Error(`sim_render_view failed: ${render}`);
     for (const [slot, player] of this.players) {
       this.inputBufferOccupancy.push(player.inputs.size);
       this.inputBufferLeadTicks.push(player.inputs.leadTicks(this.tick));
@@ -436,14 +442,17 @@ export class AuthoritativeMatch {
     const allowance = Math.min(REWIND_TICKS, Math.ceil(player.rttMs * 0.03) + 2);
     const viewAllowance = Math.min(18, Math.ceil(player.rttMs * 0.06) + 8);
     const late = frame.tick < this.tick;
-    if (this.tick - frame.tick > allowance || frame.tick - frame.viewTick > viewAllowance || (late && !this.history.has(frame.tick))) {
-      this.uncompensatedShots++;
+    const fallback: FireAdmissionReason | undefined = this.tick - frame.tick > allowance ? "fallbackAge"
+      : frame.tick - frame.viewTick > viewAllowance ? "fallbackView"
+      : late && !this.history.has(frame.tick) ? "fallbackHistory" : undefined;
+    if (fallback) {
+      this.uncompensatedShots++; this.fireAdmissionReasons[fallback]++;
       return "present";
     }
     if (late) {
       let anchorTick = frame.tick;
       while (anchorTick >= this.tick - HISTORY_TICKS && !this.history.get(anchorTick)?.state) anchorTick--;
-      if (!this.history.get(anchorTick)?.state) { this.uncompensatedShots++; return "present"; }
+      if (!this.history.get(anchorTick)?.state) { this.uncompensatedShots++; this.fireAdmissionReasons.fallbackAnchor++; return "present"; }
     }
     if (!late) return "present";
     const result = this.rewindFire(slot, player, frame);
@@ -459,19 +468,26 @@ export class AuthoritativeMatch {
     const allowance = Math.min(REWIND_TICKS, Math.ceil(player.rttMs * 0.03) + 2);
     const weapon = entry?.weapons.get(slot);
     const grenade = (bits & 64) !== 0;
-    if (age < 1 || age > allowance || !entry || !previous || !(bits & 80) || (bits & 0xfc0) !== (grenade ? 64 : 0) || ((bits & 16) !== 0 && (weapon === 11 || weapon === 12 || weapon === 255)) || this.lastRewindTick === this.tick || this.tick - player.lastRewind < 6) {
-      this.rejectedShots++; return false;
+    if (age < 1 || age > allowance) { this.rejectedShots++; this.fireAdmissionReasons.rejectAge++; return false; }
+    if (!entry || !previous) { this.rejectedShots++; this.fireAdmissionReasons.rejectHistory++; return false; }
+    const rejection: FireAdmissionReason | undefined = !(bits & 80) ? "rejectIntent"
+      : (bits & 0xfc0) !== (grenade ? 64 : 0) ? "rejectAction"
+      : (bits & 16) !== 0 && (weapon === 11 || weapon === 12 || weapon === 255) ? "rejectWeapon"
+      : this.lastRewindTick === this.tick ? "rejectMatchCooldown"
+      : this.tick - player.lastRewind < 6 ? "rejectPlayerCooldown" : undefined;
+    if (rejection) {
+      this.rejectedShots++; this.fireAdmissionReasons[rejection]++; return false;
     }
-    if (new DataView(previous.buffer, previous.byteOffset, 12).getUint16(0, true) & 80) { this.rejectedShots++; return false; }
+    if (new DataView(previous.buffer, previous.byteOffset, 12).getUint16(0, true) & 80) { this.rejectedShots++; this.fireAdmissionReasons.rejectExistingFire++; return false; }
     // View is bounded independently of shot tick: interpolation is 2..6 ticks,
     // plus outbound prediction lead. No client-provided RTT increases allowance.
-    if (frame.viewTick > this.tick + 2 || frame.tick - frame.viewTick > Math.min(18, Math.ceil(player.rttMs * 0.06) + 8)) { this.rejectedShots++; return false; }
+    if (frame.viewTick > this.tick + 2 || frame.tick - frame.viewTick > Math.min(18, Math.ceil(player.rttMs * 0.06) + 8)) { this.rejectedShots++; this.fireAdmissionReasons.rejectView++; return false; }
     let restoreTick = frame.tick;
     while (restoreTick >= this.tick - HISTORY_TICKS && !this.history.get(restoreTick)?.state) restoreTick--;
     const anchor = this.history.get(restoreTick)?.state;
-    if (!anchor) { this.uncompensatedShots++; return false; }
+    if (!anchor) { this.uncompensatedShots++; this.fireAdmissionReasons.fallbackAnchor++; return false; }
     if (!this.replayBudget.take(this.tick - restoreTick, this.replayNow)) {
-      this.uncompensatedShots++; this.replayBudgetFallbacks++; return "budget";
+      this.uncompensatedShots++; this.replayBudgetFallbacks++; this.fireAdmissionReasons.fallbackBudget++; return "budget";
     }
     const start = performance.now();
     const corrected = previous.slice();
@@ -568,9 +584,10 @@ export class AuthoritativeMatch {
     if (profile) { profile.tick = this.tick; this.profile = emptyProfile(); }
     return profile;
   }
-  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
-    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, replayBudgetFallbacks: this.replayBudgetFallbacks, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
+  takeLagMetrics(): { replayMs: number[]; replayTicks: number; rejectedShots: number; uncompensatedShots: number; replayBudgetFallbacks: number; fireAdmissionReasons: FireAdmissionReasons; inputBufferOccupancy: number[]; inputBufferLeadTicks: number[] } {
+    const result = { replayMs: this.replayMs, replayTicks: this.replayTicks, rejectedShots: this.rejectedShots, uncompensatedShots: this.uncompensatedShots, replayBudgetFallbacks: this.replayBudgetFallbacks, fireAdmissionReasons: this.fireAdmissionReasons, inputBufferOccupancy: this.inputBufferOccupancy, inputBufferLeadTicks: this.inputBufferLeadTicks };
     this.replayMs = []; this.replayTicks = 0; this.rejectedShots = 0; this.uncompensatedShots = 0; this.replayBudgetFallbacks = 0;
+    this.fireAdmissionReasons = emptyFireAdmissionReasons();
     this.inputBufferOccupancy = []; this.inputBufferLeadTicks = [];
     return result;
   }

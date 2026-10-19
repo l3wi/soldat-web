@@ -201,6 +201,7 @@ for (const weapon of [11, 12, 255]) {
       assert.equal(value.match.tick, 72);
       const metrics = value.match.takeLagMetrics();
       assert.equal(metrics.replayTicks, 0); assert.equal(metrics.rejectedShots, 1);
+      assert.equal(metrics.fireAdmissionReasons.rejectWeapon, 1);
       stepTo(value, 74); assert.equal(value.boundary?.lastConsumedInputSeq, 0);
     } finally { value.match.dispose(); }
   });
@@ -214,13 +215,17 @@ test("trusted RTT, replay window and per-player rewind budget are enforced", asy
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 60, viewTick: 56, input: encodeInput({ Fire: true }) }] }, value.now);
     const expired = value.match.takeLagMetrics();
     assert.equal(expired.replayTicks, 0); assert.equal(expired.uncompensatedShots, 1);
+    assert.equal(expired.fireAdmissionReasons.fallbackAge, 1);
     for (let sample = 0; sample < 64; sample++) value.match.receive({ type: "rtt", slot: 1, milliseconds: 400 }, value.now);
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 2, tick: 61, viewTick: 57, input: encodeInput({ Fire: true }) }] }, value.now);
     const compensated = value.match.takeLagMetrics();
     assert.equal(compensated.replayMs.length, 1); assert.equal(compensated.rejectedShots, 0);
     assert.ok(compensated.replayTicks >= 11 && compensated.replayTicks <= 14, "11-tick shot plus at most three sparse-anchor prefix ticks");
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: 3, tick: 62, viewTick: 58, input: encodeInput({ Fire: true }) }] }, value.now);
-    assert.equal(value.match.takeLagMetrics().replayTicks, 0);
+    const rateLimited = value.match.takeLagMetrics();
+    assert.equal(rateLimited.replayTicks, 0);
+    assert.equal(rateLimited.rejectedShots, 1);
+    assert.equal(rateLimited.fireAdmissionReasons.rejectMatchCooldown, 1);
     assert.equal(value.match.tick, 72);
   } finally { value.match.dispose(); }
 });
@@ -234,7 +239,9 @@ for (const action of ["Fire", "ThrowNade"] as const) {
       value.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: originalTick, viewTick: originalTick - 4, input: encodeInput({ [action]: true, MouseAimX: 300 }) }] }, value.now);
       stepTo(value, 72);
       value.match.receive({ type: "input", slot: 1, frames: [{ seq: 2, tick: 60, viewTick: 56, input: encodeInput({ [action]: true, MouseAimX: -300 }) }] }, value.now);
-      assert.equal(value.match.takeLagMetrics().replayTicks, 0);
+      const metrics = value.match.takeLagMetrics();
+      assert.equal(metrics.replayTicks, 0);
+      assert.equal(metrics.fireAdmissionReasons.rejectExistingFire, action === "Fire" ? 1 : 0, "same-tick grenade retargeting is filtered by input ordering before fire admission");
     } finally { value.match.dispose(); }
   });
 }
@@ -394,6 +401,7 @@ test("timely fire with an old genuine view is present-only and counted", async (
     value.match.receive({ type: "input", slot: 1, frames: [{ seq: value.sequence + 1, tick: 600, viewTick: 0, input: encodeInput({ Fire: true }) }] }, value.now);
     const metrics = value.match.takeLagMetrics();
     assert.equal(metrics.uncompensatedShots, 1); assert.equal(metrics.replayTicks, 0);
+    assert.equal(metrics.fireAdmissionReasons.fallbackView, 1);
     stepTo(value, 602);
     assert.equal(value.boundary?.lastConsumedInputSeq, value.sequence + 1);
   } finally { value.match.dispose(); }
@@ -417,8 +425,72 @@ test("F-05 per-match replay budget falls back to consumed present fire and repor
     assert.ok(metrics.replayTicks <= 60);
     assert.ok(metrics.replayBudgetFallbacks > 0);
     assert.ok(metrics.uncompensatedShots >= metrics.replayBudgetFallbacks);
+    assert.equal(metrics.fireAdmissionReasons.fallbackBudget, metrics.replayBudgetFallbacks);
     assert.ok(responses.some(response => response.type === "ticks" && response.recipients.some(recipient => recipient.lastConsumedInputSeq === 1)));
   } finally { match.dispose(); }
+});
+
+test("a command-cleared rewind boundary falls back to current fire without rewriting movement", async () => {
+  const present = await timeline(), delayed = await timeline();
+  try {
+    for (const value of [present, delayed]) {
+      stepTo(value, 72);
+      value.match.receive({ type: "weapon-choice", slot: 1, primary: 4, secondary: 0, selection: "primary" }, value.now);
+    }
+    present.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 72, viewTick: 68, input: encodeInput({ Fire: true, MouseAimX: 300 }) }] }, present.now);
+    delayed.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 71, viewTick: 67, input: encodeInput({ Fire: true, Left: true, MouseAimX: 300 }) }] }, delayed.now);
+    const metrics = delayed.match.takeLagMetrics();
+    assert.equal(metrics.replayTicks, 0);
+    assert.equal(metrics.rejectedShots, 0);
+    assert.equal(metrics.uncompensatedShots, 1);
+    assert.equal(metrics.fireAdmissionReasons.fallbackHistory, 1);
+    assert.equal(Object.values(metrics.fireAdmissionReasons).reduce((sum, count) => sum + count, 0), 1);
+    assert.ok(Object.values(delayed.match.takeLagMetrics().fireAdmissionReasons).every(count => count === 0), "interval reasons reset after collection");
+    stepTo(present, 74); stepTo(delayed, 74);
+    assert.equal(delayed.boundary?.stateHash, present.boundary?.stateHash);
+    assert.equal(delayed.boundary?.lastConsumedInputSeq, 1);
+  } finally { present.match.dispose(); delayed.match.dispose(); }
+});
+
+test("thirteen-tick intent remains outside the twelve-tick historical window", async () => {
+  const present = await timeline(), delayed = await timeline();
+  try {
+    for (const value of [present, delayed]) stepTo(value, 73);
+    const input = encodeInput({ Fire: true, MouseAimX: 300 });
+    present.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 73, viewTick: 69, input }] }, present.now);
+    delayed.match.receive({ type: "input", slot: 1, frames: [{ seq: 1, tick: 60, viewTick: 56, input }] }, delayed.now);
+    const metrics = delayed.match.takeLagMetrics();
+    assert.equal(metrics.replayTicks, 0);
+    assert.equal(metrics.uncompensatedShots, 1);
+    assert.equal(metrics.fireAdmissionReasons.fallbackAge, 1);
+    stepTo(present, 75); stepTo(delayed, 75);
+    assert.equal(delayed.boundary?.stateHash, present.boundary?.stateHash);
+    assert.equal(delayed.boundary?.lastConsumedInputSeq, 1);
+  } finally { present.match.dispose(); delayed.match.dispose(); }
+});
+
+test("paused same-tick commands publish a hash of the new full state, not the earlier boundary", async () => {
+  const value = await timeline();
+  try {
+    stepTo(value, 72);
+    value.match.receive({ type: "pause", paused: true }, value.now);
+    let initial: Extract<Message, { type: "state" }> | undefined;
+    for (const response of value.responses.splice(0)) if (response.type === "send" && response.slot === 1 && response.message.type === "state") initial = response.message;
+    assert.ok(initial);
+    requireStatus(inspector.loadState(initial.bytes), "inspect paused state");
+    assert.equal(BigInt(`0x${inspector.hash()}`), initial.hash);
+    value.match.receive({ type: "force-team", slot: 1, team: 5 }, value.now);
+    let changed: Extract<Message, { type: "state" }> | undefined;
+    for (const response of value.responses.splice(0)) if (response.type === "send" && response.slot === 1 && response.message.type === "state") changed = response.message;
+    assert.ok(changed);
+    assert.equal(changed.tick, initial.tick, "paused commands never grant simulation ticks");
+    assert.notEqual(changed.hash, initial.hash, "the real team command changes gameplay state");
+    requireStatus(inspector.loadState(changed.bytes), "inspect same-tick command state");
+    assert.equal(BigInt(`0x${inspector.hash()}`), changed.hash);
+    const render = inspector.renderView();
+    if (typeof render === "number") throw new Error("Missing post-command render view");
+    assert.equal(render.sprite(0).team, 5);
+  } finally { value.match.dispose(); }
 });
 
 test("F-01 consumed-input AFK rejects once and leaving refills the original bot population", async () => {

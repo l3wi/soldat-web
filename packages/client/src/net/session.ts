@@ -1,4 +1,4 @@
-import { requireStatus, type RenderView, type SimHost } from "@soldat-web/sim-host";
+import { RENDER_LAYOUT, SPRITE_FLAGS, requireStatus, type RenderView, type SimHost } from "@soldat-web/sim-host";
 import { validateChat, validateFeature, isServerFeature, isClientFeature, type ControlState, type FeatureClientMessage, type FeatureServerMessage, type ChatChannel, type ChatDelivery, type InputFrame, type Message, type ReliableEvent, type TickRecord } from "@soldat-web/protocol";
 import { SimWorldView, type WorldSprite, type WorldView } from "../world.ts";
 
@@ -61,7 +61,21 @@ export interface OnlineOptions {
   /** Complete borrowed live-step batch, once per forward tick; never REPLAY. */
   onLiveStep?: (tick: number, bytes: Uint8Array) => void;
 }
-interface Pose { tick: number; sprites: WorldSprite[] }
+interface Pose { tick: number; roundEpoch: number; generations: Uint32Array; sprites: WorldSprite[] }
+interface RootPose {
+  x: number; y: number; active: boolean; flags: number; team: number; ceaseFireCounter: number;
+  roundEpoch: number; generation: number;
+}
+function sameLife(left: RootPose | WorldSprite, right: RootPose | WorldSprite): boolean {
+  return left.active && right.active && left.team === right.team &&
+    ((left.flags ^ right.flags) & SPRITE_FLAGS.dead) === 0 &&
+    right.ceaseFireCounter <= left.ceaseFireCounter;
+}
+function captureRoot(out: RootPose, sprite: WorldSprite, roundEpoch: number, generation: number): void {
+  out.x = sprite.x; out.y = sprite.y; out.active = sprite.active; out.flags = sprite.flags;
+  out.team = sprite.team; out.ceaseFireCounter = sprite.ceaseFireCounter;
+  out.roundEpoch = roundEpoch; out.generation = generation;
+}
 function copySprite(sprite: WorldSprite): WorldSprite {
   return { ...sprite, previous: sprite.previous.slice(), current: sprite.current.slice() };
 }
@@ -85,7 +99,7 @@ export class OnlineSession {
   private resyncSequence = 0;
   private lastEvent = 0;
   private lastStateAt = 0;
-  private lastPresentAt = 0;
+  private correctionAt = 0;
   private lastPingAt = -Infinity;
   private ping: bigint | undefined;
   private readonly rttDeviations = new Float64Array(RTT_WINDOW);
@@ -97,6 +111,16 @@ export class OnlineSession {
   private resyncRequested = false;
   private correctionX = 0;
   private correctionY = 0;
+  private readonly correctionPose: Float32Array;
+  private readonly beforePose: Float32Array;
+  private readonly previousLocal: RootPose;
+  private readonly confirmedPreviousLocal: RootPose;
+  private readonly generations = new Uint32Array(RENDER_LAYOUT.slots);
+  private confirmedRenderData?: DataView;
+  private localGeneration = 0;
+  private localRoundEpoch = 0;
+  private interpolateLocal = false;
+  private presentationGeneration = 0;
   private jitter = 0;
   private inputPtr: number;
   private eventPtr: number;
@@ -107,12 +131,23 @@ export class OnlineSession {
   private controlState: ControlState = { host: false, admin: false, paused: false, muted: false, vote: null };
   get control(): Readonly<ControlState> { return this.controlState; }
   get paused(): boolean { return this.controlState.paused; }
+  /** Local soldier, camera and predicted cosmetics share this render phase. */
+  get presentationFraction(): number { return this.interpolateLocal ? this.fraction : 1; }
+  /** Changes only at presentation discontinuities, never at ordinary rollback. */
+  get presentationEpoch(): number { return this.presentationGeneration; }
   constructor(options: OnlineOptions) {
     this.options = options;
     this.now = options.now ?? (() => performance.now());
     this.predictionWorld = new SimWorldView(options.prediction);
     this.confirmedWorld = new SimWorldView(options.confirmed);
     this.world = { sprites: this.predictionWorld.sprites.map(copySprite), tick: 0, sync() {} };
+    const local = this.predictionWorld.sprites[options.slot - 1]!;
+    this.previousLocal = { x: local.x, y: local.y, active: local.active, flags: local.flags, team: local.team,
+      ceaseFireCounter: local.ceaseFireCounter, roundEpoch: this.predictionWorld.renderView.globals.roundEpoch, generation: 0 };
+    this.confirmedPreviousLocal = { ...this.previousLocal };
+    this.localRoundEpoch = this.previousLocal.roundEpoch;
+    this.correctionPose = new Float32Array(local.current.length);
+    this.beforePose = new Float32Array(local.current.length);
     this.inputPtr = requireStatus(options.prediction.exports.sim_alloc(12), "sim_alloc(online input)");
     this.eventPtr = requireStatus(options.prediction.exports.sim_alloc(this.eventCapacity), "sim_alloc(online events)");
     if (!this.inputPtr || !this.eventPtr) throw new Error("Online buffer allocation failed");
@@ -131,7 +166,7 @@ export class OnlineSession {
     this.waiting = true; this.resyncRequested = false; this.metrics.status = "loading next round";
     this.ring.fill(undefined); this.recent.length = 0;
     this.anchors.clear(); this.timeline.clear(); this.predictedInputs.clear(); this.poses.length = 0;
-    this.remote = []; this.correctionX = 0; this.correctionY = 0;
+    this.remote = []; this.clearCorrection(); this.interpolateLocal = false; this.presentationGeneration++;
     this.metrics.pendingInputs = 0; this.metrics.anchorBytes = 0;
     this.resyncSequence = this.seq;
   }
@@ -163,7 +198,7 @@ export class OnlineSession {
           if (message.state.paused && this.anchors.size) {
             requireStatus(this.options.prediction.loadState(this.saved()), "prediction pause restore");
             this.predictionWorld.sync(); this.metrics.predictedTick = this.metrics.confirmedTick;
-            this.correctionX = 0; this.correctionY = 0; this.fraction = 1;
+            this.clearCorrection(); this.fraction = 1; this.interpolateLocal = false; this.presentationGeneration++;
           }
         }
       }
@@ -240,9 +275,9 @@ export class OnlineSession {
     this.options.onStateReset?.();
     this.remote = [];
     this.resyncRequested = false;
-    this.finish(message.lastConsumedInputSeq, true);
+    this.finish(message.lastConsumedInputSeq, true, true);
   }
-  private stepConfirmed(record: StepRecord, notifyMembership = true): void {
+  private stepConfirmed(record: StepRecord, notifyMembership = true, capturePreviousRoot = false): void {
     const host = this.options.confirmed;
     if (record.tick !== this.metrics.confirmedTick) throw new Error(`Out-of-order confirmed step ${record.tick}`);
     for (const bytes of record.commands) {
@@ -253,9 +288,12 @@ export class OnlineSession {
       try {
         new Uint8Array(host.exports.memory.buffer, pointer, bytes.length).set(bytes);
         const status = host.exports.sim_command(record.tick, pointer, bytes.length);
-        if (notifyMembership && status >= 0 && this.options.onSlotLeave) {
+        if (status >= 0) {
           const command = JSON.parse(new TextDecoder().decode(bytes)) as { kind?: string; slot?: number };
-          if (command.kind === "leave" && typeof command.slot === "number") this.options.onSlotLeave(command.slot);
+          if (typeof command.slot === "number" && command.slot >= 1 && command.slot <= this.generations.length) {
+            if (notifyMembership && (command.kind === "join" || command.kind === "leave" || command.kind === "spawn" || command.kind === "team")) this.generations[command.slot - 1]!++;
+            if (notifyMembership && command.kind === "leave") this.options.onSlotLeave?.(command.slot);
+          }
         }
       } finally { host.exports.sim_free(pointer); }
     }
@@ -263,6 +301,7 @@ export class OnlineSession {
       new Uint8Array(host.exports.memory.buffer, this.confirmedInputPtr, 12).set(input);
       requireStatus(host.exports.sim_set_input(slot, record.tick, this.confirmedInputPtr), "sim_set_input(confirmed)");
     }
+    if (capturePreviousRoot) this.captureConfirmedRoot();
     requireStatus(host.step(REPLAY), "sim_step(confirmed)");
     host.events(); // No confirmed presentation is ever sent to the UI.
     this.metrics.confirmedTick++;
@@ -271,6 +310,8 @@ export class OnlineSession {
   private ticks(message: Extract<Message, { type: "ticks" }>): void {
     const m = this.metrics, started = this.now();
     let reload = false;
+    let lastStep: StepRecord | undefined;
+    for (const record of message.records) if (record.type === "step") lastStep = record;
     for (const record of message.records) {
       m.records++;
       if (record.type === "step") {
@@ -279,7 +320,7 @@ export class OnlineSession {
           entry.slot === record.inputs[index]!.slot && entry.input.every((byte, offset) => byte === record.inputs[index]!.input[offset]));
         if (record.commands.length || (record.tick < this.predictionWorld.tick && !matching)) reload = true;
         this.timeline.set(record.tick, record);
-        this.stepConfirmed(record); m.ticks++;
+        this.stepConfirmed(record, true, record === lastStep); m.ticks++;
         this.remote = record.inputs.map(({ slot, input }) => ({ slot, input: heldInput(input) }));
       } else if (record.type === "correct") {
         const step = this.timeline.get(record.tick);
@@ -296,7 +337,7 @@ export class OnlineSession {
         for (let tick = anchorTick; tick < target; tick++) {
           const historical = this.timeline.get(tick);
           if (!historical) { this.resync(); return; }
-          this.stepConfirmed(historical, false);
+          this.stepConfirmed(historical, false, tick === target - 1);
         }
         const latest = this.timeline.get(target - 1);
         if (latest) this.remote = latest.inputs.map(({ slot, input }) => ({ slot, input: heldInput(input) }));
@@ -313,10 +354,19 @@ export class OnlineSession {
     m.confirmedMs = this.now() - started;
     this.finish(message.lastConsumedInputSeq, reload);
   }
-  private finish(consumed: number, reload: boolean): void {
+  private finish(consumed: number, reload: boolean, resetPresentation = false): void {
     const m = this.metrics, started = this.now(), boundary = m.confirmedTick;
     const old = this.predictionWorld.sprites[this.options.slot - 1]!;
     const oldX = old.x, oldY = old.y, oldActive = old.active, oldTick = this.predictionWorld.tick;
+    const replacingPrediction = reload || this.waiting || oldTick < boundary;
+    const oldFlags = old.flags, oldTeam = old.team, oldCeaseFire = old.ceaseFireCounter;
+    const oldGeneration = this.localGeneration, oldRoundEpoch = this.localRoundEpoch;
+    const oldFraction = this.presentationFraction, oldDecay = Math.exp(-Math.max(0, started - this.correctionAt) / 80);
+    const visibleX = this.previousLocal.x + (old.x - this.previousLocal.x) * oldFraction + this.correctionX * oldDecay;
+    const visibleY = this.previousLocal.y + (old.y - this.previousLocal.y) * oldFraction + this.correctionY * oldDecay;
+    if (replacingPrediction) for (let point = 0; point < this.beforePose.length; point++) {
+      this.beforePose[point] = old.previous[point]! + (old.current[point]! - old.previous[point]!) * oldFraction + this.correctionPose[point]! * oldDecay;
+    }
     const diagnostic: CorrectionDiagnostic | undefined = this.options.onCorrection ? {
       slot: this.options.slot, correction: 0, previousServerTick: m.serverTick, serverTick: boundary,
       predictedTick: oldTick, viewTick: m.viewTick, stateAgeMs: this.now() - this.lastStateAt,
@@ -329,7 +379,9 @@ export class OnlineSession {
     } : undefined;
     this.confirmedWorld.sync();
     if (diagnostic) diagnostic.authoritative = correctionSprites(this.confirmedWorld.sprites);
-    this.poses.push({ tick: boundary, sprites: this.confirmedWorld.sprites.map(copySprite) });
+    if (this.poses[this.poses.length - 1]?.tick === boundary) this.poses.pop();
+    this.poses.push({ tick: boundary, roundEpoch: this.confirmedWorld.renderView.globals.roundEpoch,
+      generations: this.generations.slice(), sprites: this.confirmedWorld.sprites.map(copySprite) });
     if (this.poses.length > 16) this.poses.shift();
     for (let i = 0; i < this.ring.length; i++) {
       const frame = this.ring[i];
@@ -337,25 +389,48 @@ export class OnlineSession {
     }
     const target = this.waiting ? boundary : Math.max(boundary, oldTick);
     if (target - boundary >= INPUT_HISTORY) { this.resync(); return; }
-    if (reload || this.waiting || oldTick < boundary) {
+    if (replacingPrediction) {
       const bytes = this.saved();
       requireStatus(this.options.prediction.loadState(bytes), "prediction confirmed restore");
       m.reloads++;
+      this.localGeneration = this.generations[this.options.slot - 1]!;
+      Object.assign(this.previousLocal, this.confirmedPreviousLocal);
       for (const tick of this.predictedInputs.keys()) if (tick >= boundary) this.predictedInputs.delete(tick);
       for (let tick = boundary; tick < target; tick++) {
         const frame = this.ring[tick % INPUT_HISTORY];
         if (diagnostic && frame?.tick !== tick) diagnostic.replayGaps.push(tick);
         this.controls(tick, frame?.tick === tick ? frame.input : undefined);
+        if (tick === target - 1) {
+          this.predictionWorld.sync();
+          captureRoot(this.previousLocal, this.predictionWorld.sprites[this.options.slot - 1]!,
+            this.predictionWorld.renderView.globals.roundEpoch, this.localGeneration);
+        }
         requireStatus(this.options.prediction.step(REPLAY), "sim_step(REPLAY)"); m.replayTicks++;
       }
       this.predictionWorld.sync();
+      this.updateLocalInterpolation(resetPresentation || this.waiting);
+      const continuous = !resetPresentation && !this.waiting && oldTick === target && oldActive && old.active &&
+        oldTeam === old.team && ((oldFlags ^ old.flags) & SPRITE_FLAGS.dead) === 0 &&
+        old.ceaseFireCounter <= oldCeaseFire && oldRoundEpoch === this.localRoundEpoch && oldGeneration === this.localGeneration;
+      if (continuous) {
+        const t = this.presentationFraction;
+        this.correctionX = visibleX - (this.previousLocal.x + (old.x - this.previousLocal.x) * t);
+        this.correctionY = visibleY - (this.previousLocal.y + (old.y - this.previousLocal.y) * t);
+        for (let point = 0; point < this.correctionPose.length; point++) {
+          this.correctionPose[point] = this.beforePose[point]! - (old.previous[point]! + (old.current[point]! - old.previous[point]!) * t);
+        }
+        this.correctionAt = started;
+      } else {
+        this.clearCorrection();
+        if (this.interpolateLocal) this.presentationGeneration++;
+      }
     } else m.skippedReloads++;
     const local = this.predictionWorld.sprites[this.options.slot - 1]!;
     m.correction = 0;
     if (!this.waiting && oldTick === target && oldActive && local.active) {
       const dx = oldX - local.x, dy = oldY - local.y;
       m.correction = Math.hypot(dx, dy);
-      if (m.correction > 0.001) { m.corrections++; this.correctionX += dx; this.correctionY += dy; }
+      if (m.correction > 0.001) m.corrections++;
     }
     const at = this.now();
     if (!this.waiting) {
@@ -379,6 +454,39 @@ export class OnlineSession {
       this.options.onCorrection!(diagnostic);
     }
   }
+  private clearCorrection(): void {
+    this.correctionX = 0; this.correctionY = 0; this.correctionPose.fill(0);
+  }
+  /** The render ABI has native previous skeletons but no previous root. Retain
+   * just the real pre-step root/identity, without copying another world or state. */
+  private captureConfirmedRoot(): void {
+    const host = this.options.confirmed, pointer = requireStatus(host.exports.sim_render_view(), "sim_render_view(confirmed root)");
+    const buffer = host.exports.memory.buffer;
+    if (!pointer) throw new Error("Confirmed render root unavailable");
+    if (!this.confirmedRenderData || this.confirmedRenderData.buffer !== buffer || this.confirmedRenderData.byteOffset !== pointer) {
+      this.confirmedRenderData = new DataView(buffer, pointer, RENDER_LAYOUT.totalBytes);
+    }
+    const data = this.confirmedRenderData, base = RENDER_LAYOUT.headerBytes + (this.options.slot - 1) * RENDER_LAYOUT.spriteBytes;
+    const s = RENDER_LAYOUT.sprite, out = this.confirmedPreviousLocal;
+    out.flags = data.getUint32(base + s.flags, true); out.active = (out.flags & SPRITE_FLAGS.active) !== 0;
+    out.x = data.getFloat32(base + s.posX, true); out.y = data.getFloat32(base + s.posY, true);
+    out.team = data.getUint32(base + s.team, true); out.ceaseFireCounter = data.getInt32(base + s.ceaseFireCounter, true);
+    out.roundEpoch = data.getUint32(RENDER_LAYOUT.globalsOffset + RENDER_LAYOUT.globals.roundEpoch, true);
+    out.generation = this.generations[this.options.slot - 1]!;
+  }
+  private updateLocalInterpolation(reset = false): void {
+    const local = this.predictionWorld.sprites[this.options.slot - 1]!;
+    this.localRoundEpoch = this.predictionWorld.renderView.globals.roundEpoch;
+    this.interpolateLocal = !reset && sameLife(this.previousLocal, local) &&
+      this.previousLocal.roundEpoch === this.localRoundEpoch && this.previousLocal.generation === this.localGeneration;
+    if (!this.interpolateLocal) { this.clearCorrection(); this.presentationGeneration++; }
+  }
+  private viewTime(at: number): number {
+    const latest = this.poses[this.poses.length - 1];
+    if (!latest) return this.metrics.serverTick;
+    return Math.max(this.poses[0]!.tick, Math.min(latest.tick,
+      this.metrics.serverTick + (at - this.lastStateAt + this.metrics.rttMs / 2 - this.metrics.interpolationMs) / this.stepMilliseconds));
+  }
   private controls(tick: number, local?: Uint8Array): void {
     const host = this.options.prediction;
     for (const entry of this.remote) {
@@ -401,14 +509,14 @@ export class OnlineSession {
     if (at - this.lastPingAt >= 1000) {
       this.lastPingAt = at; this.ping = BigInt(Math.floor(at * 1000)); this.options.send({ type: "ping", timestamp: this.ping });
     }
-    if (this.waiting || this.paused) return;
+    if (this.waiting || this.paused) { this.present(); return; }
     // A reliable stream can keep arriving while all local inputs are rejected.
     // Detect sequence deadlock independently of tick-indexed retirement.
     if (this.seq - Math.max(m.lastConsumedInputSeq, this.resyncSequence) >= INPUT_HISTORY) { this.resync(); return; }
     m.stateAgeMs = at - this.lastStateAt;
     const stepMilliseconds = this.stepMilliseconds;
     if (m.stateAgeMs > INPUT_HISTORY * stepMilliseconds) { this.resync(); return; }
-    this.present();
+    m.viewTick = Math.floor(this.viewTime(at));
     const serverNow = m.serverTick + (m.stateAgeMs + m.rttMs / 2) / stepMilliseconds;
     const elapsed = Math.max(0, at - this.clockAt);
     this.clockAt = at;
@@ -431,8 +539,9 @@ export class OnlineSession {
       this.ring[index] = frame; this.recent.unshift(frame); this.recent.length = Math.min(3, this.recent.length);
       this.options.send({ type: "input", frames: this.recent.slice() });
       this.controls(tick, input); beforeStep?.();
+      captureRoot(this.previousLocal, this.predictionWorld.sprites[this.options.slot - 1]!, this.localRoundEpoch, this.localGeneration);
       requireStatus(this.options.prediction.step(), "sim_step(prediction)");
-      this.predictionWorld.sync(); afterStep?.();
+      this.predictionWorld.sync(); this.updateLocalInterpolation(); afterStep?.();
       // Server sends gameplay events; predicted presentation is immediate and
       // replay-suppressed. Never expose speculative gameplay as authoritative.
       const bytes = requireStatus(this.options.prediction.exports.sim_events(this.eventPtr, this.eventCapacity), "sim_events(prediction drain)");
@@ -450,16 +559,18 @@ export class OnlineSession {
         }
       }
     }
+    // If catch-up is bounded, show the newest completed native endpoint rather
+    // than applying the fraction of a simulation tick we have not reached.
+    if (this.predictionWorld.tick < desired) this.fraction = 1;
+    this.present();
     m.predictedTick = this.predictionWorld.tick; m.pendingInputs = this.ring.filter(Boolean).length;
   }
-  present(fraction = this.fraction): WorldView {
+  present(fraction = this.presentationFraction): WorldView {
     const at = this.now(), m = this.metrics;
-    const decay = Math.exp(-Math.max(0, at - this.lastPresentAt) / 80);
-    this.lastPresentAt = at; this.correctionX *= decay; this.correctionY *= decay;
+    const decay = Math.exp(-Math.max(0, at - this.correctionAt) / 80);
     const latest = this.poses[this.poses.length - 1];
     if (!latest) return this.world;
-    const target = Math.max(this.poses[0]!.tick, Math.min(latest.tick,
-      m.serverTick + (at - this.lastStateAt + m.rttMs / 2 - m.interpolationMs) / this.stepMilliseconds));
+    const target = this.viewTime(at);
     m.viewTick = Math.floor(target); m.stateAgeMs = at - this.lastStateAt;
     let a = this.poses[0]!, b = latest;
     for (const pose of this.poses) { if (pose.tick <= target) a = pose; if (pose.tick >= target) { b = pose; break; } }
@@ -471,12 +582,15 @@ export class OnlineSession {
       const out = this.world.sprites[i]!;
       const previous = out.previous, current = out.current;
       Object.assign(out, right, { previous, current });
-      const t = local ? Math.max(0, Math.min(1, fraction)) : alpha;
-      const dx = local ? this.correctionX : 0, dy = local ? this.correctionY : 0;
-      out.x = left.x + (right.x - left.x) * t + dx; out.y = left.y + (right.y - left.y) * t + dy;
+      const continuous = local ? this.interpolateLocal : sameLife(left, right) &&
+        a.roundEpoch === b.roundEpoch && a.generations[i] === b.generations[i];
+      const t = continuous ? (local ? Math.max(0, Math.min(1, fraction)) : alpha) : 1;
+      const dx = local ? this.correctionX * decay : 0, dy = local ? this.correctionY * decay : 0;
+      const fromX = local ? this.previousLocal.x : left.x, fromY = local ? this.previousLocal.y : left.y;
+      out.x = fromX + (right.x - fromX) * t + dx; out.y = fromY + (right.y - fromY) * t + dy;
       for (let p = 0; p < current.length; p++) {
         const from = local ? left.previous[p]! : left.current[p]!;
-        current[p] = from + (right.current[p]! - from) * t + (p % 2 ? dy : dx);
+        current[p] = from + (right.current[p]! - from) * t + (local ? this.correctionPose[p]! * decay : 0);
         previous[p] = current[p]!;
       }
     }

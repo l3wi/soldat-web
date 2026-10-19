@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { GameServerOptions } from "./server.ts";
 import { createPerformanceLogging, type PerformanceRuntimeSample } from "./performance.ts";
+import { FIRE_ADMISSION_REASONS } from "./worker-messages.ts";
 
 type Metrics = Parameters<NonNullable<GameServerOptions["onMetrics"]>>[0];
 const info = { id: "12345678-1234-4234-8234-123456789abc", map: "Arena", mode: "dm", targetPlayers: 8, humans: 2 };
@@ -9,6 +10,7 @@ function sample(overrides: Partial<Metrics> = {}): Metrics {
   return {
     type: "metrics", serverTick: 60, overloads: 3, discardedSteps: "17", simEncodeMs: [1, 2, 3], workerSimEncodeMs: [0.5, 1, 2], wireEncodeMs: [0.1],
     tickLatenessMs: [0, 2], replayMs: [1], replayTicks: 2, rejectedShots: 1, uncompensatedShots: 2, replayBudgetFallbacks: 1,
+    fireAdmissionReasons: Object.fromEntries(FIRE_ADMISSION_REASONS.map(reason => [reason, 0])) as Metrics["fireAdmissionReasons"],
     inputBufferOccupancy: [0, 3], inputBufferLeadTicks: [-1, 2], rttMs: [20, 40], inboundBytes: 100, outboundBytes: 200, resyncRequests: 1, disconnects: 1,
     ...overrides,
   };
@@ -76,7 +78,7 @@ test("window counters sum interval deltas, retain clearly cumulative latest valu
   h.logging.recordMatch({ ...info, humans: 3 }, sample({ serverTick: 120, overloads: 4, discardedSteps: "20" }));
   h.flush(10_000);
   const first = h.records()[0];
-  assert.deepEqual(first.interval, { inboundBytes: 200, resyncRequests: 2, disconnects: 2, replayTicks: 4, rejectedShots: 2, uncompensatedShots: 4, replayBudgetFallbacks: 2, outboundOfferedBytes: 400 });
+  assert.deepEqual(first.interval, { inboundBytes: 200, resyncRequests: 2, disconnects: 2, replayTicks: 4, rejectedShots: 2, uncompensatedShots: 4, replayBudgetFallbacks: 2, outboundOfferedBytes: 400, fireAdmissionReasons: sample().fireAdmissionReasons });
   assert.deepEqual(first.cumulative, { overloads: 4, discardedSteps: "20" });
   assert.equal(first.match.humans, 3);
   assert.equal(first.ticks.progressionPerSecond, 60);
@@ -88,6 +90,30 @@ test("window counters sum interval deltas, retain clearly cumulative latest valu
   assert.equal(second.summaries.simEncodeMs.count, 3);
   assert.deepEqual(second.cumulative, { overloads: 5, discardedSteps: "25" });
   assert.equal(second.ticks.progressionPerSecond, null, "one observation cannot establish a rate");
+  h.logging.close();
+});
+
+test("fire admission reasons sum only fixed keys, bound invalid counters and reset each window", () => {
+  const h = harness();
+  const first = sample();
+  Object.assign(first.fireAdmissionReasons, { fallbackAge: 2, fallbackBudget: 1, rejectWeapon: 3, rejectAction: -1, fallbackView: Infinity, "player-secret-token": 9 });
+  h.logging.recordMatch(info, first);
+  const second = sample();
+  Object.assign(second.fireAdmissionReasons, { fallbackAge: 4, rejectWeapon: 1, fallbackBudget: Number.MAX_SAFE_INTEGER });
+  h.logging.recordMatch(info, second);
+  h.flush();
+  const record = h.records()[0];
+  assert.equal(record.interval.fireAdmissionReasons.fallbackAge, 6);
+  assert.equal(record.interval.fireAdmissionReasons.rejectWeapon, 4);
+  assert.equal(record.interval.fireAdmissionReasons.fallbackBudget, Number.MAX_SAFE_INTEGER);
+  assert.equal(record.interval.fireAdmissionReasons.rejectAction, 0);
+  assert.equal(record.interval.fireAdmissionReasons.fallbackView, 0);
+  assert.deepEqual(Object.keys(record.interval.fireAdmissionReasons), [...FIRE_ADMISSION_REASONS]);
+  assert.equal(record.invalidCounterSamples, 2);
+  assert.equal(h.lines.join("").includes("player-secret-token"), false);
+  h.logging.recordMatch(info, sample());
+  h.flush();
+  assert.deepEqual(h.records()[2].interval.fireAdmissionReasons, sample().fireAdmissionReasons);
   h.logging.close();
 });
 

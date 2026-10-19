@@ -79,11 +79,29 @@ Records use `schemaVersion: 1`, ISO `timestamp`, `windowMs` and `type: "match_pe
 
 `interval` contains `inboundBytes`, `outboundOfferedBytes`, `resyncRequests`, `disconnects`, `replayTicks`, `rejectedShots`, `uncompensatedShots` and `replayBudgetFallbacks`. Outbound bytes mean application payload offered to transport, not successful delivery or TLS/IP wire bytes; inbound includes codec-rejected application packets. `cumulative` contains overload/discarded-step counters. `ticks` reports first/last tick and observed progression, not dropped ticks or a health verdict: pauses, bullet time and resets affect progression. Worker metrics are sampled by monotonic wall time, including paused/slow-motion matches; paused simulation has no simulation samples or tick progression.
 
+`interval.fireAdmissionReasons` contains fixed, bounded counters for the first matching Fire/grenade admission gate: `fallbackAge`, `fallbackView`, `fallbackHistory`, `fallbackAnchor`, `fallbackBudget`, `rejectAge`, `rejectHistory`, `rejectIntent`, `rejectAction`, `rejectWeapon`, `rejectMatchCooldown`, `rejectPlayerCooldown`, `rejectExistingFire` and `rejectView`. These are input-frame decisions, including held intent, not distinct projectiles, hits or missed shots. Frames rejected earlier by input sequence/rate validation never reach these gates. Reasons reset with each worker report and aggregate within the ten-second log window; rewind windows and shot policy are unchanged.
+
 Server `runtime` reports RSS/main-heap/external memory, process CPU user/system time and percent of one core, event-loop delay percentiles/utilization and uptime. `logging` reports dropped matches/records, invalid metadata and write errors. Timing/buffer/RTT observations are aggregated rather than emitted per player. No player IP addresses, names, chat, admission tickets, host tokens or operator credentials belong in metrics.
 
 The event-loop histogram observes the **main thread** with a 20 ms sampling interval; healthy raw delay values include that monitoring interval. Do not compare them directly with the worker tick-lateness budget. RSS covers the process, including workers; heap/external figures describe the main isolate.
 
 The application does not create log files. Retention is the operator's responsibility: the [shared Docker deployment](../../deploy/README.md#shared-host-performance-logs) bounds both application containers' Docker logs below one decimal GB nominally. Local stdout or dedicated-host journald follows its own destination's retention policy instead.
+
+### Timing investigation — 2026-10-19
+
+A real-WASM profile identified one redundant pre-step render export, which rebuilds a 75,976-byte native render buffer. The server now reuses that same-step view, refreshing it after an automatic map transition. There is no cross-tick cache or changed rewind-anchor cadence. Native serialization remains the dominant sampled cost and already caches its encoded bytes/hash until state mutation; probing the save size and copying the saved state do not encode twice.
+
+Five alternating-order baseline/fixed process pairs used 720 ticks per scenario, the frozen WASM, and identical controls. Each fixed run required exact network transcripts, serialized-state checkpoints, gameplay hashes and admission totals to match baseline:
+
+| Scenario | Render calls before | Render calls after | Median total tick work before (ms) | After (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| One human / seven bots | 1,441 | 721 | 532.84 | 495.41 |
+| Eight humans / resync | 1,448 | 728 | 522.83 | 483.04 |
+| Overlapping rewinds | 1,478 | 758 | 419.94 | 394.03 |
+| Same-tick commands | 1,441 | 721 | 337.26 | 325.60 |
+| Round transition | 1,443 | 723 | 341.09 | 343.86 |
+
+This is a modest host-work reduction, not a reduction in network RTT or a VPS throughput qualification. The round-transition timing did not improve; do not claim a uniform speedup. Ignored receipt: `build-out/server-timing/paired-results.json`.
 
 ## API reference
 
