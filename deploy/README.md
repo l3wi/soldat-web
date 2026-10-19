@@ -346,3 +346,15 @@ Deployed **2026-10-19**, application source commit `4847c60`:
 - Both production containers were running with zero restarts. The private server configuration checksum and Node image are unchanged. Server `30000000`/`30` and client `10m`/`3` log rotation remain unchanged, retaining the combined nominal 931,457,280-byte budget.
 
 Ignored receipts: `build-out/deploy/optimizations-live-verification.json`, `optimizations-live-telemetry.json` and `optimizations-deployment.json`. Verification remains network/API-only; no browser/display smoothness claim is made.
+
+### Predicted local projectile publication
+
+Published **2026-10-19**, client source commit `9706405`:
+
+- Only the static client container was recreated, using `/opt/soldat/releases/9706405`. The game server remains on `/opt/soldat/releases/4847c60`; its container ID, process PID, start time and restart count were unchanged across publication. The shared proxy, private server configuration and TLS were not changed. The preceding client release remains available for rollback.
+- Local-owned projectile visuals now use the reconciled prediction replica; every other owner's projectiles stay confirmed. The server still owns damage, confirmed inventory, scores and kills. Native firing/collision rules, the frozen WASM, ABI 6 and wire 7 are unchanged.
+- Public identity, gzip and Brotli HTML all reference `/assets/index-CU9gGdko.js`. Its served SHA-256 matches the tested production build: `adba6ecc77857e030cc479d0b5004af7b192b589ba27b2883c35df1bb33f70cc`.
+- A public CA-verified WSS smoke used the new session and actual `CombatRenderer` with both native replicas on Arena. At a requested 120 Hz Node callback cadence, 64 sampled frames drew local projectile visuals while no corresponding local-owned projectile existed in the confirmed view. The client completed 31 matching hash checkpoints with zero mismatches or resyncs; scheduled input consumption was observed.
+- Client typechecking, all 176 client tests and the production build had passed before publication. Six separate original-Arena native/painter cases covered accepted and authority-filtered Steyr, SPAS and M79 shots. Server and client log rotation remain `30000000`/`30` and `10m`/`3`, respectively.
+
+Ignored receipts: `build-out/deploy/projectiles-live-verification.json` and `projectiles-deployment.json`. These establish public artifact delivery and numeric/network gameplay behavior, not browser/GPU smoothness, input-to-photon latency, jitter-free play or sustained capacity.
